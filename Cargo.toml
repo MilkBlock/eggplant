@@ -4,7 +4,7 @@ name = "eggplant"
 version = "0.5.0"
 description = "eggplant is a High-Level Rust API crate for Egglog"
 repository = "https://github.com/MilkBlock/eggplant"
-keywords = ["e-graphs", "egglog", "datalog", "compiler", "equality"]
+keywords = ["e-graphs", "egglog", "datalog", "compiler", "equality", "api"]
 license = "MIT"
 readme = "README.md"
 

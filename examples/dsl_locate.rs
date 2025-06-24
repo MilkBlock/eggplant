@@ -1,6 +1,6 @@
-use std::{path::PathBuf, str::FromStr};
 use eggplant::basic_tx_vt;
 use eggplant::eggplant_ty;
+use std::{path::PathBuf, str::FromStr};
 
 #[eggplant_ty]
 enum Eq {

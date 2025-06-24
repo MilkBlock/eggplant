@@ -1,6 +1,6 @@
-use std::path::PathBuf;
 use eggplant::basic_tx_no_vt;
 use eggplant::eggplant_ty;
+use std::path::PathBuf;
 
 #[eggplant_ty]
 enum A {

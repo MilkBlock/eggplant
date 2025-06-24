@@ -1,5 +1,5 @@
-use egglog::{ast::Literal, sort::OrderedFloat, span, var, Term, TermDag, TermId, Value};
 use derive_more::{Deref, DerefMut, IntoIterator};
+use egglog::{ast::Literal, sort::OrderedFloat, span, var, Term, TermDag, TermId, Value};
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -14,11 +14,9 @@ use std::{
 };
 use symbol_table::GlobalSymbol;
 
-use crate::{
-    wrap::tx_rx_vt::TxRxVT,
-};
+use crate::wrap::tx_rx_vt::TxRxVT;
 use egglog::ast::{
-        Command, GenericAction, GenericExpr, RustSpan, Schema, Span, Subdatatypes, Variant,
+    Command, GenericAction, GenericExpr, RustSpan, Schema, Span, Subdatatypes, Variant,
 };
 pub type EgglogAction = GenericAction<String, String>;
 pub type TermToNode = fn(TermId, &TermDag, &mut HashMap<TermId, Sym>) -> Box<dyn EgglogNode>;
@@ -760,11 +758,11 @@ impl ToOwnedStr for GenericExpr<&'static str, &'static str> {
     }
 }
 
-pub trait ToSpan{
+pub trait ToSpan {
     fn to_span(&self) -> Span;
 }
 
-impl ToSpan for  &'static Location<'static>{
+impl ToSpan for &'static Location<'static> {
     fn to_span(&self) -> Span {
         Span::Rust(Arc::new(RustSpan {
             file: self.file(),
@@ -774,7 +772,7 @@ impl ToSpan for  &'static Location<'static>{
     }
 }
 
-impl ToSpan for  Option<&'static Location<'static>>{
+impl ToSpan for Option<&'static Location<'static>> {
     fn to_span(&self) -> Span {
         match self {
             Some(value) => value.to_span(),
@@ -782,7 +780,6 @@ impl ToSpan for  Option<&'static Location<'static>>{
         }
     }
 }
-
 
 pub trait FromTerm {
     fn term_to_node(
@@ -799,8 +796,6 @@ impl SingletonGetter for () {
         panic!("illegal singleton getter")
     }
 }
-
-
 
 pub fn topo_sort(term_dag: &TermDag) -> Vec<usize> {
     // init in degrees and out degrees
@@ -924,8 +919,8 @@ impl EgglogTypeRegistry {
                 Decl::EgglogContainerTy {
                     name,
                     ele_ty_name,
-                    def_operator:_,
-                    term_to_node:_,
+                    def_operator: _,
+                    term_to_node: _,
                 } => {
                     let ele_ty = ele_ty_name.to_owned();
                     let ele = var!(ele_ty);

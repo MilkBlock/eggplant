@@ -33,7 +33,7 @@ pub fn eggplant_func(attr: TokenStream, item: TokenStream) -> TokenStream {
         Data::Struct(data_struct) => {
             let name_node = format_ident!("{}", name);
             // let derive_more_path  = derive_more_path();
-            let egglog_path = egglog_path();
+            let _egglog_path = egglog_path();
             let eggplant_path = eggplant_path();
             let input_types = data_struct
                 .fields

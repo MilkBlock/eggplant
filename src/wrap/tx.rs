@@ -5,6 +5,7 @@ use dashmap::DashMap;
 use egglog::{util::IndexSet, EGraph, SerializeConfig};
 use std::{path::PathBuf, sync::Mutex};
 
+#[allow(unused)]
 pub struct TxNoVT {
     pub egraph: Mutex<EGraph>,
     map: DashMap<Sym, WorkAreaNode>,

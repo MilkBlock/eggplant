@@ -1,16 +1,16 @@
 use super::*;
 use dashmap::DashMap;
 use egglog::{
-    ast::Command, sort::Sort, util::{IndexMap, IndexSet}, EGraph, Function, SerializeConfig, Value
+    ast::Command,
+    util::{IndexMap, IndexSet},
+    EGraph, SerializeConfig, Value,
 };
-use env_logger;
 use petgraph::{
     dot::{Config, Dot},
     prelude::{StableDiGraph, StableGraph},
     EdgeType,
 };
-use symbol_table::GlobalSymbol;
-use std::{collections::HashMap, fs::File, io::Write, path::PathBuf, str::FromStr, sync::{Arc, Mutex}};
+use std::{collections::HashMap, fs::File, io::Write, path::PathBuf, sync::Mutex};
 
 pub struct TxRxVT {
     pub egraph: Mutex<EGraph>,
@@ -641,7 +641,9 @@ fn get_value(egraph: &EGraph, name: &str) -> Value {
     log::trace!("get_value_of_func {}", name);
     let mut out = None;
     let func = egraph.get_function(name).unwrap();
-    egraph.backend.for_each(func.backend_id, |row| out = Some(row.vals[0]));
+    egraph
+        .backend
+        .for_each(func.backend_id, |row| out = Some(row.vals[0]));
     out.unwrap_or_else(|| panic!("do not have any output"))
 }
 
