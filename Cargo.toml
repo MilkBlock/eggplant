@@ -18,6 +18,6 @@ symbol_table = { version = "0.4.0", features = ["global"] }
 inventory = "0.3.20"
 petgraph = "0.8.2"
 dashmap = "6.1.0"
-egglog = {git = "https://github.com/ComCompiler/egglog_dep.git"}
+egglog = {git = "https://github.com/ComCompiler/egglog_dep.git", rev="53ca7a8"}
 env_logger = "0.11.8"
 log = "0.4.27"
