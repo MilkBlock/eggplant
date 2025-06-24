@@ -1,0 +1,23 @@
+[package]
+edition = "2021"
+name = "eggplant"
+version = "0.5.0"
+description = "eggplant is a High-Level Rust API crate for Egglog"
+repository = "https://github.com/MilkBlock/eggplant"
+keywords = ["e-graphs", "egglog", "datalog", "compiler", "equality"]
+license = "MIT"
+readme = "README.md"
+
+[features]
+
+[dependencies]
+proc_macros = {path= "./proc_macros"}
+derive_more = { version = "2.0.1", features = ["deref_mut", "deref", "into_iterator"] }
+smallvec = "1.15.1"
+symbol_table = { version = "0.4.0", features = ["global"] }
+inventory = "0.3.20"
+petgraph = "0.8.2"
+dashmap = "6.1.0"
+egglog = {git = "https://github.com/ComCompiler/egglog_dep"}
+env_logger = "0.11.8"
+log = "0.4.27"
