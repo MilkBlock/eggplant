@@ -28,7 +28,7 @@ pub fn eggplant_func(attr: TokenStream, item: TokenStream) -> TokenStream {
     };
 
     let output = args.output;
-    let output_ty = format_ident!("{}Ty",output);
+    let output_ty = format_ident!("{}Ty", output);
     let struct_def_expanded = match &input.data {
         Data::Struct(data_struct) => {
             let name_node = format_ident!("{}", name);
@@ -167,10 +167,13 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 .map(|variant| {
                     let tys = variant_to_tys(&variant);
                     let variant_name = &variant.ident;
-                    let new_from_term_dyn_fn_name = format_ident!("new_{}_from_term_dyn",variant_name.to_string().to_snake_case());
-                    quote! {  TyConstructor {  
+                    let new_from_term_dyn_fn_name = format_ident!(
+                        "new_{}_from_term_dyn",
+                        variant_name.to_string().to_snake_case()
+                    );
+                    quote! {  TyConstructor {
                         cons_name: stringify!(#variant_name),
-                        input:&[ #(stringify!(#tys)),* ] , 
+                        input:&[ #(stringify!(#tys)),* ] ,
                         output:stringify!(#name),
                         cost :None,
                         term_to_node: #name::<(),()>::#new_from_term_dyn_fn_name,
@@ -190,9 +193,9 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     ]);
                 }
                 #inventory_path::submit!{
-                    Decl::EgglogBaseTy { 
+                    Decl::EgglogBaseTy {
                         name: #name_egglogty_impl::TY_NAME,
-                        cons: &#name_egglogty_impl::CONSTRUCTORS 
+                        cons: &#name_egglogty_impl::CONSTRUCTORS
                     }
                 }
 
@@ -207,7 +210,8 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 .nth(0)
                 .expect("Struct should only have one Vec field");
             let first_generic = get_first_generic(&f.ty);
-            let first_generic_ty = format_ident!("{}Ty",first_generic.to_token_stream().to_string());
+            let first_generic_ty =
+                format_ident!("{}Ty", first_generic.to_token_stream().to_string());
             if is_vec_type(&f.ty) {
                 let vec_expanded = quote! {
                     impl #eggplant_path::wrap::EgglogTy for #name_egglogty_impl {
@@ -216,12 +220,12 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     impl #eggplant_path::wrap::EgglogContainerTy for #name_egglogty_impl {
                         type EleTy = #first_generic_ty;
-                    } 
+                    }
                     #inventory_path::submit!{
-                        Decl::EgglogContainerTy { 
+                        Decl::EgglogContainerTy {
                             name: #name_egglogty_impl::TY_NAME,
                             ele_ty_name: <<#name_egglogty_impl as EgglogContainerTy>::EleTy as EgglogTy>::TY_NAME,
-                            def_operator:"vec-of", 
+                            def_operator:"vec-of",
                             term_to_node: #name::<(),()>::new_from_term_dyn
                         }
                     }
@@ -285,7 +289,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             format!("(let {} (vec-of {}))",self.node.sym,self.node.ty.v.iter_mut().fold("".to_owned(), |s,item| s+ item.as_str()+" " ))
                         }
                         fn to_egglog(&self) -> EgglogAction{
-                            #egglog_path::ast::GenericAction::Let(span!(), self.cur_sym().to_string(), 
+                            #egglog_path::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
                                 #egglog_path::ast::GenericExpr::Call(self.span.to_span(),"vec-of", self.node.ty.v.iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
@@ -299,7 +303,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             format!("(let {} (vec-of {}))",self.cur_sym(),self.node.ty.v.iter().fold("".to_owned(), |s,item| s+ item.as_str()+" " ))
                         }
                         fn to_egglog(&self) -> EgglogAction{
-                            #egglog_path::ast::GenericAction::Let(span!(), self.cur_sym().to_string(), 
+                            #egglog_path::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
                                 #egglog_path::ast::GenericExpr::Call(self.span.to_span(), "vec-of", self.node.ty.v.iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
@@ -322,19 +326,19 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                 }
             };
-            let field_assignment  = if is_basic_ty {
-                    quote! {
-                        children.map(|x| match term_dag.get(x) {
-                            Term::Lit(lit) => lit.clone().try_into().expect("literal type mismatch"),
-                            Term::Var(v) => panic!(),
-                            Term::App(app,v) => panic!(),
-                        }).collect()
-                    }
-                } else {
-                    quote! {
-                        children.iter().map(|x| term2sym.get(x).unwrap().typed()).collect()
-                    }
-                } ;
+            let field_assignment = if is_basic_ty {
+                quote! {
+                    children.map(|x| match term_dag.get(x) {
+                        Term::Lit(lit) => lit.deliteral(),
+                        Term::Var(v) => panic!(),
+                        Term::App(app,v) => panic!(),
+                    }).collect()
+                }
+            } else {
+                quote! {
+                    children.iter().map(|x| term2sym.get(x).unwrap().typed()).collect()
+                }
+            };
             let field_ty = match first_generic.to_token_stream().to_string().as_str() {
                 x if PANIC_TY_LIST.contains(&x) => {
                     panic!("{} not supported", x)
@@ -490,7 +494,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let succs_match_arms = data_enum.variants.iter().map(|variant| {
                 let variant_idents = variant_to_field_ident(variant);
                 let variant_name = &variant.ident;
-                let vec_needed_syms:Vec<_> =
+                let vec_needed_syms: Vec<_> =
                     variant_to_field_list_without_prefixed_ident_filter_out_basic_ty(variant);
                 quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
                     vec![#(#vec_needed_syms.erase()),*]
@@ -499,7 +503,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let succs_mut_match_arms = data_enum.variants.iter().map(|variant| {
                 let variant_idents = variant_to_field_ident(variant);
                 let variant_name = &variant.ident;
-                let vec_needed_syms:Vec<_> =
+                let vec_needed_syms: Vec<_> =
                     variant_to_field_list_without_prefixed_ident_filter_out_basic_ty(variant);
                 quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
                     vec![#(#vec_needed_syms.erase_mut()),*]
@@ -509,7 +513,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let variant_fields = variant_to_field_ident(variant);
                 let variant_name = &variant.ident;
                 quote! {#name_inner::#variant_name {#( #variant_fields ),*  } => {
-                    #egglog_path::ast::GenericAction::Let(span!(), self.cur_sym().to_string(), 
+                    #egglog_path::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
                         #egglog_path::ast::GenericExpr::Call(span!(),
                             stringify!(#variant_name),
                             vec![#(#variant_fields.to_var()),*]).to_owned_str()
@@ -520,12 +524,8 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let variant_idents = variant_to_field_ident(variant);
                 let mapped_variant_idents = variant_to_mapped_ident_type_list(
                     variant,
-                    |_,_| {
-                        Some(quote! {})
-                    },
-                    |x,_| {
-                        Some(quote! { T::set_latest(#x.erase_mut());})
-                    },
+                    |_, _| Some(quote! {}),
+                    |x, _| Some(quote! { T::set_latest(#x.erase_mut());}),
                 );
                 let variant_name = &variant.ident;
                 quote! {
@@ -540,12 +540,8 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let variant_idents = variant_to_field_ident(variant);
                 let mapped_variant_idents = variant_to_mapped_ident_type_list(
                     variant,
-                    |_,_| {
-                        Some(quote! {})
-                    },
-                    |x,_| {
-                        Some(quote! {T::set_next(#x.erase_mut());})
-                    },
+                    |_, _| Some(quote! {}),
+                    |x, _| Some(quote! {T::set_next(#x.erase_mut());}),
                 );
                 let variant_name = &variant.ident;
                 quote! {
@@ -559,12 +555,8 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let variant_idents = variant_to_field_ident(variant);
                 let mapped_variant_idents = variant_to_mapped_ident_type_list(
                     variant,
-                    |_,_| {
-                        Some(quote! {})
-                    },
-                    |x,_| {
-                        Some(quote! {T::set_prev(#x.erase_mut());})
-                    },
+                    |_, _| Some(quote! {}),
+                    |x, _| Some(quote! {T::set_prev(#x.erase_mut());}),
                 );
                 let variant_name = &variant.ident;
                 quote! {
@@ -590,7 +582,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     if is_basic_ty(ty) {
                         quote! {
                             #ident: match term_dag.get(children[#i]) {
-                                Term::Lit(lit) => lit.clone().try_into().expect("literal type mismatch"),
+                                Term::Lit(lit) => lit.deliteral(),
                                 Term::Var(v) => panic!(),
                                 Term::App(app,v) => panic!(),
                             }

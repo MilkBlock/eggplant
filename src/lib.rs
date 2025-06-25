@@ -1,3 +1,3 @@
 pub mod wrap;
-pub use proc_macros::*;
+pub use eggplant_macros::*;
 pub use wrap::*;

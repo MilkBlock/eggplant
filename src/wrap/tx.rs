@@ -2,7 +2,7 @@ use egglog::ast::Command;
 
 use super::*;
 use dashmap::DashMap;
-use egglog::{util::IndexSet, EGraph, SerializeConfig};
+use egglog::{EGraph, SerializeConfig, util::IndexSet};
 use std::{path::PathBuf, sync::Mutex};
 
 #[allow(unused)]

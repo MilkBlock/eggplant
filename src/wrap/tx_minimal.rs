@@ -1,5 +1,5 @@
 use super::*;
-use egglog::{ast::Command, EGraph, SerializeConfig};
+use egglog::{EGraph, SerializeConfig, ast::Command};
 use std::{path::PathBuf, sync::Mutex};
 
 pub struct TxMinimal {

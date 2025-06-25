@@ -89,16 +89,18 @@ pub fn variant_to_mapped_ident_type_list(
         }
     })
     .map(|(f1, f2)| {
-        let f1 = &format_ident!("{}",&f1.to_token_stream().to_string());
+        let f1 = &format_ident!("{}", &f1.to_token_stream().to_string());
         match f1.to_string().as_str() {
             x if PANIC_TY_LIST.contains(&x) => {
                 panic!("{} not supported", x)
             }
             x if EGGLOG_BASIC_TY_LIST.contains(&x) => map_basic_ident(&f2, &f1),
             _ => map_complex_ident(&f2, &f1),
-        }.map(|x|quote! {  #x})
+        }
+        .map(|x| quote! {  #x})
     })
-    .flatten().collect();
+    .flatten()
+    .collect();
     types_and_idents
 }
 #[allow(unused)]
@@ -173,77 +175,96 @@ pub fn get_first_generic(ty: &Type) -> &Type {
 /// given variant a{ x:X, y:Y}
 /// return vec![ x:XSym, y:YSym ]
 pub fn variants_to_sym_typed_ident_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |basic,basic_ty| Some(quote!{#basic:#basic_ty}), 
-        |complex, complex_ty|{
-                let name_egglogty = format_ident!("{}Ty", complex_ty);
-        Some(quote!{#complex:Sym<#name_egglogty>})})
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
+        |complex, complex_ty| {
+            let name_egglogty = format_ident!("{}Ty", complex_ty);
+            Some(quote! {#complex:Sym<#name_egglogty>})
+        },
+    )
 }
 pub fn variants_to_sym_type_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |_,basic_ty| Some(quote!{#basic_ty}), 
-        |_, complex_ty|{
-                let name_egglogty = format_ident!("{}Ty", complex_ty);
-        Some(quote!{Sym<#name_egglogty>})})
+    variant_to_mapped_ident_type_list(
+        variant,
+        |_, basic_ty| Some(quote! {#basic_ty}),
+        |_, complex_ty| {
+            let name_egglogty = format_ident!("{}Ty", complex_ty);
+            Some(quote! {Sym<#name_egglogty>})
+        },
+    )
 }
 pub fn variant_to_ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |basic,basic_ty| Some(quote!{#basic:#basic_ty}), 
-        |complex, complex_ty|Some(quote!{#complex: &#complex_ty<T, impl EgglogEnumVariantTy>}))
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
+        |complex, complex_ty| Some(quote! {#complex: &#complex_ty<T, impl EgglogEnumVariantTy>}),
+    )
 }
 pub fn variant_to_sym_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |basic,basic_ty| Some(quote!(#basic:#basic_ty)), 
-        |complex,_| Some(quote!(#complex:Sym)))
-
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, basic_ty| Some(quote!(#basic:#basic_ty)),
+        |complex, _| Some(quote!(#complex:Sym)),
+    )
 }
 pub fn variant_to_assign_node_field_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |basic,_| Some(quote! {#basic}), 
-        |complex, _|Some(quote!(#complex:#complex.sym)))
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, _| Some(quote! {#basic}),
+        |complex, _| Some(quote!(#complex:#complex.sym)),
+    )
 }
 pub fn variant_to_typed_assign_node_field_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |basic,_| Some(quote! {#basic}), 
-        |complex, _|Some(quote!(#complex:#complex.typed())))
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, _| Some(quote! {#basic}),
+        |complex, _| Some(quote!(#complex:#complex.typed())),
+    )
 }
 pub fn variant_to_assign_node_field_list_without_prefixed_ident(
     variant: &Variant,
 ) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |basic,_|Some(quote! {#basic}), 
-        |complex,_|Some(quote! {#complex.sym}))
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, _| Some(quote! {#basic}),
+        |complex, _| Some(quote! {#complex.sym}),
+    )
 }
 pub fn variant_to_field_list_without_prefixed_ident_filter_out_basic_ty(
     variant: &Variant,
 ) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, |_,_|None, |ident,_|Some(quote!{#ident}))
+    variant_to_mapped_ident_type_list(variant, |_, _| None, |ident, _| Some(quote! {#ident}))
 }
 
 /// given variant a{ x:X, y:Y}
 /// return vec![ X, Y ]
 pub fn variant_to_tys(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |_,ty|Some(quote!{#ty}), 
-        |_,ty|Some(quote!{#ty}))
+    variant_to_mapped_ident_type_list(
+        variant,
+        |_, ty| Some(quote! {#ty}),
+        |_, ty| Some(quote! {#ty}),
+    )
 }
 
 /// given variant a{ x:X, y:Y}
 /// return iterator [ x, y ].iter()
 pub fn variant_to_field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant_to_mapped_ident_type_list(variant, 
-        |ident,_|Some(quote!{#ident}), 
-        |ident,_|Some(quote!{#ident}))
+    variant_to_mapped_ident_type_list(
+        variant,
+        |ident, _| Some(quote! {#ident}),
+        |ident, _| Some(quote! {#ident}),
+    )
 }
 
 // /// given variant a{ x:Box<X>}
-// /// return  dyn AsRef<#_first_generic<T, ()>> 
+// /// return  dyn AsRef<#_first_generic<T, ()>>
 // /// given variant a{ x:i32}
-// /// return  i32 
+// /// return  i32
 // pub fn variant_to_as_ref_type(variant: &Variant) -> (proc_macro2::TokenStream, bool){
 //     let mut is_basic = false;
-//     (variant_to_mapped_ident_type_list(variant, 
-//         |_,basic_ty|{is_basic = true;Some( quote!{#basic_ty})}, 
+//     (variant_to_mapped_ident_type_list(variant,
+//         |_,basic_ty|{is_basic = true;Some( quote!{#basic_ty})},
 //         |_,complex|{Some(quote!{dyn AsRef<#complex<T,()>>})}).first().unwrap().clone()
 //     ,is_basic)
 // }

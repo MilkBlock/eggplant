@@ -1,14 +1,15 @@
 use super::*;
 use dashmap::DashMap;
 use egglog::{
-    ast::Command,
-    util::{IndexMap, IndexSet},
     EGraph, SerializeConfig, Value,
+    ast::Command,
+    span,
+    util::{IndexMap, IndexSet},
 };
 use petgraph::{
+    EdgeType,
     dot::{Config, Dot},
     prelude::{StableDiGraph, StableGraph},
-    EdgeType,
 };
 use std::{collections::HashMap, fs::File, io::Write, path::PathBuf, sync::Mutex};
 
@@ -575,7 +576,7 @@ impl Rx for TxRxVT {
     ) -> F::Output {
         let input_nodes = input.as_nodes();
         let output = {
-            let egraph = &self.egraph.lock().unwrap();
+            let egraph = &mut self.egraph.lock().unwrap();
             input_nodes.iter().for_each(|x| {
                 println!(
                     "input:({},{:?})",
@@ -633,18 +634,20 @@ impl Rx for TxRxVT {
         ret_sym.unwrap()
     }
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> Sym {
-        let value = get_value(&self.egraph.lock().unwrap(), sym.into());
+        let value = get_value(&mut self.egraph.lock().unwrap(), sym.into());
         self.on_pull_value::<T>(value)
     }
 }
-fn get_value(egraph: &EGraph, name: &str) -> Value {
+fn get_value(egraph: &mut EGraph, name: &str) -> Value {
     log::trace!("get_value_of_func {}", name);
-    let mut out = None;
-    let func = egraph.get_function(name).unwrap();
-    egraph
-        .backend
-        .for_each(func.backend_id, |row| out = Some(row.vals[0]));
-    out.unwrap_or_else(|| panic!("do not have any output"))
+    let (_, expr_value) = egraph
+        .eval_expr(&egglog::ast::GenericExpr::Call(
+            span!(),
+            name.to_string(),
+            vec![],
+        ))
+        .unwrap();
+    expr_value
 }
 
 impl std::fmt::Debug for Box<dyn EgglogNode> {

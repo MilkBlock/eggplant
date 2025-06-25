@@ -3,8 +3,8 @@ use egglog::ast::Command;
 use super::*;
 use dashmap::DashMap;
 use egglog::{
-    util::{IndexMap, IndexSet},
     EGraph, SerializeConfig,
+    util::{IndexMap, IndexSet},
 };
 use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 

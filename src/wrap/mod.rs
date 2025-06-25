@@ -4,6 +4,8 @@ pub mod tx_rx_vt;
 pub mod tx_vt;
 mod wrap;
 pub use wrap::*;
+mod literal;
+pub use literal::*;
 pub mod tx_minimal;
 
 /// macro to quickly define a Transimitter with no version control

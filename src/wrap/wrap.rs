@@ -1,15 +1,15 @@
 use derive_more::{Deref, DerefMut, IntoIterator};
-use egglog::{ast::Literal, sort::OrderedFloat, span, var, Term, TermDag, TermId, Value};
+use egglog::{Term, TermDag, TermId, Value, ast::Literal, sort::OrderedFloat, span, var};
 use smallvec::SmallVec;
 use std::{
-    any::Any,
+    any::{Any, type_name},
     borrow::Borrow,
     collections::HashMap,
     fmt,
     hash::Hash,
     marker::PhantomData,
     panic::Location,
-    sync::{atomic::AtomicU32, Arc},
+    sync::{Arc, atomic::AtomicU32},
     usize,
 };
 use symbol_table::GlobalSymbol;
