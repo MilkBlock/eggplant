@@ -17,13 +17,13 @@ struct LeadTo {
 }
 
 fn main() {
-    let a = Expr::<MyTx>::new_const(3);
+    let a = Expr::new_const(3);
     let b = Expr::new_const(5);
     let add = Expr::new_add(&a, &b);
     let c = Expr::<MyTx>::new_const(15);
     add.commit();
     add.commit();
-    LeadTo::set((&add,), &c);
+    LeadTo::set(&add, &c);
     MyTx::sgl().wag_to_dot("dsl_func.dot".into());
     MyTx::sgl().egraph_to_dot("dsl_func_egraph.dot".into());
 }

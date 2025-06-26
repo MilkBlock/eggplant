@@ -21,13 +21,13 @@ struct F {}
 
 fn main() {
     env_logger::init();
-    let node1 = Cons::new_value(3, &Cons::<MyRx>::new_end());
+    let node1 = Cons::new_value(3, &Cons::new_end());
     let node2 = Cons::new_value(2, &node1);
     let node3 = Cons::new_value(1, &node2);
     let _root = Root::new_v(&VecCon::new(vec![&node2]));
-    let root = Root::new_v(&VecCon::new(vec![&node3]));
+    let root = Root::<MyTx>::new_v(&VecCon::new(vec![&node3]));
     F::set((), &root);
-    MyRx::sgl().to_dot("egraph.dot".into());
+    MyTx::sgl().to_dot("egraph.dot".into());
 }
 
-basic_tx_minimal!(MyRx);
+basic_tx_minimal!(MyTx);

@@ -169,7 +169,7 @@ struct CurrentTimeline {}
 fn main() {
     env_logger::init();
     // three points
-    let p1 = Point::<MyRx>::new_fixed_point(&Offset::new_d_vec2(1.0, 1.0));
+    let p1 = Point::<MyTx>::new_fixed_point(&Offset::new_d_vec2(1.0, 1.0));
     let p2 = Point::new_fixed_point(&Offset::new_d_vec2(1.0, 2.0));
     let p3 = Point::new_offset_point(&Offset::new_d_vec2(1.0, 2.0), &p2);
 
@@ -220,7 +220,7 @@ fn main() {
 
     CurrentTimeline::set((), &timeline);
     // 输出到dot文件
-    MyRx::sgl().to_dot(PathBuf::from("timeline_egraph"));
+    MyTx::sgl().to_dot(PathBuf::from("timeline_egraph"));
 }
 
-basic_tx_vt!(MyRx);
+basic_tx_vt!(MyTx);

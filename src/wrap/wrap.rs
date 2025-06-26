@@ -1,8 +1,8 @@
 use derive_more::{Deref, DerefMut, IntoIterator};
-use egglog::{Term, TermDag, TermId, Value, ast::Literal, sort::OrderedFloat, span, var};
+use egglog::{ast::Literal, sort::OrderedFloat, span, var, Term, TermDag, TermId, Value};
 use smallvec::SmallVec;
 use std::{
-    any::{Any, type_name},
+    any::Any,
     borrow::Borrow,
     collections::HashMap,
     fmt,
@@ -14,7 +14,7 @@ use std::{
 };
 use symbol_table::GlobalSymbol;
 
-use crate::wrap::tx_rx_vt::TxRxVT;
+use crate::{func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput}, wrap::tx_rx_vt::TxRxVT, EValue};
 use egglog::ast::{
     Command, GenericAction, GenericExpr, RustSpan, Schema, Span, Subdatatypes, Variant,
 };
@@ -191,6 +191,7 @@ impl<Ret: Tx + VersionCtl + 'static, S: SingletonGetter<RetTy = Ret>> VersionCtl
     }
 }
 
+/// this trait should not be implemented for Node because they have many variants which is recognized as different types by compiler
 pub trait EgglogTy {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
@@ -243,7 +244,7 @@ pub trait LocateVersion {
     fn locate_prev(&mut self);
 }
 /// trait of node behavior
-pub trait EgglogNode: ToEgglog + Any {
+pub trait EgglogNode: ToEgglog + Any + EValue {
     fn succs_mut(&mut self) -> Vec<&mut Sym>;
     fn succs(&self) -> Vec<Sym>;
     /// set new sym and return the new sym
@@ -267,7 +268,7 @@ pub struct Node<T, R, I, S>
 where
     T: EgglogTy,
     R: SingletonGetter,
-    I: NodeInner<T>,
+    I: NodeInner,
     S: EgglogEnumVariantTy,
 {
     pub ty: I,
@@ -282,7 +283,7 @@ impl<T, R, I, S> AsRef<Node<T, R, I, ()>> for Node<T, R, I, S>
 where
     T: EgglogTy,
     R: SingletonGetter,
-    I: NodeInner<T>,
+    I: NodeInner,
     S: EgglogEnumVariantTy,
 {
     fn as_ref(&self) -> &Node<T, R, I, ()> {
@@ -324,7 +325,7 @@ impl<T> Clone for Sym<T> {
     }
 }
 
-pub trait NodeInner<T> {}
+pub trait NodeInner {}
 impl<T> std::fmt::Display for Sym<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.inner.as_str())
@@ -526,150 +527,6 @@ impl<T: EgglogNode> From<T> for WorkAreaNode {
     }
 }
 
-/// Trait for input types that can be used in egglog functions
-pub trait EgglogFuncInput {
-    type Ref<'a>: EgglogFuncInputRef;
-    fn as_node(&self) -> &dyn EgglogNode;
-}
-/// Trait for input tuple that can be used in egglog functions
-pub trait EgglogFuncInputs {
-    type Ref<'a>: EgglogFuncInputsRef;
-    fn as_nodes(&self) -> Box<[&dyn EgglogNode]>;
-}
-/// Trait for input types ref that directly used as function argument
-pub trait EgglogFuncInputRef {
-    type DeRef: EgglogFuncInput + EgglogNode;
-    fn as_node(&self) -> &dyn EgglogNode;
-}
-pub trait EgglogFuncInputsRef {
-    type DeRef: EgglogFuncInputs;
-    fn as_nodes(&self) -> Box<[&dyn EgglogNode]>;
-}
-
-/// Trait for output types that can be used in egglog functions
-pub trait EgglogFuncOutput: 'static + Clone {
-    type Ref<'a>: EgglogFuncOutputRef;
-    fn as_node(&self) -> &dyn EgglogNode;
-    fn clone_downcast(&self) -> Self;
-}
-impl<T> EgglogFuncOutput for T
-where
-    T: EgglogNode + 'static + Sized + Clone,
-{
-    type Ref<'a> = &'a dyn AsRef<T>;
-    fn as_node(&self) -> &dyn EgglogNode {
-        self
-    }
-    fn clone_downcast(&self) -> T {
-        self.clone()
-    }
-}
-impl<T: EgglogFuncOutput + EgglogNode + 'static> EgglogFuncOutputRef for &dyn AsRef<T> {
-    type DeRef = T;
-    fn as_node(&self) -> &dyn EgglogNode {
-        self.as_ref()
-    }
-    fn deref(&self) -> &Self::DeRef {
-        self.as_ref()
-    }
-}
-pub trait EgglogFuncOutputRef {
-    type DeRef: EgglogFuncOutput;
-    fn as_node(&self) -> &dyn EgglogNode;
-    fn deref(&self) -> &Self::DeRef;
-}
-pub trait EgglogFunc {
-    type Input: EgglogFuncInputs;
-    type Output: EgglogFuncOutput;
-    type OutputTy: EgglogTy;
-    const FUNC_NAME: &'static str;
-}
-impl<T> EgglogFuncInput for T
-where
-    T: EgglogNode + 'static,
-{
-    type Ref<'a> = &'a dyn AsRef<T>;
-    fn as_node(&self) -> &dyn EgglogNode {
-        self
-    }
-}
-impl<T> EgglogFuncInputRef for &dyn AsRef<T>
-where
-    T: EgglogNode + 'static,
-{
-    type DeRef = T;
-    fn as_node(&self) -> &dyn EgglogNode {
-        self.as_ref()
-    }
-}
-
-macro_rules! impl_input_for_tuples {
-    () => {
-        #[allow(unused)]
-        impl EgglogFuncInputs for () {
-            type Ref<'a> = ();
-            fn as_nodes(&self) -> Box<[&dyn EgglogNode]> {
-                Box::new([])
-            }
-        }
-    };
-    ($($T:ident),*) => {
-        #[allow(unused)]
-        impl<$($T: EgglogNode + EgglogFuncInput),*> EgglogFuncInputs for ($($T,)*) {
-            type Ref<'a> = ($($T::Ref<'a>,)*);
-
-            fn as_nodes(&self) -> Box<[&dyn EgglogNode]> {
-                #[allow(non_snake_case)]
-                let ($($T,)*) = self;
-                Box::new([$($T),*])
-            }
-        }
-    };
-}
-
-// Continue for as many tuple sizes as needed
-macro_rules! impl_input_ref_for_tuples {
-    () => {
-        #[allow(unused)]
-        impl EgglogFuncInputsRef for () {
-            type DeRef = ();
-            fn as_nodes(&self) -> Box<[&dyn EgglogNode]> {
-                Box::new([])
-            }
-        }
-    };
-
-    ($($T:ident),*) => {
-        #[allow(unused)]
-        impl<$($T: EgglogFuncInputRef),*> EgglogFuncInputsRef for ($($T,)*) {
-            type DeRef = ($($T::DeRef,)*);
-            #[allow(non_snake_case)]
-            fn as_nodes(&self) -> Box<[&dyn EgglogNode]> {
-                let ($($T,)*) = self;
-                Box::new([$($T.as_node()),*])
-            }
-        }
-    };
-}
-
-macro_rules! impl_for_tuples {
-    ($($T:ident),*) => {
-        impl_input_for_tuples!($($T),*);
-        impl_input_ref_for_tuples!($($T),*);
-    };
-}
-
-// Generate implementations
-impl_for_tuples!();
-impl_for_tuples!(T0);
-impl_for_tuples!(T0, T1);
-impl_for_tuples!(T0, T1, T2);
-impl_for_tuples!(T0, T1, T2, T3);
-impl_for_tuples!(T0, T1, T2, T3, T4);
-impl_for_tuples!(T0, T1, T2, T3, T4, T5);
-impl_for_tuples!(T0, T1, T2, T3, T4, T5, T6);
-impl_for_tuples!(T0, T1, T2, T3, T4, T5, T6, T7);
-impl_for_tuples!(T0, T1, T2, T3, T4, T5, T6, T7, T8);
 
 pub trait EgglogContainerTy: EgglogTy {
     type EleTy: EgglogTy;

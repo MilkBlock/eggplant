@@ -3,7 +3,6 @@ use dashmap::DashMap;
 use egglog::{
     EGraph, SerializeConfig, Value,
     ast::Command,
-    span,
     util::{IndexMap, IndexSet},
 };
 use petgraph::{
@@ -462,14 +461,14 @@ impl Tx for TxRxVT {
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
-        let input_nodes = input.as_nodes();
-        let input_syms = input_nodes.iter().map(|x| x.cur_sym());
-        let output = output.as_node().cur_sym();
+        let input_nodes = input.as_evalues();
+        let input_syms = input_nodes.iter().map(|x| x.get_symlit());
+        let output = output.as_evalue().get_symlit();
         self.send(TxCommand::StringCommand {
             command: format!(
                 "(set ({} {}) {} )",
                 F::FUNC_NAME,
-                input_syms.map(|x| x.as_str()).collect::<String>(),
+                input_syms.map(|x| format!("{}", x)).collect::<String>(),
                 output
             ),
         });
@@ -574,17 +573,10 @@ impl Rx for TxRxVT {
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
     ) -> F::Output {
-        let input_nodes = input.as_nodes();
+        let input_nodes = input.as_evalues();
         let output = {
             let egraph = &mut self.egraph.lock().unwrap();
-            input_nodes.iter().for_each(|x| {
-                println!(
-                    "input:({},{:?})",
-                    x.cur_sym(),
-                    get_value(egraph, x.cur_sym().into())
-                )
-            });
-            let output = get_value(egraph, F::FUNC_NAME);
+            let output = get_func_value(egraph, F::FUNC_NAME, input_nodes);
             output
         };
         let sym = self.on_pull_value::<F::OutputTy>(output);
@@ -634,20 +626,9 @@ impl Rx for TxRxVT {
         ret_sym.unwrap()
     }
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> Sym {
-        let value = get_value(&mut self.egraph.lock().unwrap(), sym.into());
+        let value = sym.get_value(&mut self.egraph.lock().unwrap());
         self.on_pull_value::<T>(value)
     }
-}
-fn get_value(egraph: &mut EGraph, name: &str) -> Value {
-    log::trace!("get_value_of_func {}", name);
-    let (_, expr_value) = egraph
-        .eval_expr(&egglog::ast::GenericExpr::Call(
-            span!(),
-            name.to_string(),
-            vec![],
-        ))
-        .unwrap();
-    expr_value
 }
 
 impl std::fmt::Debug for Box<dyn EgglogNode> {

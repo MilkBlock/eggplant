@@ -1,4 +1,5 @@
 use egglog::ast::Command;
+use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 
 use super::*;
 use dashmap::DashMap;
@@ -215,19 +216,20 @@ impl Tx for TxNoVT {
         self.update_symnode(symnode);
     }
 
+    #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
-        let input_nodes = input.as_nodes();
-        let input_syms = input_nodes.iter().map(|x| x.cur_sym());
-        let output = output.as_node().cur_sym();
+        let input_nodes = input.as_evalues();
+        let input_syms = input_nodes.iter().map(|x| x.get_symlit());
+        let output = output.as_evalue().get_symlit();
         self.send(TxCommand::StringCommand {
             command: format!(
                 "(set ({} {}) {} )",
                 F::FUNC_NAME,
-                input_syms.map(|x| x.as_str()).collect::<String>(),
+                input_syms.map(|x| format!("{}",x)).collect::<String>(),
                 output
             ),
         });

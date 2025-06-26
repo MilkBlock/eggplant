@@ -179,8 +179,7 @@ pub fn variants_to_sym_typed_ident_list(variant: &Variant) -> Vec<proc_macro2::T
         variant,
         |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
         |complex, complex_ty| {
-            let name_egglogty = format_ident!("{}Ty", complex_ty);
-            Some(quote! {#complex:Sym<#name_egglogty>})
+            Some(quote! {#complex:Sym<#complex_ty>})
         },
     )
 }
@@ -189,8 +188,7 @@ pub fn variants_to_sym_type_list(variant: &Variant) -> Vec<proc_macro2::TokenStr
         variant,
         |_, basic_ty| Some(quote! {#basic_ty}),
         |_, complex_ty| {
-            let name_egglogty = format_ident!("{}Ty", complex_ty);
-            Some(quote! {Sym<#name_egglogty>})
+            Some(quote! {Sym<#complex_ty>})
         },
     )
 }

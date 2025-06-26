@@ -9,12 +9,14 @@ use quote::{ToTokens, format_ident, quote};
 use syn::{Data, DeriveInput, Type, parse_macro_input};
 mod helper;
 
-#[derive(Debug, FromMeta)]
-struct SceneMeta {
-    output: Ident,
-}
 #[proc_macro_attribute]
 pub fn eggplant_func(attr: TokenStream, item: TokenStream) -> TokenStream {
+    #[derive(Debug, FromMeta)]
+    struct FuncMeta {
+        output: Ident,
+        // sg: Ident,
+    }
+
     let input = parse_macro_input!(item as DeriveInput);
     let name = &input.ident;
 
@@ -22,23 +24,54 @@ pub fn eggplant_func(attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(v) => v,
         Err(e) => return TokenStream::from(Error::from(e).write_errors()),
     };
-    let args = match SceneMeta::from_list(&attr_args) {
+    let args = match FuncMeta::from_list(&attr_args) {
         Ok(v) => v,
         Err(e) => return TokenStream::from(e.write_errors()),
     };
+    // let default_tx = args.sg;
 
-    let output = args.output;
-    let output_ty = format_ident!("{}Ty", output);
+    let output = args.output.to_token_stream();
+    let output = if is_basic_ty(&output){
+        quote!( #output )
+    }else {
+        quote!(#output<T,()>)
+    };
+    let output_ref = if is_basic_ty(&output){
+        quote!( &#output )
+    }else {
+        quote!(&dyn AsRef<#output>)
+    };
+    let output_ty = &output;
+    let output_whether_as_ref = if is_basic_ty(&output){
+        quote!()
+    }else {
+        quote!(.as_ref())
+    };
     let struct_def_expanded = match &input.data {
         Data::Struct(data_struct) => {
-            let name_node = format_ident!("{}", name);
+            let name_func = format_ident!("{}", name);
             // let derive_more_path  = derive_more_path();
             let _egglog_path = egglog_path();
             let eggplant_path = eggplant_path();
             let input_types = data_struct
                 .fields
                 .iter()
-                .map(|field| &field.ty)
+                .map(|x|&x.ty)
+                .map(|x| if is_basic_ty(&x.to_token_stream()){
+                    x.to_token_stream()
+                }else {
+                    quote!(#x<T,()>)
+                })
+                .collect::<Vec<_>>();
+            let input_ref_types = data_struct
+                .fields
+                .iter()
+                .map(|x|&x.ty)
+                .map(|x| if is_basic_ty(&x.to_token_stream()){
+                    quote!(&#x)
+                }else {
+                    quote!(&dyn AsRef<#x<T,()>>)
+                })
                 .collect::<Vec<_>>();
             let _generic_decl = data_struct
                 .fields
@@ -50,34 +83,35 @@ pub fn eggplant_func(attr: TokenStream, item: TokenStream) -> TokenStream {
                     quote!(#generic:AsRef<#ty>)
                 })
                 .collect::<Vec<_>>();
+            
 
             let inventory_path = inventory_path();
             let _merge_option: proc_macro2::TokenStream = "no-merge".to_token_stream();
             let _merge_option: proc_macro2::TokenStream = "merge new".to_token_stream();
             quote! {
                 #[allow(unused)]
-                pub struct #name_node<T>{_p:std::marker::PhantomData<T>}
+                pub struct #name_func<T>{_p:std::marker::PhantomData<T>}
                 const _:() = {
                     use #eggplant_path::wrap::*;
-                    impl<T:SingletonGetter> EgglogFunc for #name_node<T>{
-                        type Output=#output<T,()>;
-                        type Input=(#(#input_types<T,()>,)*);
+                    impl<T:SingletonGetter> EgglogFunc for #name_func<T>{
+                        type Output=#output;
+                        type Input=(#(#input_types),*);
                         type OutputTy=#output_ty;
-                        const FUNC_NAME:&'static str = stringify!(#name_node);
+                        const FUNC_NAME:&'static str = stringify!(#name_func);
                     }
-                    impl<'a, T:TxSgl> #name_node<T> where T:TxSgl{
-                        pub fn set(input: (#(&'a dyn AsRef<#input_types<T,()>>,)*), output: &dyn AsRef<#output<T,()>>){
-                            T::on_func_set::<#name_node<T>>(input, output.as_ref());
+                    impl<'a, T:TxSgl> #name_func<T> where T:TxSgl{
+                        pub fn set(input: (#(#input_ref_types),*), output: #output_ref){
+                            T::on_func_set::<#name_func<T>>(input, output #output_whether_as_ref);
                         }
                     }
-                    impl<'a, R:RxSgl> #name_node<R> where R:RxSgl{
-                        pub fn get(input: (#(&'a dyn AsRef<#input_types<R,()>>,)*)) -> #output<R,()>{
-                            R::on_func_get::<#name_node<R>>(input).as_ref().clone()
+                    impl<'a, T:RxSgl> #name_func<T> {
+                        pub fn get(input: (#(#input_ref_types),*)) -> #output{
+                            T::on_func_get::<#name_func<T>>(input)#output_whether_as_ref.clone()
                         }
                     }
                     #inventory_path::submit!{
                         Decl::EgglogFuncTy{
-                            name: stringify!(#name_node),
+                            name: stringify!(#name_func),
                             input: &[ #(stringify!(#input_types)),*],
                             output: &(stringify!(#output))
                         }
@@ -140,15 +174,29 @@ pub fn eggplant_func(attr: TokenStream, item: TokenStream) -> TokenStream {
 ///
 ///
 #[proc_macro_attribute]
-pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn eggplant_ty(attr: TokenStream, item: TokenStream) -> TokenStream {
+    #[derive(Debug, FromMeta)]
+    struct TyMeta {
+        // sg: Ident,
+    }
+    let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
+        Ok(v) => v,
+        Err(e) => return TokenStream::from(Error::from(e).write_errors()),
+    };
+    let _args = match TyMeta::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => return TokenStream::from(e.write_errors()),
+    };
+
     let input = parse_macro_input!(item as DeriveInput);
     let name = &input.ident;
 
     let name_lowercase = format_ident!("{}", name.to_string().to_lowercase());
-    let name_egglogty_impl = format_ident!("{}Ty", name);
+    let name_egglogty_impl = format_ident!("{}", name);
     let egglog_path = egglog_path();
     let eggplant_path = eggplant_path();
     let inventory_path = inventory_path();
+    // let default_tx = args.sg;
 
     let type_def_expanded = match &input.data {
         Data::Enum(data_enum) => {
@@ -183,19 +231,19 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 .collect::<Vec<_>>();
             let expanded = quote! {
                 use #eggplant_path::wrap::*;
-                impl EgglogTy for #name_egglogty_impl {
+                impl<T:SingletonGetter,V:EgglogEnumVariantTy> EgglogTy for #name_egglogty_impl<T,V> {
                     const TY_NAME:&'static str = stringify!(#name);
                     const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
                 }
-                impl EgglogBaseTy for #name_egglogty_impl {
+                impl<T:SingletonGetter,V:EgglogEnumVariantTy> EgglogBaseTy for #name_egglogty_impl<T,V> where Self:EgglogTy{
                     const CONSTRUCTORS : TyConstructors= TyConstructors(&[
                         #(#constructors),*
                     ]);
                 }
                 #inventory_path::submit!{
                     Decl::EgglogBaseTy {
-                        name: #name_egglogty_impl::TY_NAME,
-                        cons: &#name_egglogty_impl::CONSTRUCTORS
+                        name: #name_egglogty_impl::<()>::TY_NAME,
+                        cons: &#name_egglogty_impl::<()>::CONSTRUCTORS
                     }
                 }
 
@@ -211,10 +259,10 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 .expect("Struct should only have one Vec field");
             let first_generic = get_first_generic(&f.ty);
             let first_generic_ty =
-                format_ident!("{}Ty", first_generic.to_token_stream().to_string());
+                format_ident!("{}", first_generic.to_token_stream().to_string());
             if is_vec_type(&f.ty) {
                 let vec_expanded = quote! {
-                    impl #eggplant_path::wrap::EgglogTy for #name_egglogty_impl {
+                    impl<T:SingletonGetter,V:EgglogEnumVariantTy> EgglogTy for #name_egglogty_impl<T,V> {
                         const TY_NAME:&'static str = stringify!(#name);
                         const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
                     }
@@ -223,7 +271,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     #inventory_path::submit!{
                         Decl::EgglogContainerTy {
-                            name: #name_egglogty_impl::TY_NAME,
+                            name: #name_egglogty_impl::<()>::TY_NAME,
                             ele_ty_name: <<#name_egglogty_impl as EgglogContainerTy>::EleTy as EgglogTy>::TY_NAME,
                             def_operator:"vec-of",
                             term_to_node: #name::<(),()>::new_from_term_dyn
@@ -360,22 +408,19 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                             first_generic.to_token_stream().to_string()
                         ),
                     };
-                    format_ident!("{}Ty", first_generic).to_token_stream()
+                    format_ident!("{}", first_generic).to_token_stream()
                 }
             };
             if is_vec_type(&f.ty) {
                 let vec_expanded = quote! {
                     pub type #name_node_alias<T,V> = #eggplant_path::wrap::Node<#name_egglogty_impl,T,#name_inner,V>;
                     #[allow(unused)]
-                    #[derive(Clone,Debug)]
-                    pub struct #name_egglogty_impl;
-                    #[allow(unused)]
                     #[derive(::derive_more::DerefMut,::derive_more::Deref)]
-                    pub struct #name_node<T: #eggplant_path::wrap::SingletonGetter, V: #eggplant_path::wrap::EgglogEnumVariantTy=()> {
+                    pub struct #name_node<T: #eggplant_path::wrap::SingletonGetter =(), V: #eggplant_path::wrap::EgglogEnumVariantTy=()> {
                         node:#name_node_alias<T,V>
                     }
                     #[allow(unused)]
-                    #[derive(Clone,Debug)]
+                    #[derive(Clone)]
                     pub struct #name_inner {
                         v:#eggplant_path::wrap::Syms<#field_ty>
                     }
@@ -383,7 +428,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         use #eggplant_path::wrap::*;
                         use #egglog_path::prelude::*;
                         use #egglog_path::*;
-                        impl NodeInner<#name_egglogty_impl> for #name_inner{}
+                        impl NodeInner for #name_inner{}
                         use std::marker::PhantomData;
                         static #name_counter: TyCounter<#name_egglogty_impl> = TyCounter::new();
                         impl<T:TxSgl> #name_node<T,()> {
@@ -756,15 +801,11 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 pub type #name_node_alias<T,V> = #eggplant_path::wrap::Node<#name_egglogty_impl,T,#name_inner,V>;
                 #[allow(unused)]
                 #[derive(derive_more::Deref,)]
-                pub struct #name_node<T: SingletonGetter,V:EgglogEnumVariantTy=()> {
+                pub struct #name_node<T: SingletonGetter = (),V:EgglogEnumVariantTy=()> {
                     node:#name_node_alias<T,V>
                 }
                 #[allow(unused)]
-                #[derive(Debug,Clone)]
-                pub struct #name_egglogty_impl;
-                // impl NonUnitEgglogEnumVariantTy for #name_egglogty_impl { }
-                #[allow(unused)]
-                #[derive(Debug,Clone)]
+                #[derive(Clone)]
                 pub enum #name_inner {
                     #(#variants_def_of_node_with_syms),*
                 }
@@ -781,7 +822,7 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     }
                     impl<T:RxSgl, S: EgglogEnumVariantTy> #name_node<T,S> where Self:EgglogNode {
                         pub fn pull(&self){
-                            T::on_pull::<#name_egglogty_impl>(self)
+                            T::on_pull::<#name_egglogty_impl<T>>(self)
                         }
                     }
                     impl<T:SingletonGetter> EgglogNode for #name_node<T,()> {
@@ -868,8 +909,8 @@ pub fn eggplant_ty(_attr: TokenStream, item: TokenStream) -> TokenStream {
                         }
                     }
 
-                    impl NodeInner<#name_egglogty_impl> for #name_inner {}
-                    static #name_counter: TyCounter<#name_egglogty_impl> = TyCounter::new();
+                    impl NodeInner for #name_inner {}
+                    static #name_counter: TyCounter<#name_egglogty_impl<()>> = TyCounter::new();
                     #(#set_fns)*
                 };
             };
