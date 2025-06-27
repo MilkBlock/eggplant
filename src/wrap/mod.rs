@@ -1,15 +1,15 @@
 pub use derive_more;
+pub mod func;
 pub mod tx;
 pub mod tx_rx_vt;
-pub mod func;
 pub use func::*;
 pub mod tx_vt;
 mod wrap;
 pub use wrap::*;
 mod literal;
 pub use literal::*;
-pub mod tx_minimal;
 pub mod evalue;
+pub mod tx_minimal;
 pub use evalue::*;
 
 /// macro to quickly define a Transimitter with no version control

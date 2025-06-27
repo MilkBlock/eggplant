@@ -1,4 +1,5 @@
-use crate::{EValue, EgglogNode, EgglogTy};
+use crate::{DeLiteral, EValue, EgglogNode, EgglogTy};
+use egglog::ast::Literal;
 
 /// Trait for input types that can be used in egglog functions
 pub trait EgglogFuncInput {
@@ -21,14 +22,27 @@ pub trait EgglogFuncInputsRef {
 }
 
 /// Trait for output types that can be used in egglog functions
-pub trait EgglogFuncOutput: 'static + Clone {
+pub trait EgglogFuncOutput: 'static + Clone + OutputFromLiteral<Output = Self> + EgglogTy {
     type Ref<'a>: EgglogFuncOutputRef;
     fn as_evalue(&self) -> &dyn EValue;
     fn clone_downcast(&self) -> Self;
 }
+
+pub trait OutputFromLiteral {
+    type Output;
+    fn from_literal(lit: &Literal) -> Self::Output;
+}
+
+impl<T: EgglogNode + EgglogTy> OutputFromLiteral for T {
+    type Output = Self;
+
+    fn from_literal(lit: &Literal) -> Self::Output {
+        panic!("can't transfrom literal {} into {}", lit, T::TY_NAME)
+    }
+}
 impl<T> EgglogFuncOutput for T
 where
-    T: EgglogNode + 'static + Sized + Clone,
+    T: EgglogNode + 'static + Sized + EgglogTy + Clone,
 {
     type Ref<'a> = &'a dyn AsRef<T>;
     fn as_evalue(&self) -> &dyn EValue {
@@ -55,7 +69,6 @@ pub trait EgglogFuncOutputRef {
 pub trait EgglogFunc {
     type Input: EgglogFuncInputs;
     type Output: EgglogFuncOutput;
-    type OutputTy: EgglogTy;
     const FUNC_NAME: &'static str;
 }
 impl<T> EgglogFuncInput for T
@@ -67,7 +80,10 @@ where
         self
     }
 }
-impl<T> EgglogFuncInputRef for &dyn AsRef<T> where T:EgglogNode +'static{
+impl<T> EgglogFuncInputRef for &dyn AsRef<T>
+where
+    T: EgglogNode + 'static,
+{
     type DeRef = T;
 
     fn as_evalue(&self) -> &dyn EValue {
@@ -78,41 +94,38 @@ macro_rules! impl_egglog_for_primitive {
     ($type:ty) => {
         impl EgglogFuncInput for $type {
             type Ref<'a> = &'a $type;
-            
             fn as_evalue(&self) -> &dyn EValue {
                 self
             }
         }
-        
         impl EgglogFuncInputRef for &$type {
             type DeRef = $type;
-            
             fn as_evalue(&self) -> &dyn EValue {
                 *self
             }
         }
-        
         impl EgglogFuncOutput for $type {
             type Ref<'a> = &'a $type;
-
             fn as_evalue(&self) -> &dyn EValue {
                 self
             }
-
             fn clone_downcast(&self) -> Self {
                 self.clone()
             }
         }
-        
         impl EgglogFuncOutputRef for &$type {
             type DeRef = $type;
-
             fn as_evalue(&self) -> &dyn EValue {
                 *self
             }
-
             fn deref(&self) -> &Self::DeRef {
                 self
+            }
+        }
+        impl OutputFromLiteral for $type {
+            type Output = $type;
+            fn from_literal(lit: &Literal) -> Self::Output {
+                lit.deliteral()
             }
         }
     };
@@ -120,7 +133,7 @@ macro_rules! impl_egglog_for_primitive {
 impl_egglog_for_primitive!(i64);
 impl_egglog_for_primitive!(String);
 impl_egglog_for_primitive!(bool);
-// 其他基本类型..
+// todo! f64
 
 macro_rules! impl_input_for_tuples {
     () => {
@@ -177,7 +190,6 @@ macro_rules! impl_for_tuples {
         impl_input_ref_for_tuples!($($T),*);
     };
 }
-
 
 // Generate implementations
 impl_for_tuples!();

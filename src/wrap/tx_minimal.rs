@@ -63,13 +63,13 @@ impl Tx for TxMinimal {
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
         let input_nodes = input.as_evalues();
-        let input_syms = input_nodes.iter().map(|ev|ev.get_symlit());
+        let input_syms = input_nodes.iter().map(|ev| ev.get_symlit());
         let output = output.as_evalue().get_symlit();
         self.send(TxCommand::StringCommand {
             command: format!(
                 "(set ({} {}) {} )",
                 F::FUNC_NAME,
-                input_syms.map(|x| format!("{}",x)).collect::<String>(),
+                input_syms.map(|x| format!("{}", x)).collect::<String>(),
                 output
             ),
         });

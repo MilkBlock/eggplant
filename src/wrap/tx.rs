@@ -1,5 +1,5 @@
-use egglog::ast::Command;
 use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use egglog::ast::Command;
 
 use super::*;
 use dashmap::DashMap;
@@ -229,7 +229,7 @@ impl Tx for TxNoVT {
             command: format!(
                 "(set ({} {}) {} )",
                 F::FUNC_NAME,
-                input_syms.map(|x| format!("{}",x)).collect::<String>(),
+                input_syms.map(|x| format!("{}", x)).collect::<String>(),
                 output
             ),
         });

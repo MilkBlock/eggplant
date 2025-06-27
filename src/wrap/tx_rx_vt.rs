@@ -579,11 +579,16 @@ impl Rx for TxRxVT {
             let output = get_func_value(egraph, F::FUNC_NAME, input_nodes);
             output
         };
-        let sym = self.on_pull_value::<F::OutputTy>(output);
-        let node = &self.map.get(&sym).unwrap().egglog;
-        let output: &F::Output =
-            unsafe { &*(node.as_ref() as *const dyn EgglogNode as *const F::Output) };
-        output.clone()
+        let sym = self.on_pull_value::<F::Output>(output);
+        match sym {
+            SymLit::Sym(sym) => {
+                let node = &self.map.get(&sym).unwrap().egglog;
+                let output: &F::Output =
+                    unsafe { &*(node.as_ref() as *const dyn EgglogNode as *const F::Output) };
+                output.clone()
+            }
+            SymLit::Lit(literal) => F::Output::from_literal(&literal),
+        }
     }
 
     fn on_funcs_get<'a, 'b, F: EgglogFunc>(
@@ -595,7 +600,7 @@ impl Rx for TxRxVT {
     )> {
         todo!()
     }
-    fn on_pull_value<T: EgglogTy>(&self, value: Value) -> Sym {
+    fn on_pull_value<T: EgglogTy>(&self, value: Value) -> SymLit {
         log::debug!("pulling value {:?}", value);
         let egraph = self.egraph.lock().unwrap();
         let sort = egraph.get_sort_by_name(T::TY_NAME).unwrap();
@@ -603,6 +608,7 @@ impl Rx for TxRxVT {
         let (term_dag, start_term, cost) = egraph.extract_value(sort, value).unwrap();
 
         let root_idx = term_dag.lookup(&start_term);
+        println!("{:?}, {:?}", term_dag, start_term);
         let mut ret_sym = None;
 
         let topo = topo_sort(&term_dag);
@@ -623,9 +629,25 @@ impl Rx for TxRxVT {
             term_dag,
             cost
         );
-        ret_sym.unwrap()
+        match ret_sym {
+            Some(sym) => {
+                // situation 1
+                // func ret a Variant Node
+                SymLit::Sym(sym)
+            }
+            None => {
+                // situtaion 2
+                // func ret a BaseTy
+                SymLit::Lit(match term_dag.get(0) {
+                    egglog::Term::Lit(literal) => literal.clone(),
+                    _ => {
+                        panic!("termdag[0] should be a literal")
+                    }
+                })
+            }
+        }
     }
-    fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> Sym {
+    fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
         let value = sym.get_value(&mut self.egraph.lock().unwrap());
         self.on_pull_value::<T>(value)
     }

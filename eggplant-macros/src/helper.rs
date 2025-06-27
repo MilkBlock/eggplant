@@ -178,18 +178,14 @@ pub fn variants_to_sym_typed_ident_list(variant: &Variant) -> Vec<proc_macro2::T
     variant_to_mapped_ident_type_list(
         variant,
         |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
-        |complex, complex_ty| {
-            Some(quote! {#complex:Sym<#complex_ty>})
-        },
+        |complex, complex_ty| Some(quote! {#complex:Sym<#complex_ty>}),
     )
 }
 pub fn variants_to_sym_type_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
     variant_to_mapped_ident_type_list(
         variant,
         |_, basic_ty| Some(quote! {#basic_ty}),
-        |_, complex_ty| {
-            Some(quote! {Sym<#complex_ty>})
-        },
+        |_, complex_ty| Some(quote! {Sym<#complex_ty>}),
     )
 }
 pub fn variant_to_ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {

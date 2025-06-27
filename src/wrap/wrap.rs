@@ -1,5 +1,5 @@
 use derive_more::{Deref, DerefMut, IntoIterator};
-use egglog::{ast::Literal, sort::OrderedFloat, span, var, Term, TermDag, TermId, Value};
+use egglog::{Term, TermDag, TermId, Value, ast::Literal, sort::OrderedFloat, span, var};
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -14,7 +14,11 @@ use std::{
 };
 use symbol_table::GlobalSymbol;
 
-use crate::{func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput}, wrap::tx_rx_vt::TxRxVT, EValue};
+use crate::{
+    EValue, SymLit,
+    func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput},
+    wrap::tx_rx_vt::TxRxVT,
+};
 use egglog::ast::{
     Command, GenericAction, GenericExpr, RustSpan, Schema, Span, Subdatatypes, Variant,
 };
@@ -64,9 +68,9 @@ pub trait Rx: 'static {
     }
 
     #[track_caller]
-    fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> Sym;
+    fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit;
     #[track_caller]
-    fn on_pull_value<T: EgglogTy>(&self, value: Value) -> Sym;
+    fn on_pull_value<T: EgglogTy>(&self, value: Value) -> SymLit;
 }
 
 pub trait SingletonGetter: 'static {
@@ -527,11 +531,10 @@ impl<T: EgglogNode> From<T> for WorkAreaNode {
     }
 }
 
-
 pub trait EgglogContainerTy: EgglogTy {
     type EleTy: EgglogTy;
 }
-pub trait EgglogBaseTy: EgglogTy {
+pub trait EgglogMultiConTy: EgglogTy {
     const CONSTRUCTORS: TyConstructors;
 }
 
@@ -539,7 +542,7 @@ pub trait EgglogBaseTy: EgglogTy {
 pub struct TyConstructors(pub &'static [TyConstructor]);
 
 pub enum Decl {
-    EgglogBaseTy {
+    EgglogMultiConTy {
         name: &'static str,
         cons: &'static TyConstructors,
     },
@@ -554,14 +557,23 @@ pub enum Decl {
         input: &'static [&'static str],
         output: &'static str,
     },
+    EgglogRule {
+        name: &'static str,
+        input: &'static [&'static str],
+        output: &'static str,
+    },
 }
 
 impl EgglogTy for i64 {
     const TY_NAME: &'static str = "i64";
     const TY_NAME_LOWER: &'static str = "i64";
 }
+impl EgglogTy for bool {
+    const TY_NAME: &'static str = "bool";
+    const TY_NAME_LOWER: &'static str = "bool";
+}
 impl EgglogTy for String {
-    const TY_NAME: &'static str = "string";
+    const TY_NAME: &'static str = "String";
     const TY_NAME_LOWER: &'static str = "string";
 }
 
@@ -725,7 +737,7 @@ impl EgglogTypeRegistry {
         inventory::iter::<Decl>
             .into_iter()
             .for_each(|decl| match decl {
-                Decl::EgglogBaseTy { name, cons } => cons.iter().for_each(|con| {
+                Decl::EgglogMultiConTy { name, cons } => cons.iter().for_each(|con| {
                     fns_map.insert(con.cons_name, con.term_to_node);
                     variant2type_map.insert(con.cons_name, *name);
                 }),
@@ -757,7 +769,7 @@ impl EgglogTypeRegistry {
         let mut types = Vec::<(Span, String, Subdatatypes)>::new();
         for decl in inventory::iter::<Decl> {
             match decl {
-                Decl::EgglogBaseTy { name, cons } => {
+                Decl::EgglogMultiConTy { name, cons } => {
                     types.push((
                         span!(),
                         name.to_string(),
