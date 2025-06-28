@@ -180,8 +180,7 @@ fn main() {
     let triangle_shape = Shape::new_polygon(&points);
 
     // red triangle
-    let triangle =
-        ColoredShape::new(&triangle_shape,&Srgba::new(1.0, 0.0, 0.0, 1.0));
+    let triangle = ColoredShape::new(&triangle_shape, &Srgba::new(1.0, 0.0, 0.0, 1.0));
     let triangle_instance = Instance::new(&triangle);
 
     // anchor
@@ -203,7 +202,7 @@ fn main() {
         &DurationBySecs::new(3.0),
         &RateFn::new(&VecWF::new(vec![&WeightedFn::new_wf(
             &Builtin::new(&Lerp::new()),
-            &W::new(1.0)
+            &W::new(1.0),
         )])),
     );
 

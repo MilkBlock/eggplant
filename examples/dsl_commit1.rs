@@ -18,7 +18,7 @@ fn main() {
     env_logger::init();
     let _less0 = Less::<MyTx>::new(&VarItem::new(3), &VarItem::new(4));
     let less1 = Less::<MyTx>::new(&VarItem::new(4), &VarItem::new(5));
-    let less2 = Less::<MyTx>::new(&VarItem::new(3),&VarItem::new(5));
+    let less2 = Less::<MyTx>::new(&VarItem::new(3), &VarItem::new(5));
     less2.commit();
     less1.commit();
 

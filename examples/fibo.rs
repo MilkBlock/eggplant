@@ -13,9 +13,6 @@ struct Fibo {
 
 basic_tx_rx_vt!(MyRx);
 
-
-
-
 fn main() {
     let big_number = 20;
     // check that `(fib 20)` is kknot in the e-graph
