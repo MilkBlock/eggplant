@@ -467,6 +467,7 @@ name = "eggplant-macros"
 version = "0.1.0"
 dependencies = [
  "darling",
+ "derive_more",
  "heck",
  "proc-macro-crate",
  "proc-macro2",

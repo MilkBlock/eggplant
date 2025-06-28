@@ -1,4 +1,4 @@
-use eggplant::basic_tx_vt;
+use eggplant::{Commit, EgglogNode, LocateVersion, SingletonGetter, basic_tx_vt};
 use eggplant::{eggplant_func, eggplant_ty};
 
 #[eggplant_ty]

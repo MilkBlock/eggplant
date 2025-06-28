@@ -15,4 +15,5 @@ proc-macro2 = "1.0"
 proc-macro-crate = "3.3.0"
 heck = "0.5.0"
 darling = "0.20.11"
+derive_more.workspace = true
 

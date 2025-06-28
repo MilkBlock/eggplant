@@ -11,7 +11,6 @@ readme.workspace = true
 [features]
 
 [dependencies]
-derive_more = { version = "2.0.1", features = ["deref_mut", "deref", "into_iterator"] }
 smallvec = "1.15.1"
 symbol_table = { version = "0.4.0", features = ["global"] }
 inventory = "0.3.20"
@@ -21,6 +20,7 @@ env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
 egglog = { git = "https://github.com/egraphs-good/egglog" }
+derive_more.workspace = true
 
 [workspace]
 members = ["eggplant-macros"]
@@ -38,3 +38,4 @@ readme = "README.md"
 [workspace.dependencies]
 eggplant-macros = {path = "./eggplant-macros", version = "0.1.0"}
 # egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}
+derive_more = { version = "2.0.1", features = ["deref_mut", "deref", "into_iterator"] }

@@ -1,65 +1,83 @@
 use core::panic;
-
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
-use syn::{Fields, GenericArgument, PathArguments, Type, Variant};
+use std::sync::LazyLock;
+use syn::{DataEnum, Fields, GenericArgument, Path, PathArguments, Type, Variant, parse_str};
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
 pub const EGGLOG_BASIC_TY_LIST: [&'static str; 3] = ["String", "i64", "f64"];
 
-pub fn egglog_path() -> proc_macro2::TokenStream {
+pub static E: LazyTokenStream = LazyTokenStream::new(|| egglog_path());
+pub static EP: LazyTokenStream = LazyTokenStream::new(|| eggplant_path());
+pub static DE: LazyTokenStream = LazyTokenStream::new(|| derive_more_path());
+pub static W: LazyTokenStream = LazyTokenStream::new(|| format!("{}::wrap", *EP.0));
+pub static INVE: LazyTokenStream = LazyTokenStream::new(|| inventory_path());
+pub(crate) struct LazyTokenStream(LazyLock<String>);
+impl LazyTokenStream {
+    pub const fn new(f: fn() -> String) -> Self {
+        Self(LazyLock::new(f))
+    }
+}
+unsafe impl Sync for LazyTokenStream {}
+unsafe impl Send for LazyTokenStream {}
+impl ToTokens for LazyTokenStream {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        let p = parse_str(&*self.0).unwrap();
+        Path::to_tokens(&p, tokens);
+    }
+}
+
+pub fn egglog_path() -> String {
     match (
         crate_name("egglog"),
         std::env::var("CARGO_CRATE_NAME").as_deref(),
     ) {
-        (Ok(FoundCrate::Itself), Ok(_)) => quote!(::egglog),
+        (Ok(FoundCrate::Itself), Ok(_)) => "::egglog".to_string(),
         (Ok(FoundCrate::Name(name)), _) => {
             let ident = proc_macro2::Ident::new(&name, Span::call_site());
-            quote!(::#ident)
+            format!("::{}", ident)
         }
-        _ => quote!(::egglog),
+        _ => panic!("can't find egglog"),
     }
 }
-pub fn eggplant_path() -> proc_macro2::TokenStream {
+pub fn eggplant_path() -> String {
     match (
         crate_name("eggplant"),
         std::env::var("CARGO_CRATE_NAME").as_deref(),
     ) {
-        (Ok(FoundCrate::Itself), Ok(_)) => quote!(::eggplant),
+        (Ok(FoundCrate::Itself), Ok(_)) => "::eggplant".to_string(),
         (Ok(FoundCrate::Name(name)), _) => {
             let ident = proc_macro2::Ident::new(&name, Span::call_site());
-            quote!(::#ident)
+            format!("::{}", ident)
         }
-        _ => quote!(::eggplant),
+        _ => panic!("can't find eggplant"),
     }
 }
-#[allow(unused)]
-pub fn smallvec_wrapper_path() -> proc_macro2::TokenStream {
-    match (
-        crate_name("smallvec"),
-        std::env::var("CARGO_CRATE_NAME").as_deref(),
-    ) {
-        (Ok(FoundCrate::Itself), Ok(_)) => quote!(crate),
-        (Ok(FoundCrate::Name(name)), _) => {
-            let ident = proc_macro2::Ident::new(&name, Span::call_site());
-            quote!(::#ident)
-        }
-        _ => quote!(::smallvec),
-    }
-}
-#[allow(unused)]
-pub fn derive_more_path() -> proc_macro2::TokenStream {
+pub fn derive_more_path() -> String {
     match (
         crate_name("derive_more"),
         std::env::var("CARGO_CRATE_NAME").as_deref(),
     ) {
-        (Ok(FoundCrate::Itself), Ok(_)) => quote!(crate),
+        (Ok(FoundCrate::Itself), Ok(_)) => "::derive_more".to_string(),
         (Ok(FoundCrate::Name(name)), _) => {
             let ident = proc_macro2::Ident::new(&name, Span::call_site());
-            quote!(::#ident)
+            format!("::{}", ident)
         }
-        _ => quote!(::derive_more),
+        _ => panic!("can't find derive_more"),
+    }
+}
+pub fn inventory_path() -> String {
+    match (
+        crate_name("inventory"),
+        std::env::var("CARGO_CRATE_NAME").as_deref(),
+    ) {
+        (Ok(FoundCrate::Itself), Ok(_)) => "::inventory".to_string(),
+        (Ok(FoundCrate::Name(name)), _) => {
+            let ident = proc_macro2::Ident::new(&name, Span::call_site());
+            format!("::{}", ident)
+        }
+        _ => panic!("can't find inventory"),
     }
 }
 
@@ -114,19 +132,6 @@ pub fn get_ref_type(ty: &Type) -> proc_macro2::TokenStream {
         _ => panic!("Unsupported type for `WithSymNode`"),
     }
 }
-pub fn inventory_path() -> proc_macro2::TokenStream {
-    match (
-        crate_name("inventory"),
-        std::env::var("CARGO_CRATE_NAME").as_deref(),
-    ) {
-        (Ok(FoundCrate::Itself), Ok(_)) => quote!(crate),
-        (Ok(FoundCrate::Name(name)), _) => {
-            let ident = proc_macro2::Ident::new(&name, Span::call_site());
-            quote!(::#ident)
-        }
-        _ => quote!(::inventory),
-    }
-}
 pub fn is_vec_type(ty: &Type) -> bool {
     if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
@@ -178,28 +183,37 @@ pub fn variants_to_sym_typed_ident_list(variant: &Variant) -> Vec<proc_macro2::T
     variant_to_mapped_ident_type_list(
         variant,
         |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
-        |complex, complex_ty| Some(quote! {#complex:Sym<#complex_ty>}),
+        |complex, complex_ty| Some(quote! {#complex:#W::Sym<#complex_ty>}),
     )
 }
 pub fn variants_to_sym_type_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
     variant_to_mapped_ident_type_list(
         variant,
         |_, basic_ty| Some(quote! {#basic_ty}),
-        |_, complex_ty| Some(quote! {Sym<#complex_ty>}),
+        |_, complex_ty| Some(quote! {#W::Sym<#complex_ty>}),
     )
 }
 pub fn variant_to_ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
     variant_to_mapped_ident_type_list(
         variant,
         |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
-        |complex, complex_ty| Some(quote! {#complex: &#complex_ty<T, impl EgglogEnumVariantTy>}),
+        |complex, complex_ty| {
+            Some(quote! {#complex: &#complex_ty<T, impl #W::EgglogEnumVariantTy>})
+        },
+    )
+}
+pub fn variant_to_ref_node_list_leave_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, _basic_ty| Some(quote! {#basic}),
+        |complex, _complex_ty| Some(quote! {#complex}),
     )
 }
 pub fn variant_to_sym_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
     variant_to_mapped_ident_type_list(
         variant,
         |basic, basic_ty| Some(quote!(#basic:#basic_ty)),
-        |complex, _| Some(quote!(#complex:Sym)),
+        |complex, _| Some(quote!(#complex:#W::Sym)),
     )
 }
 pub fn variant_to_assign_node_field_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
@@ -249,6 +263,20 @@ pub fn variant_to_field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream
         |ident, _| Some(quote! {#ident}),
         |ident, _| Some(quote! {#ident}),
     )
+}
+
+pub fn variant_marker_name(variant: &Variant) -> (Ident, Ident) {
+    (
+        format_ident!("{}Ty", variant.ident),
+        format_ident!("{}", variant.ident),
+    )
+}
+pub fn variant_marker_names(data_enum: &DataEnum) -> (Vec<Ident>, Vec<Ident>) {
+    data_enum
+        .variants
+        .iter()
+        .map(|v| variant_marker_name(v))
+        .collect()
 }
 
 // /// given variant a{ x:Box<X>}

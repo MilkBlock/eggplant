@@ -1,4 +1,4 @@
-use eggplant::{basic_tx_rx_vt, eggplant_func, eggplant_ty};
+use eggplant::{Commit, SingletonGetter, basic_tx_rx_vt, eggplant_func, eggplant_ty};
 // #[eggplant_ty]
 // enum Expr{
 //     Add { a:Box<Expr>, b:Box<Expr>},
@@ -20,8 +20,7 @@ fn main() {
     let a = Expr::new_const(3);
     let b = Expr::new_const(5);
     let add = Expr::new_add(&a, &b);
-    let c = Expr::<MyTx>::new_const(15);
-    add.commit();
+    let c = Expr::<MyTx>::new_const(8);
     add.commit();
     LeadTo::set(&add, &c);
     MyTx::sgl().wag_to_dot("dsl_func.dot".into());

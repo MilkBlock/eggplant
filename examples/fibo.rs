@@ -1,16 +1,22 @@
-use egglog::{facts, prelude::{add_ruleset, query, run_ruleset, rust_rule}, vars};
 use egglog::prelude::*;
-use eggplant::{basic_tx_rx_vt, eggplant_func, SingletonGetter};
-
+use egglog::{
+    facts,
+    prelude::{add_ruleset, query, run_ruleset, rust_rule},
+    vars,
+};
+use eggplant::{SingletonGetter, basic_tx_rx_vt, eggplant_func};
 
 #[eggplant_func(output=i64)]
-struct Fibo{
-    x:i64
+struct Fibo {
+    x: i64,
 }
 
 basic_tx_rx_vt!(MyRx);
 
-fn main(){
+
+
+
+fn main() {
     let big_number = 20;
     // check that `(fib 20)` is kknot in the e-graph
     // let results = query(
@@ -29,8 +35,8 @@ fn main(){
     rust_rule(
         egraph,
         ruleset,
-        // variable decl 
-        // variable binding    
+        // variable decl
+        // variable binding
         //        decl and binding can be merged together
         // calculate new info
         //        omit some value to base ...
@@ -50,7 +56,8 @@ fn main(){
             ctx.insert("fib", [y, f2].into_iter());
             Some(())
         },
-    ).unwrap();
+    )
+    .unwrap();
 
     // run that rule 10 times
     for _ in 0..10 {
@@ -62,8 +69,8 @@ fn main(){
         egraph,
         vars![f: i64],
         facts![(= (fib (unquote exprs::int(big_number))) f)],
-    ).unwrap();
+    )
+    .unwrap();
     let _ = egraph.base_to_value::<i64>(6765);
     let _: Vec<_> = results.iter().collect();
-
 }

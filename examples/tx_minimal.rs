@@ -1,4 +1,4 @@
-use eggplant::basic_tx_minimal;
+use eggplant::{SingletonGetter, basic_tx_minimal};
 use eggplant::{eggplant_func, eggplant_ty};
 
 #[eggplant_ty]

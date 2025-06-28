@@ -144,12 +144,9 @@ impl TxRxVT {
         })
     }
     pub fn new() -> Self {
-        Self {
+        let tx = Self {
             egraph: Mutex::new({
-                let mut e = EGraph::default();
-                let type_defs = EgglogTypeRegistry::collect_type_defs();
-                log::trace!("{:?}", type_defs);
-                e.run_program(type_defs).unwrap();
+                let e = EGraph::default();
                 e
             }),
             registry: EgglogTypeRegistry::new_with_inventory(),
@@ -157,7 +154,12 @@ impl TxRxVT {
             staged_set_map: DashMap::new(),
             staged_new_map: Mutex::new(IndexMap::default()),
             checkpoints: Mutex::new(vec![]),
+        };
+        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        for def in type_defs {
+            tx.send(TxCommand::NativeCommand { command: def });
         }
+        tx
     }
     pub fn pack_actions(actions: Vec<EgglogAction>) -> Vec<Command> {
         let mut v = vec![];
@@ -438,7 +440,7 @@ impl Tx for TxRxVT {
                 egraph.parse_and_run_program(None, &command).unwrap();
             }
             TxCommand::NativeCommand { command } => {
-                log::info!("{}", command.to_string());
+                println!("{}", command.to_string());
                 egraph.run_program(vec![command]).unwrap();
             }
         }

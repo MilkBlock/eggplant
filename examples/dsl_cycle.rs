@@ -1,3 +1,4 @@
+use eggplant::SingletonGetter;
 use eggplant::basic_tx_no_vt;
 use eggplant::eggplant_ty;
 use std::path::PathBuf;

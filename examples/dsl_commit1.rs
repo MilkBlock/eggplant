@@ -1,5 +1,7 @@
 use std::{path::PathBuf, str::FromStr};
 
+use eggplant::Commit;
+use eggplant::SingletonGetter;
 use eggplant::basic_tx_vt;
 use eggplant::eggplant_ty;
 

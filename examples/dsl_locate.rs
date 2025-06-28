@@ -1,3 +1,7 @@
+use eggplant::Commit;
+use eggplant::EgglogNode;
+use eggplant::LocateVersion;
+use eggplant::SingletonGetter;
 use eggplant::basic_tx_vt;
 use eggplant::eggplant_ty;
 use std::{path::PathBuf, str::FromStr};

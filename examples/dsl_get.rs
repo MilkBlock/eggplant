@@ -1,4 +1,4 @@
-use eggplant::{basic_tx_no_vt, eggplant_func, eggplant_ty};
+use eggplant::{EgglogNode, SingletonGetter, basic_tx_no_vt, eggplant_func, eggplant_ty};
 
 #[eggplant_ty]
 enum Cons {
