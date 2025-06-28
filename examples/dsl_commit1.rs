@@ -7,7 +7,7 @@ use eggplant::eggplant_ty;
 
 #[eggplant_ty]
 enum Eq {
-    EqItem { v1: Var, v2: Var },
+    Less { v1: Var, v2: Var },
 }
 #[eggplant_ty]
 enum Var {
@@ -16,11 +16,11 @@ enum Var {
 
 fn main() {
     env_logger::init();
-    let _eq0 = Eq::<MyTx>::new_eq_item(&Var::new_var_item(3), &Var::new_var_item(4));
-    let eq1 = Eq::<MyTx>::new_eq_item(&Var::new_var_item(4), &Var::new_var_item(5));
-    let eq2 = Eq::<MyTx>::new_eq_item(&Var::new_var_item(3), &Var::new_var_item(5));
-    eq2.commit();
-    eq1.commit();
+    let _less0 = Less::<MyTx>::new(&VarItem::new(3), &VarItem::new(4));
+    let less1 = Less::<MyTx>::new(&VarItem::new(4), &VarItem::new(5));
+    let less2 = Less::<MyTx>::new(&VarItem::new(3),&VarItem::new(5));
+    less2.commit();
+    less1.commit();
 
     MyTx::sgl().to_dot(PathBuf::from_str("egraph").unwrap());
 }

@@ -18,9 +18,9 @@ enum Var {
 
 fn main() {
     env_logger::init();
-    let mut v0 = Var::<MyTx>::new_var_item(1);
-    let mut v1 = Var::new_var_item(1);
-    let mut eq0 = Eq::new_eq_item(&v0, &v1);
+    let mut v0 = VarItem::new(1);
+    let mut v1 = VarItem::new(1);
+    let mut eq0 = EqItem::<MyTx>::new(&v0, &v1);
     eq0.commit();
     MyTx::sgl().to_dot(PathBuf::from_str("egraph0").unwrap());
 

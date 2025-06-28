@@ -17,10 +17,10 @@ struct LeadTo {
 }
 
 fn main() {
-    let a = Expr::new_const(3);
-    let b = Expr::new_const(5);
-    let add = Expr::new_add(&a, &b);
-    let c = Expr::<MyTx>::new_const(8);
+    let a = Const::new(3);
+    let b = Const::new(5);
+    let add = Add::<MyTx>::new(&a, &b);
+    let c = Const::new(8);
     add.commit();
     LeadTo::set(&add, &c);
     MyTx::sgl().wag_to_dot("dsl_func.dot".into());

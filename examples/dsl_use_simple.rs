@@ -18,7 +18,7 @@ struct VecCon {
 
 #[eggplant_ty]
 enum Root {
-    V { v: VecCon },
+    RootCons { v: VecCon },
 }
 
 fn main() {
@@ -27,10 +27,10 @@ fn main() {
 
     let mut count = 0;
     let root = loop {
-        let node1 = Cons::new_value(5, &Cons::<MyTx>::new_end());
-        let node2 = Cons::new_value(5 + 1, &node1);
-        let node3 = Cons::new_value(2, &node2);
-        let root = Root::new_v(&VecCon::new(vec![&node1, &node2, &node3]));
+        let node1 = Value::new(5, &End::new());
+        let node2 = Value::new(5 + 1, &node1);
+        let node3 = Value::new(2, &node2);
+        let root = RootCons::<MyTx>::new(&VecCon::new(vec![&node1, &node2, &node3]));
         let _m = root.cur_sym();
         if count == 99 {
             break root;

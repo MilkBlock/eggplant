@@ -21,11 +21,11 @@ struct F {}
 
 fn main() {
     env_logger::init();
-    let node1 = Cons::new_value(3, &Cons::new_end());
-    let node2 = Cons::new_value(2, &node1);
-    let node3 = Cons::new_value(1, &node2);
-    let _root = Root::new_v(&VecCon::new(vec![&node2]));
-    let root = Root::<MyTx>::new_v(&VecCon::new(vec![&node3]));
+    let node1 = Value::new(3, &End::new());
+    let node2 = Value::new(2, &node1);
+    let node3 = Value::new(1, &node2);
+    let _root = V::new(&VecCon::new(vec![&node2]));
+    let root = V::<MyTx>::new(&VecCon::new(vec![&node3]));
     F::set((), &root);
     MyTx::sgl().to_dot("egraph.dot".into());
 }

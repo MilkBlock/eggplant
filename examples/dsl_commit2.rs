@@ -6,20 +6,20 @@ use eggplant::basic_tx_vt;
 use eggplant::eggplant_ty;
 
 #[eggplant_ty]
-enum Eq {
-    EqItem { v1: Var, v2: Var },
+enum Compare {
+    Less { v1: Var, v2: Var },
 }
 #[eggplant_ty]
 enum Var {
     VarItem { num: i64 },
-    Expr { eq: Eq },
+    Expr { eq: Compare },
 }
 
 fn main() {
     env_logger::init();
-    let mut v0 = Var::<MyTx>::new_var_item(1);
-    let mut v1 = Var::new_var_item(1);
-    let eq0 = Eq::new_eq_item(&v0, &v1);
+    let mut v0 = VarItem::new(1);
+    let mut v1 = VarItem::new(2);
+    let eq0 = Less::<MyTx>::new(&v0, &v1);
     eq0.commit();
     MyTx::sgl().to_dot(PathBuf::from_str("egraph0").unwrap());
 

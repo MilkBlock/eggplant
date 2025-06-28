@@ -20,10 +20,10 @@ enum Root {
 
 fn main() {
     env_logger::init();
-    let node1 = Cons::new_value(3, &Cons::<MyTx>::new_end());
-    let mut node2 = Cons::new_value(2, &node1);
-    let node3 = Cons::new_value(1, &node2);
-    let _root = Root::new_v(&VecCon::new(vec![&node1, &node2, &node3]));
+    let node1 = Value::new(3, &Cons::<MyTx>::new_end());
+    let mut node2 = Value::new(2, &node1);
+    let node3 = Value::new(1, &node2);
+    let _root = V::new(&VecCon::new(vec![&node1, &node2, &node3]));
     node2.set_v(5);
     MyTx::sgl().to_dot("egraph.dot".into());
 }

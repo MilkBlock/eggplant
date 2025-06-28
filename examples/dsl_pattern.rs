@@ -5,8 +5,8 @@ enum Node {
     Value { v: i64 },
 }
 #[eggplant_ty]
-enum Root {
-    Nod { node: Node },
+enum _Root {
+    Root { node: Node },
 }
 
 basic_tx_rx_vt!(MyTx);
@@ -23,7 +23,7 @@ basic_tx_rx_vt!(MyTx);
 
 fn main() {
     env_logger::init();
-    let _root = Root::<MyTx>::new_nod(&Node::new_value(3));
+    let _root = Root::<MyTx>::new(&Value::new(3));
 
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }

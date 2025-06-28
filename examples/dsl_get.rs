@@ -21,14 +21,14 @@ struct F {}
 
 fn main() {
     env_logger::init();
-    let node1 = Cons::new_value(3, &Cons::<MyTx>::new_end());
-    let mut node2 = Cons::new_value(2, &node1);
-    let node3 = Cons::new_value(1, &node2);
-    let _root = Root::new_v(&VecCon::new(vec![&node2]));
+    let node1 = Value::new(3, &End::<MyTx>::new());
+    let mut node2 = Value::new(2, &node1);
+    let node3 = Value::new(1, &node2);
+    let _root = V::new(&VecCon::new(vec![&node2]));
     println!("node2's current version is {}", node2.cur_sym());
     node2.set_v(4);
     println!("node2's current version is {}", node2.cur_sym());
-    let root = Root::new_v(&VecCon::new(vec![&node3]));
+    let root = V::new(&VecCon::new(vec![&node3]));
     node2.set_v(6);
     println!("node2's current version is {}", node2.cur_sym());
     F::set((), &root);
