@@ -32,7 +32,9 @@ pub enum TxCommand {
 }
 
 pub trait NodeDropper: 'static {
-    fn on_drop(&self, dropped: &mut (impl EgglogNode + 'static));
+    fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
+        // do nothing as default
+    }
 }
 pub trait Tx: 'static {
     /// receive is guaranteed to not be called in proc macro
@@ -125,15 +127,9 @@ where
     }
 }
 
-impl<T: 'static> NodeDropper for T {
-    fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
-        // do nothing as default
-    }
-}
-
-impl<T: Tx + 'static, S: SingletonGetter<RetTy = T> + 'static> TxSgl for S
+impl<S: SingletonGetter + 'static> TxSgl for S
 where
-    S::RetTy: Tx + 'static,
+    S::RetTy: Tx+ NodeDropper + 'static ,
 {
     fn receive(received: TxCommand) {
         Self::sgl().send(received);
@@ -158,7 +154,7 @@ where
 }
 impl<S: SingletonGetter + 'static> RxSgl for S
 where
-    S::RetTy: Rx + 'static,
+    S::RetTy: Rx + NodeDropper + 'static,
 {
     fn on_func_get<'a, 'b, F: EgglogFunc>(
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,

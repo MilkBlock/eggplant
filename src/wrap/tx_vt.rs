@@ -463,3 +463,5 @@ impl TxCommit for TxVT {
         self.staged_set_map.insert(node.cur_sym(), node.clone_dyn());
     }
 }
+
+impl NodeDropper for TxVT{}

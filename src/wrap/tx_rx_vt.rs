@@ -660,3 +660,5 @@ impl std::fmt::Debug for Box<dyn EgglogNode> {
         write!(f, "{},{}", self.cur_sym(), self.to_egglog_string())
     }
 }
+
+impl NodeDropper for TxRxVT{ }

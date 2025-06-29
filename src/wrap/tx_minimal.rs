@@ -95,3 +95,5 @@ impl Tx for TxMinimal {
     //     todo!()
     // }
 }
+
+impl NodeDropper for TxMinimal{}

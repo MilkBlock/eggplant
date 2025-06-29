@@ -241,3 +241,5 @@ impl Tx for TxNoVT {
         });
     }
 }
+
+impl NodeDropper for TxNoVT{}
