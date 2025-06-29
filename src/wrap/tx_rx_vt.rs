@@ -1,3 +1,5 @@
+use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+
 use super::*;
 use dashmap::DashMap;
 use egglog::{
@@ -661,4 +663,4 @@ impl std::fmt::Debug for Box<dyn EgglogNode> {
     }
 }
 
-impl NodeDropper for TxRxVT{ }
+impl NodeDropper for TxRxVT {}

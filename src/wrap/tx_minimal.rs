@@ -1,4 +1,5 @@
 use super::*;
+use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use egglog::{EGraph, SerializeConfig, ast::Command};
 use std::{path::PathBuf, sync::Mutex};
 
@@ -96,4 +97,4 @@ impl Tx for TxMinimal {
     // }
 }
 
-impl NodeDropper for TxMinimal{}
+impl NodeDropper for TxMinimal {}

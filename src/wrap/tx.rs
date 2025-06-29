@@ -242,4 +242,4 @@ impl Tx for TxNoVT {
     }
 }
 
-impl NodeDropper for TxNoVT{}
+impl NodeDropper for TxNoVT {}

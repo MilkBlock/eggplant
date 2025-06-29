@@ -11,6 +11,8 @@ pub use literal::*;
 pub mod evalue;
 pub mod tx_minimal;
 pub use evalue::*;
+pub mod type_reg;
+pub use type_reg::*;
 
 /// macro to quickly define a Transimitter with no version control
 #[macro_export]

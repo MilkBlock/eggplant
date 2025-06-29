@@ -464,4 +464,4 @@ impl TxCommit for TxVT {
     }
 }
 
-impl NodeDropper for TxVT{}
+impl NodeDropper for TxVT {}
