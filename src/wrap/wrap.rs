@@ -31,6 +31,9 @@ pub enum TxCommand {
     NativeCommand { command: Command },
 }
 
+pub trait NodeDropper: 'static {
+    fn on_drop(&self, dropped: &mut (impl EgglogNode + 'static));
+}
 pub trait Tx: 'static {
     /// receive is guaranteed to not be called in proc macro
     #[track_caller]
@@ -78,8 +81,11 @@ pub trait SingletonGetter: 'static {
     #[track_caller]
     fn sgl() -> &'static Self::RetTy;
 }
+pub trait DropSgl: 'static + Sized + SingletonGetter {
+    fn on_drop(dropped: &mut (impl EgglogNode + 'static));
+}
 
-pub trait TxSgl: 'static + Sized + SingletonGetter {
+pub trait TxSgl: 'static + Sized + SingletonGetter + DropSgl {
     // delegate all functions from Tx
     fn receive(received: TxCommand);
     #[track_caller]
@@ -93,7 +99,7 @@ pub trait TxSgl: 'static + Sized + SingletonGetter {
     );
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
 }
-pub trait RxSgl: 'static + Sized + SingletonGetter {
+pub trait RxSgl: 'static + Sized + SingletonGetter + DropSgl {
     // delegate all functions from Rx
     #[track_caller]
     fn on_func_get<'a, 'b, F: EgglogFunc>(
@@ -110,7 +116,25 @@ pub trait RxSgl: 'static + Sized + SingletonGetter {
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static));
 }
 
-impl<T: Tx + 'static, S: SingletonGetter<RetTy = T> + 'static> TxSgl for S {
+impl<S: SingletonGetter> DropSgl for S
+where
+    S::RetTy: NodeDropper + 'static,
+{
+    fn on_drop(dropped: &mut (impl EgglogNode + 'static)) {
+        Self::sgl().on_drop(dropped);
+    }
+}
+
+impl<T: 'static> NodeDropper for T {
+    fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
+        // do nothing as default
+    }
+}
+
+impl<T: Tx + 'static, S: SingletonGetter<RetTy = T> + 'static> TxSgl for S
+where
+    S::RetTy: Tx + 'static,
+{
     fn receive(received: TxCommand) {
         Self::sgl().send(received);
     }
@@ -132,7 +156,10 @@ impl<T: Tx + 'static, S: SingletonGetter<RetTy = T> + 'static> TxSgl for S {
         Self::sgl().on_union(node1, node2);
     }
 }
-impl<R: Rx + 'static, S: SingletonGetter<RetTy = R> + 'static> RxSgl for S {
+impl<S: SingletonGetter + 'static> RxSgl for S
+where
+    S::RetTy: Rx + 'static,
+{
     fn on_func_get<'a, 'b, F: EgglogFunc>(
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
     ) -> F::Output {
@@ -174,7 +201,10 @@ pub trait VersionCtlSgl {
     fn set_prev(node: &mut Sym);
 }
 
-impl<Ret: Tx + VersionCtl + 'static, S: SingletonGetter<RetTy = Ret>> VersionCtlSgl for S {
+impl<S: SingletonGetter> VersionCtlSgl for S
+where
+    S::RetTy: Tx + VersionCtl + 'static,
+{
     fn locate_latest(node: Sym) -> Sym {
         Self::sgl().locate_latest(node)
     }
@@ -329,7 +359,11 @@ impl<T> Clone for Sym<T> {
     }
 }
 
-pub trait NodeInner {}
+/// trait of egglog node inner
+pub trait NodeInner {
+    fn succs_mut(&mut self) -> Vec<&mut Sym>;
+    fn succs(&self) -> Vec<Sym>;
+}
 impl<T> std::fmt::Display for Sym<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(self.inner.as_str())

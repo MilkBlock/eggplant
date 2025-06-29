@@ -97,12 +97,12 @@ pub fn eggplant_func(
                 pub struct #name_func<T>{_p:std::marker::PhantomData<T>}
                 const _:() = {
                     use #W::EgglogNode;
-                    impl<T:#W::SingletonGetter> #W::EgglogFunc for #name_func<T>{
+                    impl<T:#W::DropSgl> #W::EgglogFunc for #name_func<T>{
                         type Output=#output_with_generic;
                         type Input=(#(#input_types_with_generic),*);
                         const FUNC_NAME:&'static str = stringify!(#name_func);
                     }
-                    impl<'a, T:#W::TxSgl> #name_func<T> where T:#W::TxSgl{
+                    impl<'a, T:#W::TxSgl> #name_func<T> {
                         pub fn set(input: (#(#input_ref_types),*), output: #output_ref){
                             T::on_func_set::<#name_func<T>>(input, output #output_whether_as_ref);
                         }
@@ -224,11 +224,11 @@ pub fn eggplant_ty(
                 })
                 .collect::<Vec<_>>();
             let expanded = quote! {
-                impl<T:#W::SingletonGetter,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
+                impl<T:#W::DropSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                     const TY_NAME:&'static str = stringify!(#name);
                     const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
                 }
-                impl<T:#W::SingletonGetter,V:#W::EgglogEnumVariantTy> #W::EgglogMultiConTy for #name_egglogty_impl<T,V> where Self:#W::EgglogTy{
+                impl<T:#W::DropSgl,V:#W::EgglogEnumVariantTy> #W::EgglogMultiConTy for #name_egglogty_impl<T,V> {
                     const CONSTRUCTORS : #W::TyConstructors= #W::TyConstructors(&[
                         #(#constructors),*
                     ]);
@@ -254,7 +254,7 @@ pub fn eggplant_ty(
             let first_generic_ty = format_ident!("{}", first_generic.to_token_stream().to_string());
             if is_vec_type(&f.ty) {
                 let vec_expanded = quote! {
-                    impl<T:#W::SingletonGetter,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
+                    impl<T:#W::DropSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                         const TY_NAME:&'static str = stringify!(#name);
                         const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
                     }
@@ -323,8 +323,8 @@ pub fn eggplant_ty(
                 };
             let to_egglog_impl = if is_basic_ty {
                 quote! {
-                    impl<T:#W::SingletonGetter, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V>
-                    where self::#name_node<T,V>: #W::EgglogNode{
+                    impl<T:#W::DropSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V>
+                    {
                         fn to_egglog_string(&self) -> String{
                             format!("(let {} (vec-of {}))",self.node.sym,self.node.ty.v.iter_mut().fold("".to_owned(), |s,item| s+ item.as_str()+" " ))
                         }
@@ -337,8 +337,7 @@ pub fn eggplant_ty(
                 }
             } else {
                 quote! {
-                    impl<T:#W::SingletonGetter, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V>
-                    where #name_node<T,V>: #W::EgglogNode{
+                    impl<T:#W::DropSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
                         fn to_egglog_string(&self) -> String{
                             format!("(let {} (vec-of {}))",self.cur_sym(),self.node.ty.v.iter().fold("".to_owned(), |s,item| s+ item.as_str()+" " ))
                         }
@@ -348,9 +347,7 @@ pub fn eggplant_ty(
                             )
                         }
                     }
-                    impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V>
-                    where self::#name_node<T,V> : #W::EgglogNode
-                    {
+                    impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
                         fn locate_latest(&mut self){
                             T::set_latest(self.cur_sym_mut());
                             self.node.ty.v.iter_mut().for_each(|item| {T::set_latest(item.erase_mut())});
@@ -404,11 +401,13 @@ pub fn eggplant_ty(
                 }
             };
             if is_vec_type(&f.ty) {
+                // MARK: Struct Expanded
                 let vec_expanded = quote! {
                     pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
                     #[allow(unused)]
                     #[derive(#DE::DerefMut,#DE::Deref)]
-                    pub struct #name_node<T: #W::SingletonGetter =(), V: #W::EgglogEnumVariantTy=()> {
+                    pub struct #name_node<T: #W::DropSgl =(), V: #W::EgglogEnumVariantTy=()>
+                    where Self: #W::EgglogNode + #W::EgglogTy {
                         node:#name_node_alias<T,V>
                     }
                     #[allow(unused)]
@@ -420,7 +419,14 @@ pub fn eggplant_ty(
                         use #E::prelude::*;
                         use #E::*;
                         use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr};
-                        impl #W::NodeInner for #name_inner{}
+                        impl #W::NodeInner for #name_inner{
+                            fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
+                                self.v.iter_mut().map(|s| s.erase_mut()).collect()
+                            }
+                            fn succs(&self) -> Vec<#W::Sym>{
+                                self.v.iter().map(|s| s.erase()).collect()
+                            }
+                        }
                         use std::marker::PhantomData;
                         static #name_counter: #W::TyCounter<#name_egglogty_impl> = #W::TyCounter::new();
                         impl<T:#W::TxSgl> self::#name_node<T,()> {
@@ -458,12 +464,14 @@ pub fn eggplant_ty(
                                 Box::new(Self::new_from_term(term_id, term_dag, term2sym))
                             }
                         }
-                        impl<T:#W::SingletonGetter> #W::EgglogNode for self::#name_node<T,()> {
+                        impl<T:#W::DropSgl, V:#W::EgglogEnumVariantTy> #W::EgglogNode for self::#name_node<T,V> {
                             fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
-                                self.node.ty.v.iter_mut().map(|s| s.erase_mut()).collect()
+                                use #W::NodeInner;
+                                self.node.ty.succs_mut()
                             }
                             fn succs(&self) -> Vec<#W::Sym>{
-                                self.node.ty.v.iter().map(|s| s.erase()).collect()
+                                use #W::NodeInner;
+                                self.node.ty.succs()
                             }
                             fn roll_sym(&mut self) -> #W::Sym{
                                 let next_sym = #name_counter.next_sym();
@@ -480,18 +488,26 @@ pub fn eggplant_ty(
                                 Box::new(self.clone())
                             }
                         }
-                        impl<T: #W::SingletonGetter, V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
+                        impl<T: #W::DropSgl, V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
                             fn as_ref(&self) -> &self::#name_node<T, ()> {
                                 unsafe {
                                     &*(self as *const self::#name_node<T,V> as *const self::#name_node<T,()>)
                                 }
                             }
                         }
-                        impl<T:#W::SingletonGetter,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
+                        impl<T:#W::DropSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
                             fn clone(&self) -> Self {
                                 Self { node: #W::Node { ty: self.node.ty.clone(),span: self.span ,sym: self.node.sym.clone(), _p: PhantomData, _s: PhantomData }  }
                             }
                         }
+
+                        impl<T:#W::DropSgl ,V: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,V>
+                        {
+                            fn drop(&mut self) {
+                                T::on_drop(self);
+                            }
+                        }
+
                         #to_egglog_impl
                     };
                 };
@@ -635,6 +651,7 @@ pub fn eggplant_ty(
                     }
                 }).collect();
 
+                // MARK: Enum New Fns
                 (quote! {
                     #[track_caller]
                     pub fn #new_fn_name(#(#ref_node_list),*) -> self::#name_node<T,#variant_marker>{
@@ -740,9 +757,6 @@ pub fn eggplant_ty(
                     }
                 );
 
-                let vec_needed_syms:Vec<_> =
-                    variant_to_field_list_without_prefixed_ident_filter_out_basic_ty(variant);
-
                 quote! {
                     #[allow(unused_variables)]
                     impl<T:#W::TxSgl> self::#name_node<T,#variant_marker>{
@@ -756,48 +770,19 @@ pub fn eggplant_ty(
                             #get_mut_sym_fns
                         )*
                     }
-                    impl<T:#W::SingletonGetter> #W::EgglogNode for self::#name_node<T,#variant_marker>{
-                        fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
-                            if let #name_inner::#variant_name { #(#field_idents),*} = &mut self.node.ty{
-                                vec![#(#vec_needed_syms.erase_mut()),*]
-                            }else{
-                                panic!()
-                            }
-                        }
-                        fn succs(&self) -> Vec<#W::Sym>{
-                            if let #name_inner::#variant_name{ #(#field_idents),*} = &self.node.ty{
-                                vec![#((#vec_needed_syms).erase()),*]
-                            }else{
-                                panic!()
-                            }
-                        }
-                        fn roll_sym(&mut self) -> #W::Sym{
-                            let next_sym = #name_counter.next_sym();
-                            self.node.sym = next_sym;
-                            next_sym.erase()
-                        }
-                        fn cur_sym(&self) -> #W::Sym{
-                            self.node.sym.erase()
-                        }
-                        fn cur_sym_mut(&mut self) -> &mut #W::Sym{
-                            self.node.sym.erase_mut()
-                        }
-                        fn clone_dyn(&self) -> Box<dyn #W::EgglogNode>{
-                            Box::new(self.clone())
-                        }
-                    }
-
                 }
             });
 
             let (variant_markers, variant_names) = variant_marker_names(data_enum);
+            // MARK: Enum Expanded
             let expanded = quote! {
                 pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
                 #(pub type #variant_names<T> = self::#name_node<T, #variant_markers>;)*
                 #(#enum_variant_tys_def)*
                 #[allow(unused)]
                 #[derive(#DE::Deref,)]
-                pub struct #name_node<T: #W::SingletonGetter = (),V:#W::EgglogEnumVariantTy=()> {
+                pub struct #name_node<T: #W::DropSgl = (),V:#W::EgglogEnumVariantTy=()>
+                where Self: #W::EgglogNode + #W::EgglogTy {
                     node:#name_node_alias<T,V>
                 }
                 #[allow(unused)]
@@ -823,21 +808,19 @@ pub fn eggplant_ty(
                             }
                         }
                     )*
-                    impl<T:#W::RxSgl, S: #W::EgglogEnumVariantTy> self::#name_node<T,S> where Self:#W::EgglogNode {
+                    impl<T:#W::RxSgl, S: #W::EgglogEnumVariantTy> self::#name_node<T,S>{
                         pub fn pull(&self){
                             T::on_pull::<#name_egglogty_impl<T>>(self)
                         }
                     }
-                    impl<T:#W::SingletonGetter> #W::EgglogNode for self::#name_node<T,()> {
+                    impl<T:#W::DropSgl, V:#W::EgglogEnumVariantTy> #W::EgglogNode for self::#name_node<T,V> {
                         fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
-                            match &mut self.node.ty{
-                                #(#succs_mut_match_arms),*
-                            }
+                            use #W::NodeInner;
+                            self.node.ty.succs_mut()
                         }
                         fn succs(&self) -> Vec<#W::Sym>{
-                            match &self.node.ty{
-                                #(#succs_match_arms),*
-                            }
+                            use #W::NodeInner;
+                            self.node.ty.succs()
                         }
                         fn roll_sym(&mut self) -> #W::Sym{
                             let next_sym = #name_counter.next_sym();
@@ -854,8 +837,7 @@ pub fn eggplant_ty(
                             Box::new(self.clone())
                         }
                     }
-                    impl<T:#W::SingletonGetter, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V>
-                    where self::#name_node<T,V>: #W::EgglogNode{
+                    impl<T:#W::DropSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
                         fn to_egglog_string(&self) -> String{
                             match &self.node.ty{
                                 #(#to_egglog_string_match_arms),*
@@ -868,8 +850,7 @@ pub fn eggplant_ty(
                         }
                     }
                     #[allow(unused_variables)]
-                    impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V>
-                    where self::#name_node<T,V> : #W::EgglogNode {
+                    impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
                         fn locate_latest(&mut self) {
                             match &mut self.node.ty{
                                 #(#locate_latest_match_arms),*
@@ -886,7 +867,7 @@ pub fn eggplant_ty(
                             }
                         }
                     }
-                    impl<T: #W::SingletonGetter,  V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
+                    impl<T: #W::DropSgl,  V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
                         fn as_ref(&self) -> &self::#name_node<T, ()> {
                             unsafe {
                                 &*(self as *const self::#name_node<T,V> as *const self::#name_node<T,()>)
@@ -894,15 +875,13 @@ pub fn eggplant_ty(
                         }
                     }
 
-                    impl<T:#W::SingletonGetter,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
+                    impl<T:#W::DropSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
                         fn clone(&self) -> Self {
                             Self { node: #W::Node { ty: self.ty.clone(),span: self.span , sym: self.sym.clone(), _p: PhantomData, _s: PhantomData }  }
                         }
                     }
 
                     impl<T:#W::TxSgl+ #W::VersionCtlSgl + #W::TxCommitSgl,S: #W::EgglogEnumVariantTy> #W::Commit for self::#name_node<T,S>
-                    where
-                        self::#name_node<T, S>: #W::EgglogNode
                     {
                         fn commit(&self) {
                             T::on_commit(self);
@@ -912,7 +891,24 @@ pub fn eggplant_ty(
                         }
                     }
 
-                    impl #W::NodeInner for #name_inner {}
+                    impl<T:#W::DropSgl, S: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,S> {
+                        fn drop(&mut self) {
+                            T::on_drop(self);
+                        }
+                    }
+
+                    impl #W::NodeInner for #name_inner {
+                        fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
+                            match self {
+                                #(#succs_mut_match_arms),*
+                            }
+                        }
+                        fn succs(&self) -> Vec<#W::Sym>{
+                            match self{
+                                #(#succs_match_arms),*
+                            }
+                        }
+                    }
                     static #name_counter: #W::TyCounter<#name_egglogty_impl<()>> = #W::TyCounter::new();
                     #(#set_fns)*
                 };
