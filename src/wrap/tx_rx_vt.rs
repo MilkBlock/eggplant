@@ -1,4 +1,4 @@
-use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 
 use super::*;
 use dashmap::DashMap;
@@ -455,10 +455,6 @@ impl Tx for TxRxVT {
             .insert(node.cur_sym(), node.clone_dyn());
     }
 
-    fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
-        // do nothing, this operation has been delayed to commit
-    }
-
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
@@ -664,3 +660,14 @@ impl std::fmt::Debug for Box<dyn EgglogNode> {
 }
 
 impl NodeDropper for TxRxVT {}
+impl NodeOwner for TxRxVT {
+    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+}
+
+impl NodeSetter for TxRxVT {
+    fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
+        // do nothing
+        // the node may be set but we don't care
+        // the rst will be committed throguh commit API
+    }
+}

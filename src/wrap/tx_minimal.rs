@@ -1,5 +1,5 @@
 use super::*;
-use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use egglog::{EGraph, SerializeConfig, ast::Command};
 use std::{path::PathBuf, sync::Mutex};
 
@@ -8,6 +8,7 @@ pub struct TxMinimal {
 }
 
 /// tx with miminal feature (only new function is supported)
+/// it's even not a buffer, just a Mutex<EGraph>
 impl TxMinimal {
     pub fn new_with_type_defs(commands: Vec<Command>) -> Self {
         Self {
@@ -54,10 +55,6 @@ impl Tx for TxMinimal {
         });
     }
 
-    fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
-        panic!("set is unsupported for tx_minimal")
-    }
-
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -81,20 +78,14 @@ impl Tx for TxMinimal {
             command: format!("(union {} {})", node1.cur_sym(), node2.cur_sym()),
         });
     }
-
-    // fn on_funcs_get<'a,'b, F: EgglogFunc>(
-    //     &self,
-    //     max_size:Option<usize>)->
-    // Vec<(<F::Input as EgglogFuncInputs>::Ref<'b>,<F::Output as EgglogFuncOutput>::Ref<'b>)> {
-    //     todo!()
-    // }
-
-    // fn on_func_get<'a,'b, F: EgglogFunc>(
-    //     &self,
-    //     input: <F::Input as EgglogFuncInputs>::Ref<'a>,
-    // ) -> <F::Output as EgglogFuncOutput>::Ref<'b> {
-    //     todo!()
-    // }
 }
 
 impl NodeDropper for TxMinimal {}
+impl NodeOwner for TxMinimal {
+    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+}
+impl NodeSetter for TxMinimal {
+    fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
+        // do nothing
+    }
+}

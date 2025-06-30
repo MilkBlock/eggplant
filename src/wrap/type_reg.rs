@@ -7,7 +7,7 @@ use egglog::{
     span, var,
 };
 
-use crate::TermToNode;
+use crate::{EgglogEnumVariantTy, NodeDropperSgl, TermToNode};
 
 pub trait EgglogContainerTy: EgglogTy {
     type EleTy: EgglogTy;
@@ -15,21 +15,26 @@ pub trait EgglogContainerTy: EgglogTy {
 pub trait EgglogMultiConTy: EgglogTy {
     const CONSTRUCTORS: TyConstructors;
 }
+// basic type don't need NodeTypeCon, this is for Container & EnumTy
 impl EgglogTy for i64 {
     const TY_NAME: &'static str = "i64";
     const TY_NAME_LOWER: &'static str = "i64";
+    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
 }
 impl EgglogTy for bool {
     const TY_NAME: &'static str = "bool";
     const TY_NAME_LOWER: &'static str = "bool";
+    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
 }
 impl EgglogTy for String {
     const TY_NAME: &'static str = "String";
     const TY_NAME_LOWER: &'static str = "string";
+    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
 }
 pub trait EgglogTy {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
+    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy>;
 }
 
 #[derive(Deref)]

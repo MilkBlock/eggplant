@@ -1,4 +1,4 @@
-use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use egglog::ast::Command;
 
 use super::*;
@@ -10,7 +10,6 @@ use std::{path::PathBuf, sync::Mutex};
 pub struct TxNoVT {
     pub egraph: Mutex<EGraph>,
     map: DashMap<Sym, WorkAreaNode>,
-    latest_map: DashMap<Sym, Sym>,
     registry: EgglogTypeRegistry,
 }
 
@@ -25,7 +24,6 @@ impl TxNoVT {
                 e
             }),
             map: DashMap::default(),
-            latest_map: DashMap::default(),
             registry: EgglogTypeRegistry::new_with_inventory(),
         }
     }
@@ -100,13 +98,6 @@ impl TxNoVT {
         })
     }
 
-    pub fn map_latest(&self, sym: Sym) -> Sym {
-        let mut cur = sym;
-        while let Some(key) = self.latest_map.get(&cur) {
-            cur = *key
-        }
-        cur
-    }
     fn add_node(&self, node: &(impl EgglogNode + 'static)) {
         self.send(TxCommand::NativeCommand {
             command: Command::Action(node.to_egglog()),
@@ -114,7 +105,6 @@ impl TxNoVT {
         let mut node = WorkAreaNode::new(node.clone_dyn());
         let sym = node.cur_sym();
         for succ_node in node.succs_mut() {
-            *succ_node = self.map_latest(*succ_node);
             self.map
                 .get_mut(succ_node)
                 .unwrap_or_else(|| panic!("node {} not found", succ_node.as_str()))
@@ -122,67 +112,6 @@ impl TxNoVT {
                 .push(sym);
         }
         self.map.insert(node.cur_sym(), node);
-    }
-
-    /// update all predecessor recursively in guest and send updated term by egglog repr to host
-    /// when you update the node
-    /// for non version control mode, update_symnode will update &mut old sym to latest
-    fn update_symnode(&self, node: &mut (impl EgglogNode + 'static)) {
-        let latest_sym = self.map_latest(node.cur_sym());
-        *node.cur_sym_mut() = node.roll_sym();
-        let mut updated_symnode = WorkAreaNode::new(node.clone_dyn());
-        let mut index_set = IndexSet::default();
-
-        // collect all syms that will change
-        self.collect_latest_ancestors(latest_sym, &mut index_set);
-        let mut latest_node = self.map.get_mut(&latest_sym).unwrap();
-        // chain old version and new version
-        latest_node.next = Some(updated_symnode.egglog.cur_sym());
-        updated_symnode.preds = latest_node.preds.clone();
-        drop(latest_node);
-        let mut next_syms = vec![];
-        // insert copied ancestors
-        for &old_sym in index_set.iter() {
-            let (_, mut sym_node) = self.map.remove(&old_sym).unwrap();
-            let new_sym = sym_node.roll_sym();
-            self.latest_map.insert(old_sym, new_sym);
-
-            next_syms.push(new_sym);
-            self.map.insert(new_sym, sym_node);
-        }
-        index_set.insert(latest_sym);
-        let new_sym = updated_symnode.cur_sym();
-        next_syms.push(updated_symnode.cur_sym());
-        self.map.insert(updated_symnode.cur_sym(), updated_symnode);
-        // update all preds
-        for &new_sym in &next_syms {
-            let mut sym_node = self.map.get_mut(&new_sym).unwrap();
-            for sym in sym_node.preds_mut() {
-                if let Some(idx) = index_set.get_index_of(&*sym) {
-                    *sym = next_syms[idx];
-                }
-            }
-            for sym in sym_node.succs_mut() {
-                if let Some(idx) = index_set.get_index_of(&*sym) {
-                    *sym = next_syms[idx];
-                }
-            }
-        }
-        let mut s = "".to_owned();
-        let topo = self.topo_sort(
-            IndexSet::from_iter(Some(new_sym).into_iter()),
-            &IndexSet::from_iter(next_syms.into_iter()),
-        );
-        for new_sym in topo {
-            s += self
-                .map
-                .get(&new_sym)
-                .unwrap()
-                .egglog
-                .to_egglog_string()
-                .as_str();
-        }
-        self.send(TxCommand::StringCommand { command: s });
     }
 }
 
@@ -212,10 +141,6 @@ impl Tx for TxNoVT {
         self.add_node(symnode);
     }
 
-    fn on_set(&self, symnode: &mut (impl EgglogNode + 'static)) {
-        self.update_symnode(symnode);
-    }
-
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
@@ -243,3 +168,11 @@ impl Tx for TxNoVT {
 }
 
 impl NodeDropper for TxNoVT {}
+impl NodeOwner for TxNoVT {
+    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+}
+impl NodeSetter for TxNoVT {
+    fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
+        // do nothing
+    }
+}

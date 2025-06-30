@@ -1,7 +1,7 @@
 use crate::{
     EValue, EgglogTy, SymLit,
-    func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput},
     wrap::tx_rx_vt::TxRxVT,
+    {EgglogFunc, EgglogFuncInputs, EgglogFuncOutput},
 };
 use derive_more::{Deref, DerefMut, IntoIterator};
 use egglog::ast::{Command, GenericAction, GenericExpr, RustSpan, Span};
@@ -28,19 +28,17 @@ pub enum TxCommand {
     NativeCommand { command: Command },
 }
 
-pub trait NodeDropper: 'static {
+pub trait NodeDropper: NodeOwner + 'static {
     fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
         // do nothing as default
     }
 }
-pub trait Tx: 'static {
+pub trait Tx: 'static + NodeOwner + NodeDropper {
     /// receive is guaranteed to not be called in proc macro
     #[track_caller]
     fn send(&self, sended: TxCommand);
     #[track_caller]
     fn on_new(&self, node: &(impl EgglogNode + 'static));
-    #[track_caller]
-    fn on_set(&self, node: &mut (impl EgglogNode + 'static));
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
@@ -80,17 +78,30 @@ pub trait SingletonGetter: 'static {
     #[track_caller]
     fn sgl() -> &'static Self::RetTy;
 }
-pub trait DropSgl: 'static + Sized + SingletonGetter {
+pub trait NodeOwnerSgl: SingletonGetter + 'static {
+    /// helpful when you want to append additional data to node specific to your NodeOwner
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default;
+}
+pub trait NodeOwner: 'static {
+    /// helpful when you want to append additional data to node specific to your singleton
+    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default;
+}
+impl<S: SingletonGetter> NodeOwnerSgl for S
+where
+    S::RetTy: NodeOwner,
+{
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> =
+        <Self::RetTy as NodeOwner>::OwnerSpecificDataInNode<T, V>;
+}
+pub trait NodeDropperSgl: 'static + Sized + SingletonGetter + NodeOwnerSgl {
     fn on_drop(dropped: &mut (impl EgglogNode + 'static));
 }
 
-pub trait TxSgl: 'static + Sized + SingletonGetter + DropSgl {
+pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
     // delegate all functions from Tx
     fn receive(received: TxCommand);
     #[track_caller]
     fn on_new(node: &(impl EgglogNode + 'static));
-    #[track_caller]
-    fn on_set(node: &mut (impl EgglogNode + 'static));
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -98,7 +109,7 @@ pub trait TxSgl: 'static + Sized + SingletonGetter + DropSgl {
     );
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
 }
-pub trait RxSgl: 'static + Sized + SingletonGetter + DropSgl {
+pub trait RxSgl: 'static + Sized + SingletonGetter + NodeDropperSgl + NodeOwnerSgl {
     // delegate all functions from Rx
     #[track_caller]
     fn on_func_get<'a, 'b, F: EgglogFunc>(
@@ -115,7 +126,7 @@ pub trait RxSgl: 'static + Sized + SingletonGetter + DropSgl {
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static));
 }
 
-impl<S: SingletonGetter> DropSgl for S
+impl<S: SingletonGetter> NodeDropperSgl for S
 where
     S::RetTy: NodeDropper + 'static,
 {
@@ -126,16 +137,13 @@ where
 
 impl<S: SingletonGetter + 'static> TxSgl for S
 where
-    S::RetTy: Tx + NodeDropper + 'static,
+    S::RetTy: Tx + NodeDropper + NodeSetter + 'static,
 {
     fn receive(received: TxCommand) {
         Self::sgl().send(received);
     }
     fn on_new(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_new(node);
-    }
-    fn on_set(node: &mut (impl EgglogNode + 'static)) {
-        Self::sgl().on_set(node);
     }
 
     fn on_func_set<'a, F: EgglogFunc>(
@@ -148,6 +156,22 @@ where
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
         Self::sgl().on_union(node1, node2);
     }
+}
+pub trait NodeSetterSgl {
+    #[track_caller]
+    fn on_set(node: &mut (impl EgglogNode + 'static));
+}
+impl<S: NodeOwnerSgl> NodeSetterSgl for S
+where
+    S::RetTy: NodeSetter,
+{
+    fn on_set(node: &mut (impl EgglogNode + 'static)) {
+        Self::sgl().on_set(node);
+    }
+}
+pub trait NodeSetter {
+    #[track_caller]
+    fn on_set(&self, node: &mut (impl EgglogNode + 'static));
 }
 impl<S: SingletonGetter + 'static> RxSgl for S
 where
@@ -182,6 +206,15 @@ pub trait VersionCtl {
     fn set_next(&self, node: &mut Sym);
     fn set_prev(&self, node: &mut Sym);
 }
+
+/// pattern recorder triat
+/// it's neccessary to impl NodeDropper for PatternCombine feature
+/// and also should be implemented by Tx
+pub trait PatternRecorder: NodeDropper + Tx {}
+
+pub trait PatternRecorderSgl: NodeDropperSgl + TxSgl {}
+
+// pub trait WithPatternRecorderSgl
 
 /// version control triat
 /// which should be implemented by Tx
@@ -277,11 +310,12 @@ pub trait EgglogEnumVariantTy: Clone + 'static {
 pub struct Node<T, R, I, S>
 where
     T: EgglogTy,
-    R: SingletonGetter,
+    R: NodeOwnerSgl,
     I: NodeInner,
     S: EgglogEnumVariantTy,
 {
     pub ty: I,
+    pub sgl_specific: R::OwnerSpecDataInNode<T, S>,
     pub span: Option<&'static Location<'static>>,
     pub sym: Sym<T>,
     pub _p: PhantomData<R>,
@@ -292,7 +326,7 @@ where
 impl<T, R, I, S> AsRef<Node<T, R, I, ()>> for Node<T, R, I, S>
 where
     T: EgglogTy,
-    R: SingletonGetter,
+    R: NodeOwnerSgl,
     I: NodeInner,
     S: EgglogEnumVariantTy,
 {

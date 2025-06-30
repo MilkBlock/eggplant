@@ -1,6 +1,6 @@
 use egglog::ast::Command;
 
-use crate::func::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 
 use super::*;
 use dashmap::DashMap;
@@ -358,10 +358,6 @@ impl Tx for TxVT {
             .insert(node.cur_sym(), node.clone_dyn());
     }
 
-    fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
-        // do nothing, this operation has been delayed to commit
-    }
-
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -465,3 +461,11 @@ impl TxCommit for TxVT {
 }
 
 impl NodeDropper for TxVT {}
+impl NodeOwner for TxVT {
+    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+}
+impl NodeSetter for TxVT {
+    fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
+        // do nothing
+    }
+}
