@@ -7,7 +7,7 @@ use egglog::{
 use eggplant::{SingletonGetter, basic_tx_rx_vt, eggplant_func};
 
 #[eggplant_func(output=i64)]
-struct Fibo {
+struct Fib {
     x: i64,
 }
 

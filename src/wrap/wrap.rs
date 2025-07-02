@@ -210,9 +210,17 @@ pub trait VersionCtl {
 /// pattern recorder triat
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
-pub trait PatternRecorder: NodeDropper + Tx {}
+pub trait PatRec: NodeDropper + Tx {
+    #[track_caller]
+    fn new_place_holder(&self, node: &(impl EgglogNode + 'static));
+}
 
-pub trait PatternRecorderSgl: NodeDropperSgl + TxSgl {}
+pub trait PatRecSgl: NodeDropperSgl + TxSgl {}
+impl<T: SingletonGetter> PatRecSgl for T where T::RetTy: PatRec + NodeSetter {}
+
+pub trait WithPatRecSgl {
+    type PatRecSgl;
+}
 
 // pub trait WithPatternRecorderSgl
 
@@ -708,4 +716,30 @@ pub fn topo_sort(term_dag: &TermDag) -> Vec<usize> {
 pub enum TopoDirection {
     Up,
     Down,
+}
+
+impl std::fmt::Debug for Box<dyn EgglogNode> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{},{}", self.cur_sym(), self.to_egglog_string())
+    }
+}
+
+// place holder for EgglogNode
+#[derive(Deref, DerefMut)]
+pub struct PH<N: EgglogNode> {
+    pub node: N,
+}
+
+impl<N: EgglogNode> PH<N> {
+    pub fn new(node: N) -> PH<N> {
+        Self { node }
+    }
+}
+impl<T> Default for Sym<T> {
+    fn default() -> Self {
+        Self {
+            inner: "".into(),
+            p: Default::default(),
+        }
+    }
 }

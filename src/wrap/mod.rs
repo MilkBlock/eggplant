@@ -12,9 +12,12 @@ mod wrap;
 pub use wrap::*;
 
 pub mod pat_rec;
+pub use pat_rec::*;
+
 pub mod tx;
 pub mod tx_minimal;
 pub mod tx_rx_vt;
+pub mod tx_rx_vt_pr;
 pub mod tx_vt;
 
 /// macro to quickly define a Transimitter with no version control
@@ -98,6 +101,28 @@ macro_rules! basic_tx_rx_vt {
                     .get_or_init(|| -> $name {
                         Self {
                             tx: eggplant::wrap::tx_rx_vt::TxRxVT::new(),
+                        }
+                    })
+                    .tx
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! basic_tx_rx_vt_pr {
+    ($name:ident) => {
+        pub struct $name {
+            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR,
+        }
+        impl eggplant::SingletonGetter for $name {
+            type RetTy = eggplant::wrap::tx_rx_vt_pr::TxRxVTPR;
+            fn sgl() -> &'static eggplant::wrap::tx_rx_vt_pr::TxRxVTPR {
+                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
+                &INSTANCE
+                    .get_or_init(|| -> $name {
+                        Self {
+                            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR::new(),
                         }
                     })
                     .tx

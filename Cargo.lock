@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "add_primitive"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog#b8ae2d18e68667af966ef392156db30a802ef07f"
+source = "git+https://github.com/MilkBlock/egglog?rev=41710d945bb01b3ed5a4c17ff432b235763a9ef6#41710d945bb01b3ed5a4c17ff432b235763a9ef6"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -188,7 +188,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 [[package]]
 name = "concurrency"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
 dependencies = [
  "arc-swap",
  "rayon",
@@ -197,7 +197,7 @@ dependencies = [
 [[package]]
 name = "core-relations"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -401,7 +401,7 @@ checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 [[package]]
 name = "egglog"
 version = "0.5.0"
-source = "git+https://github.com/egraphs-good/egglog#b8ae2d18e68667af966ef392156db30a802ef07f"
+source = "git+https://github.com/MilkBlock/egglog?rev=41710d945bb01b3ed5a4c17ff432b235763a9ef6#41710d945bb01b3ed5a4c17ff432b235763a9ef6"
 dependencies = [
  "add_primitive",
  "chrono",
@@ -427,7 +427,7 @@ dependencies = [
 [[package]]
 name = "egglog-bridge"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
 dependencies = [
  "anyhow",
  "core-relations",
@@ -860,7 +860,7 @@ dependencies = [
 [[package]]
 name = "numeric-id"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
 dependencies = [
  "lazy_static",
  "rayon",
@@ -1351,7 +1351,7 @@ checksum = "5a5f39404a5da50712a4c1eecf25e90dd62b613502b7e925fd4e4d19b5c96512"
 [[package]]
 name = "union-find"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=a0b98d3#a0b98d355601bff4d6c13cf4420a875a14b484e8"
 dependencies = [
  "concurrency",
  "crossbeam",

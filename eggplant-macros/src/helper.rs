@@ -2,29 +2,43 @@ use core::panic;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
-use std::sync::LazyLock;
-use syn::{DataEnum, Fields, GenericArgument, Path, PathArguments, Type, Variant, parse_str};
+use std::{marker::PhantomData, sync::LazyLock};
+use syn::{
+    DataEnum, Expr, Fields, GenericArgument, Path, PathArguments, Type, Variant,
+    parse::Parse, parse_str,
+};
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
 pub const EGGLOG_BASIC_TY_LIST: [&'static str; 3] = ["String", "i64", "f64"];
+pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 3] = [
+    LazyTokenStream::new(|| "String::new()".to_owned()),
+    LazyTokenStream::new(|| "0".to_owned()),
+    LazyTokenStream::new(|| "0.".to_owned()),
+];
 
 pub static E: LazyTokenStream = LazyTokenStream::new(|| egglog_path());
 pub static EP: LazyTokenStream = LazyTokenStream::new(|| eggplant_path());
 pub static DE: LazyTokenStream = LazyTokenStream::new(|| derive_more_path());
-pub static W: LazyTokenStream = LazyTokenStream::new(|| format!("{}::wrap", *EP.0));
+pub static W: LazyTokenStream = LazyTokenStream::new(|| format!("{}::wrap", *EP.s));
 pub static INVE: LazyTokenStream = LazyTokenStream::new(|| inventory_path());
-pub(crate) struct LazyTokenStream(LazyLock<String>);
-impl LazyTokenStream {
+pub(crate) struct LazyTokenStream<T: Parse + ToTokens = Path> {
+    s: LazyLock<String>,
+    p: PhantomData<T>,
+}
+impl<T: Parse + ToTokens> LazyTokenStream<T> {
     pub const fn new(f: fn() -> String) -> Self {
-        Self(LazyLock::new(f))
+        Self {
+            s: LazyLock::new(f),
+            p: PhantomData,
+        }
     }
 }
-unsafe impl Sync for LazyTokenStream {}
-unsafe impl Send for LazyTokenStream {}
-impl ToTokens for LazyTokenStream {
+unsafe impl<T: Parse + ToTokens> Sync for LazyTokenStream<T> {}
+unsafe impl<T: Parse + ToTokens> Send for LazyTokenStream<T> {}
+impl<T: Parse + ToTokens> ToTokens for LazyTokenStream<T> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let p = parse_str(&*self.0).unwrap();
-        Path::to_tokens(&p, tokens);
+        let p = parse_str(&*self.s).unwrap();
+        T::to_tokens(&p, tokens);
     }
 }
 
@@ -262,6 +276,24 @@ pub fn variant_to_field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream
         variant,
         |ident, _| Some(quote! {#ident}),
         |ident, _| Some(quote! {#ident}),
+    )
+}
+pub fn variant_to_field_ident_with_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
+    variant_to_mapped_ident_type_list(
+        variant,
+        |ident, ty| {
+            Some({
+                let default = match ty.to_string().as_str() {
+                    "String" => &EGGLOG_BASIC_TY_DEFAULT_LIST[0],
+                    "i64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[1],
+                    "f64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[2],
+                    _ => panic!("can't be {}", ident.to_string()),
+                };
+                quote! {#ident: #default}
+                // quote! {#ident}
+            })
+        },
+        |ident, ty| Some(quote! {#ident: #W::Sym::<self::#ty>::default()}),
     )
 }
 

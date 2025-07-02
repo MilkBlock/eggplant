@@ -682,7 +682,7 @@ pub fn eggplant_ty(
                     #[track_caller]
                     pub fn #new_fn_name(#(#ref_node_list),*) -> self::#name_node<T,#variant_marker>{
                         let ty = #name_inner::#variant_name {#(#field_idents_assign),*  };
-                        let node = #W::Node { 
+                        let node = #W::Node {
                             ty,
                             sym: #name_counter.next_sym(),
                             span:Some(std::panic::Location::caller()),
@@ -698,7 +698,7 @@ pub fn eggplant_ty(
                     #[track_caller]
                     pub fn #_new_fn_name(#(#_new_fn_args),*) -> #name_node<T,#variant_marker>{
                         let ty = #name_inner::#variant_name {#(#_new_fn_field_idents_assign),*  };
-                        let node = #W::Node { 
+                        let node = #W::Node {
                             ty,
                             sym: #name_counter.next_sym(),
                             span:Some(std::panic::Location::caller()),
@@ -735,6 +735,77 @@ pub fn eggplant_ty(
                     }
                 }, new_fn_name, ref_node_list, ref_node_list_leave_idents)
             }).collect();
+            let (new_ph_fns, _new_ph_fn_names, _new_ph_fn_args, _new_ph_fn_arg_idents): (
+                Vec<proc_macro2::TokenStream>,
+                Vec<Ident>,
+                Vec<Vec<TokenStream>>,
+                Vec<Vec<TokenStream>>,
+            ) = data_enum
+                .variants
+                .iter()
+                .map(|variant| {
+                    let ref_node_list = variant_to_ref_node_list(&variant);
+                    let ref_node_list_leave_idents = variant_to_ref_node_list_leave_ident(&variant);
+
+                    let _new_fn_args = variant_to_sym_list(&variant);
+                    let field_idents_assign = variant_to_field_ident_with_default(&variant);
+                    let _new_fn_field_idents_assign =
+                        variant_to_typed_assign_node_field_list(&variant);
+                    let field_idents = variant_to_field_ident(&variant);
+                    let (variant_marker, variant_name) = variant_marker_name(variant);
+                    let new_ph_fn_name =
+                        format_ident!("new_{}_ph", variant_name.to_string().to_snake_case());
+                    let _new_fn_name =
+                        format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+                    // let new_from_term_fn_name = format_ident!("new_{}_from_term",variant_name.to_string().to_snake_case());
+                    // let new_from_term_dyn_fn_name = format_ident!("new_{}_from_term_dyn",variant_name.to_string().to_snake_case());
+                    let field_ty = variant_to_tys(&variant);
+                    let _field_assignments: Vec<_> = field_idents
+                        .into_iter()
+                        .zip(field_ty.iter())
+                        .enumerate()
+                        .map(|(i, (ident, ty))| {
+                            if is_basic_ty(ty) {
+                                quote! {
+                                    #ident: match term_dag.get(children[#i]) {
+                                        #E::Term::Lit(lit) => lit.deliteral(),
+                                        #E::Term::Var(v) => panic!(),
+                                        #E::Term::App(app,v) => panic!(),
+                                    }
+                                }
+                            } else {
+                                quote! {
+                                    #ident: term2sym[&children[#i]].typed()
+                                }
+                            }
+                        })
+                        .collect();
+
+                    // MARK: Enum New Fns
+                    (
+                        quote! {
+                            #[track_caller]
+                            pub fn #new_ph_fn_name() -> #W::PH<self::#name_node<T,#variant_marker>>{
+                                let ty = #name_inner::#variant_name {#(#field_idents_assign),*  };
+                                let node = #W::Node {
+                                    ty,
+                                    sym: #name_counter.next_sym(),
+                                    span:Some(std::panic::Location::caller()),
+                                    _p:PhantomData,
+                                    _s:PhantomData::<#variant_marker>,
+                                    sgl_specific: T::OwnerSpecDataInNode::default()
+                                };
+                                let node = #name_node {node};
+                                T::on_new(&node);
+                                #W::PH::new(node)
+                            }
+                        },
+                        new_ph_fn_name,
+                        ref_node_list,
+                        ref_node_list_leave_idents,
+                    )
+                })
+                .collect();
             let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
                 let (variant_marker, variant_name) = variant_marker_name(variant);
 
@@ -849,6 +920,9 @@ pub fn eggplant_ty(
                     impl<T:#W::TxSgl> self::#name_node<T,()> {
                         #(#new_fns)*
                     }
+                    impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                        #(#new_ph_fns)*
+                    }
                     use #W::TxSgl;
                     #(
                         impl<T:TxSgl> self::#name_node<T, #variant_markers> {
@@ -921,6 +995,11 @@ pub fn eggplant_ty(
                             unsafe {
                                 &*(self as *const self::#name_node<T,V> as *const self::#name_node<T,()>)
                             }
+                        }
+                    }
+                    impl<T: #W::NodeDropperSgl,  V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for #W::PH<self::#name_node<T, V>> {
+                        fn as_ref(&self) -> &self::#name_node<T, ()> {
+                            self.node.as_ref()
                         }
                     }
 

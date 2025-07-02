@@ -14,13 +14,11 @@ enum B {
     Empty {},
 }
 
-/// NB: this should panic because Cycle is not allowed.
-///
+/// NB: this should PANIC because Cycle is not allowed.
 /// Only DAG is supported.
 fn main() {
     env_logger::init();
     let mut a = ACon::new(&B::<MyTx>::new_empty());
-    let _b = B::<MyTx>::new_empty();
     a.set_b(&BCon::new(&a));
     MyTx::sgl().to_dot(PathBuf::from("egraph"));
 }

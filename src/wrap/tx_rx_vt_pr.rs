@@ -1,4 +1,4 @@
-use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, pat_rec::PatRecorder};
 
 use super::*;
 use dashmap::DashMap;
@@ -14,7 +14,7 @@ use petgraph::{
 };
 use std::{collections::HashMap, fs::File, io::Write, path::PathBuf, sync::Mutex};
 
-pub struct TxRxVT {
+pub struct TxRxVTPR {
     pub egraph: Mutex<EGraph>,
     pub map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
@@ -22,6 +22,7 @@ pub struct TxRxVT {
     pub staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
     checkpoints: Mutex<Vec<CommitCheckPoint>>,
     registry: EgglogTypeRegistry,
+    pub pat_recorder: PatRecorder,
 }
 
 #[allow(unused)]
@@ -33,7 +34,7 @@ pub struct CommitCheckPoint {
 }
 
 /// Tx with version ctl feature
-impl TxRxVT {
+impl TxRxVTPR {
     pub fn egraph_to_dot(&self, file_name: PathBuf) {
         let egraph = self.egraph.lock().unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
@@ -99,8 +100,8 @@ impl TxRxVT {
             let sym = index_set[i];
             let node = self.map.get(&sym).unwrap();
             *in_degree =
-                TxRxVT::degree_in_subgraph(node.preds().into_iter().map(|x| *x), index_set);
-            *out_degree = TxRxVT::degree_in_subgraph(node.succs().into_iter(), index_set);
+                TxRxVTPR::degree_in_subgraph(node.preds().into_iter().map(|x| *x), index_set);
+            *out_degree = TxRxVTPR::degree_in_subgraph(node.succs().into_iter(), index_set);
         }
         let (mut _ins, mut outs) = match direction {
             TopoDirection::Up => (ins, outs),
@@ -156,6 +157,7 @@ impl TxRxVT {
             staged_set_map: DashMap::new(),
             staged_new_map: Mutex::new(IndexMap::default()),
             checkpoints: Mutex::new(vec![]),
+            pat_recorder: PatRecorder::new(),
         };
         let type_defs = EgglogTypeRegistry::collect_type_defs();
         for def in type_defs {
@@ -385,9 +387,9 @@ impl TxRxVT {
     }
 }
 
-unsafe impl Send for TxRxVT {}
-unsafe impl Sync for TxRxVT {}
-impl VersionCtl for TxRxVT {
+unsafe impl Send for TxRxVTPR {}
+unsafe impl Sync for TxRxVTPR {}
+impl VersionCtl for TxRxVTPR {
     /// locate the lastest version of the symbol
     fn locate_latest(&self, old: Sym) -> Sym {
         let map = &self.map;
@@ -433,7 +435,7 @@ impl VersionCtl for TxRxVT {
 }
 
 // MARK: Tx
-impl Tx for TxRxVT {
+impl Tx for TxRxVTPR {
     fn send(&self, transmitted: TxCommand) {
         let mut egraph = self.egraph.lock().unwrap();
         match transmitted {
@@ -481,7 +483,7 @@ impl Tx for TxRxVT {
     }
 }
 
-impl TxCommit for TxRxVT {
+impl TxCommit for TxRxVTPR {
     /// commit behavior:
     /// 1. commit all descendants (if you also call set fn on subnodes they will also be committed)
     /// 2. commit basing the latest version of the working graph (working graph record all versions)
@@ -568,7 +570,7 @@ impl TxCommit for TxRxVT {
 }
 
 // MARK: Rx
-impl Rx for TxRxVT {
+impl Rx for TxRxVTPR {
     fn on_func_get<'a, 'b, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -653,15 +655,19 @@ impl Rx for TxRxVT {
     }
 }
 
-impl NodeDropper for TxRxVT {}
-impl NodeOwner for TxRxVT {
+impl NodeDropper for TxRxVTPR {}
+impl NodeOwner for TxRxVTPR {
     type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 
-impl NodeSetter for TxRxVT {
+impl NodeSetter for TxRxVTPR {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
         // do nothing
         // the node may be set but we don't care
         // the rst will be committed throguh commit API
     }
+}
+
+impl WithPatRecSgl for TxRxVTPR {
+    type PatRecSgl = PatRecorder;
 }
