@@ -1,4 +1,7 @@
-use eggplant::{PH, PatRecorder, SingletonGetter, WithPatRecSgl, basic_tx_rx_vt_pr, eggplant_ty};
+use eggplant::{
+    PH, PatRecorder, SingletonGetter, WithPatRecSgl, basic_patttern_recorder, basic_tx_rx_vt_pr,
+    eggplant_ty,
+};
 
 #[eggplant_ty]
 enum Node {
@@ -10,6 +13,11 @@ enum _Root {
 }
 
 basic_tx_rx_vt_pr!(MyTx);
+basic_patttern_recorder!(MyPatRec);
+// bind pattern recorder for MyTx
+impl WithPatRecSgl for MyTx {
+    type PatRecSgl = MyPatRec;
+}
 
 // #[eggplant_pattern]
 // fn xxx_rule() -> (Node,Node,Root){
@@ -27,24 +35,4 @@ fn main() {
     let _p: PH<Value<MyPatRec>> = Node::new_value_ph();
 
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
-}
-
-pub struct MyPatRec {
-    tx: eggplant::wrap::PatRecorder,
-}
-impl eggplant::SingletonGetter for MyPatRec {
-    type RetTy = PatRecorder;
-    fn sgl() -> &'static eggplant::wrap::pat_rec::PatRecorder {
-        static INSTANCE: std::sync::OnceLock<MyPatRec> = std::sync::OnceLock::new();
-        &INSTANCE
-            .get_or_init(|| -> MyPatRec {
-                Self {
-                    tx: eggplant::wrap::pat_rec::PatRecorder::new(),
-                }
-            })
-            .tx
-    }
-}
-impl WithPatRecSgl for MyTx {
-    type PatRecSgl = MyPatRec;
 }

@@ -667,7 +667,3 @@ impl NodeSetter for TxRxVTPR {
         // the rst will be committed throguh commit API
     }
 }
-
-impl WithPatRecSgl for TxRxVTPR {
-    type PatRecSgl = PatRecorder;
-}

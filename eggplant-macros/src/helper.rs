@@ -4,8 +4,8 @@ use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use std::{marker::PhantomData, sync::LazyLock};
 use syn::{
-    DataEnum, Expr, Fields, GenericArgument, Path, PathArguments, Type, Variant,
-    parse::Parse, parse_str,
+    DataEnum, Expr, Fields, GenericArgument, Path, PathArguments, Type, Variant, parse::Parse,
+    parse_str,
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];

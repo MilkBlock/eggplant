@@ -130,3 +130,25 @@ macro_rules! basic_tx_rx_vt_pr {
         }
     };
 }
+
+#[macro_export]
+macro_rules! basic_patttern_recorder {
+    ($name:ident) => {
+        pub struct $name {
+            tx: eggplant::wrap::PatRecorder,
+        }
+        impl eggplant::SingletonGetter for MyPatRec {
+            type RetTy = PatRecorder;
+            fn sgl() -> &'static eggplant::wrap::pat_rec::PatRecorder {
+                static INSTANCE: std::sync::OnceLock<MyPatRec> = std::sync::OnceLock::new();
+                &INSTANCE
+                    .get_or_init(|| -> MyPatRec {
+                        Self {
+                            tx: eggplant::wrap::pat_rec::PatRecorder::new(),
+                        }
+                    })
+                    .tx
+            }
+        }
+    };
+}
