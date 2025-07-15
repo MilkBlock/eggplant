@@ -4,9 +4,9 @@ use egglog::{
     prelude::{add_ruleset, query, run_ruleset, rust_rule},
     vars,
 };
-use eggplant::{SingletonGetter, basic_tx_rx_vt, eggplant_func};
+use eggplant::{SingletonGetter, basic_tx_rx_vt};
 
-#[eggplant_func(output=i64)]
+#[eggplant::func(output=i64)]
 struct Fib {
     x: i64,
 }

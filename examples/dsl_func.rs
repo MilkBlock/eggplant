@@ -1,17 +1,12 @@
-use eggplant::{Commit, SingletonGetter, basic_tx_rx_vt, eggplant_func, eggplant_ty};
-// #[eggplant_ty]
-// enum Expr{
-//     Add { a:Box<Expr>, b:Box<Expr>},
-//     Const { s:i64}
-// }
+use eggplant::{Commit, SingletonGetter, basic_tx_rx_vt};
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum Expr {
-    Add { v: Box<Expr>, con: Box<Expr> },
+    Add { v: Expr, con: Expr },
     Const { s: i64 },
 }
 
-#[eggplant_func(output=Expr)]
+#[eggplant::func(output=Expr)]
 struct LeadTo {
     e: Expr,
 }
@@ -22,6 +17,7 @@ fn main() {
     let add = Add::<MyTx>::new(&a, &b);
     let c = Const::new(8);
     add.commit();
+
     LeadTo::set(&add, &c);
     MyTx::sgl().wag_to_dot("dsl_func.dot".into());
     MyTx::sgl().egraph_to_dot("dsl_func_egraph.dot".into());

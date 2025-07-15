@@ -76,6 +76,7 @@ pub enum Decl {
     },
 }
 
+#[derive(Debug)]
 pub struct EgglogTypeRegistry {
     enum_node_fns_map: HashMap<&'static str, TermToNode>,
     variant2type_map: HashMap<&'static str, &'static str>,

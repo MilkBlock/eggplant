@@ -3,7 +3,7 @@ use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use super::*;
 use dashmap::DashMap;
 use egglog::{
-    EGraph, SerializeConfig, Value,
+    EGraph, SerializeConfig,
     ast::Command,
     util::{IndexMap, IndexSet},
 };
@@ -579,7 +579,7 @@ impl Rx for TxRxVT {
             let output = get_func_value(egraph, F::FUNC_NAME, input_nodes);
             output
         };
-        let sym = self.on_pull_value::<F::Output>(output);
+        let sym = self.on_pull_value(Value::<F::Output>::new(output));
         match sym {
             SymLit::Sym(sym) => {
                 let node = &self.map.get(&sym).unwrap().egglog;
@@ -600,12 +600,12 @@ impl Rx for TxRxVT {
     )> {
         todo!()
     }
-    fn on_pull_value<T: EgglogTy>(&self, value: Value) -> SymLit {
+    fn on_pull_value<T: EgglogTy>(&self, value: Value<T>) -> SymLit {
         log::debug!("pulling value {:?}", value);
         let egraph = self.egraph.lock().unwrap();
         let sort = egraph.get_sort_by_name(T::TY_NAME).unwrap();
         let mut term2sym = HashMap::new();
-        let (term_dag, start_term, cost) = egraph.extract_value(sort, value).unwrap();
+        let (term_dag, start_term, cost) = egraph.extract_value(sort, value.val).unwrap();
 
         let root_idx = term_dag.lookup(&start_term);
         println!("{:?}, {:?}", term_dag, start_term);
@@ -649,13 +649,13 @@ impl Rx for TxRxVT {
     }
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
         let value = sym.get_value(&mut self.egraph.lock().unwrap());
-        self.on_pull_value::<T>(value)
+        self.on_pull_value(Value::<T>::new(value))
     }
 }
 
 impl NodeDropper for TxRxVT {}
 impl NodeOwner for TxRxVT {
-    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 
 impl NodeSetter for TxRxVT {

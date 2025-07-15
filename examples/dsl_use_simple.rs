@@ -2,21 +2,20 @@ use eggplant::Commit;
 use eggplant::EgglogNode;
 use eggplant::SingletonGetter;
 use eggplant::basic_tx_vt;
-use eggplant::eggplant_ty;
 use std::time::Instant;
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum Cons {
-    Value { v: i64, con: Box<Cons> },
+    Value { v: i64, con: Cons },
     End {},
 }
 
-#[eggplant_ty]
+#[eggplant::ty]
 struct VecCon {
     v: Vec<Cons>,
 }
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum Root {
     RootCons { v: VecCon },
 }

@@ -1,22 +1,22 @@
+use eggplant::func;
 use eggplant::{SingletonGetter, basic_tx_minimal};
-use eggplant::{eggplant_func, eggplant_ty};
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum Cons {
-    Value { v: i64, con: Box<Cons> },
+    Value { v: i64, con: Cons },
     End {},
 }
 
-#[eggplant_ty]
+#[eggplant::ty]
 struct VecCon {
     v: Vec<Cons>,
 }
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum Root {
     V { v: VecCon },
 }
-#[eggplant_func(output= Root)]
+#[func(output= Root)]
 struct F {}
 
 fn main() {

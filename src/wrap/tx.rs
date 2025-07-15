@@ -169,7 +169,7 @@ impl Tx for TxNoVT {
 
 impl NodeDropper for TxNoVT {}
 impl NodeOwner for TxNoVT {
-    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 impl NodeSetter for TxNoVT {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {

@@ -4,8 +4,11 @@ use crate::{
     {EgglogFunc, EgglogFuncInputs, EgglogFuncOutput},
 };
 use derive_more::{Deref, DerefMut, IntoIterator};
-use egglog::ast::{Command, GenericAction, GenericExpr, RustSpan, Span};
-use egglog::{Term, TermDag, TermId, Value, ast::Literal, sort::OrderedFloat, span};
+use egglog::{
+    ArcSort, EGraph,
+    ast::{Command, Facts, GenericAction, GenericExpr, RustSpan, Span},
+};
+use egglog::{Term, TermDag, TermId, ast::Literal, sort::OrderedFloat, span};
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -70,7 +73,7 @@ pub trait Rx: 'static {
     #[track_caller]
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit;
     #[track_caller]
-    fn on_pull_value<T: EgglogTy>(&self, value: Value) -> SymLit;
+    fn on_pull_value<T: EgglogTy>(&self, value: Value<T>) -> SymLit;
 }
 
 pub trait SingletonGetter: 'static {
@@ -84,14 +87,14 @@ pub trait NodeOwnerSgl: SingletonGetter + 'static {
 }
 pub trait NodeOwner: 'static {
     /// helpful when you want to append additional data to node specific to your singleton
-    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default;
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default;
 }
 impl<S: SingletonGetter> NodeOwnerSgl for S
 where
     S::RetTy: NodeOwner,
 {
     type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> =
-        <Self::RetTy as NodeOwner>::OwnerSpecificDataInNode<T, V>;
+        <Self::RetTy as NodeOwner>::OwnerSpecDataInNode<T, V>;
 }
 pub trait NodeDropperSgl: 'static + Sized + SingletonGetter + NodeOwnerSgl {
     fn on_drop(dropped: &mut (impl EgglogNode + 'static));
@@ -212,14 +215,44 @@ pub trait VersionCtl {
 /// and also should be implemented by Tx
 pub trait PatRec: NodeDropper + Tx {
     #[track_caller]
-    fn new_place_holder(&self, node: &(impl EgglogNode + 'static));
+    fn on_new_place_holder(&self, node: &(impl EgglogNode + 'static));
+    fn on_record_start(&self);
+    fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
+    fn pat_to_facts(&self, pat_id: PatId) -> Facts<String, String>;
+}
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct PatId(pub u32);
+
+pub trait PatRecSgl: NodeDropperSgl + TxSgl {
+    #[track_caller]
+    fn on_new_place_holder(node: &(impl EgglogNode + 'static));
+    fn on_record_start();
+    fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
+    fn pat_to_facts(pat_id: PatId) -> Facts<String, String>;
+}
+impl<T: SingletonGetter> PatRecSgl for T
+where
+    T::RetTy: PatRec + NodeSetter,
+{
+    fn on_new_place_holder(node: &(impl EgglogNode + 'static)) {
+        Self::sgl().on_new_place_holder(node);
+    }
+
+    fn on_record_start() {
+        Self::sgl().on_record_start();
+    }
+
+    fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId {
+        Self::sgl().on_record_end(pat_vars)
+    }
+
+    fn pat_to_facts(pat_id: PatId) -> Facts<String, String> {
+        Self::sgl().pat_to_facts(pat_id)
+    }
 }
 
-pub trait PatRecSgl: NodeDropperSgl + TxSgl {}
-impl<T: SingletonGetter> PatRecSgl for T where T::RetTy: PatRec + NodeSetter {}
-
 pub trait WithPatRecSgl {
-    type PatRecSgl;
+    type PatRecSgl: PatRecSgl;
 }
 
 // pub trait WithPatternRecorderSgl
@@ -308,6 +341,17 @@ pub trait EgglogNode: ToEgglog + Any + EValue {
     fn cur_sym_mut(&mut self) -> &mut Sym;
 
     fn clone_dyn(&self) -> Box<dyn EgglogNode>;
+
+    fn ty_name(&self) -> &'static str;
+    fn ty_name_lower(&self) -> &'static str;
+
+    #[track_caller]
+    fn to_term(
+        &self,
+        term_dag: &mut TermDag,
+        sym2term: &mut HashMap<Sym, TermId>,
+        sym2ph_name: &HashMap<Sym, &'static str>,
+    ) -> TermId;
 }
 
 pub trait EgglogEnumVariantTy: Clone + 'static {
@@ -322,7 +366,8 @@ where
     I: NodeInner,
     S: EgglogEnumVariantTy,
 {
-    pub ty: I,
+    // None => PlaceHolder, Some => normal node
+    pub ty: Option<I>,
     pub sgl_specific: R::OwnerSpecDataInNode<T, S>,
     pub span: Option<&'static Location<'static>>,
     pub sym: Sym<T>,
@@ -742,4 +787,53 @@ impl<T> Default for Sym<T> {
             p: Default::default(),
         }
     }
+}
+
+pub trait SymOrValueConstructor {
+    type Constructor<T>;
+}
+
+impl SymOrValueConstructor for Sym {
+    type Constructor<T> = Sym<T>;
+}
+// impl<T:EgglogTy> SymOrValueConstructor for Value<T> {
+//     type Constructor<Ty:EgglogTy> = Value<Ty>;
+// }
+
+/// a wrapper for EgglogBackend Value with type info
+/// It's useful for Node Type because in rust_rule's action part you should specify
+/// value for Node rather than Sym
+pub struct Value<T: EgglogTy> {
+    pub val: egglog::Value,
+    p: PhantomData<T>,
+}
+impl<T: EgglogTy> Value<T> {
+    pub fn new(val: egglog::Value) -> Value<T> {
+        Value {
+            val,
+            p: PhantomData,
+        }
+    }
+}
+impl<T: EgglogTy> fmt::Debug for Value<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}_{:?}", T::TY_NAME, self.val)
+    }
+}
+
+/// a pattern may extract values in EGraph, for example
+/// if you record pattern (fib x) then x will be extracted
+/// we use `PatExtracted` trait to mark such patterns
+pub trait PatVars<T: PatRecSgl>: ToStrArcSort {
+    type Valued: FromPlainValues;
+    fn sym2ph_name(&self) -> HashMap<Sym, &'static str>;
+}
+
+/// a pattern should be transformed into [(str,Arcsort)] when registering rules
+pub trait ToStrArcSort {
+    fn into_str_arcsort(egraph: &EGraph) -> Box<[(&'static str, ArcSort)]>;
+}
+
+pub trait FromPlainValues {
+    fn from_plain_values(values: &[egglog::Value]) -> Self;
 }

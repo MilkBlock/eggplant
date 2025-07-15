@@ -82,7 +82,7 @@ impl Tx for TxMinimal {
 
 impl NodeDropper for TxMinimal {}
 impl NodeOwner for TxMinimal {
-    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 impl NodeSetter for TxMinimal {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {

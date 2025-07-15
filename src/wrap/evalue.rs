@@ -10,8 +10,11 @@ use crate::{EgglogNode, Sym};
 
 /// 2 ways to access database of EGraph
 /// one is direct access by Value
-/// another is indirect access by SymLit(SymOrLiteral)
+/// another is indirect access by SymLit(SymOrLiteral) which read the database to get corresponding
+/// value of node/base type
 /// So we use this trait to unify 2 ways upon
+/// It's important to distinguish them because we could never get a value of node  
+/// before commited, in that way we should represent them by Sym in place of Value.
 pub trait EValue {
     fn get_value(&self, egraph: &mut EGraph) -> Value;
     fn get_eexpr(&self) -> GenericExpr<String, String>;

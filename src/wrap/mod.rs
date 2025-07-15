@@ -20,6 +20,9 @@ pub mod tx_rx_vt;
 pub mod tx_rx_vt_pr;
 pub mod tx_vt;
 
+pub mod rule;
+pub use rule::*;
+
 /// macro to quickly define a Transimitter with no version control
 #[macro_export]
 macro_rules! basic_tx_no_vt {
@@ -132,13 +135,25 @@ macro_rules! basic_tx_rx_vt_pr {
 }
 
 #[macro_export]
+macro_rules! tx_rx_vt_pr {
+    ($tx_name:ident, $pat_rec_name:ident) => {
+        eggplant::basic_tx_rx_vt_pr!($tx_name);
+        eggplant::basic_patttern_recorder!($pat_rec_name);
+        impl eggplant::wrap::WithPatRecSgl for $tx_name {
+            type PatRecSgl = $pat_rec_name;
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! basic_patttern_recorder {
     ($name:ident) => {
+        #[derive(Debug)]
         pub struct $name {
             tx: eggplant::wrap::PatRecorder,
         }
-        impl eggplant::SingletonGetter for MyPatRec {
-            type RetTy = PatRecorder;
+        impl eggplant::SingletonGetter for $name {
+            type RetTy = eggplant::wrap::PatRecorder;
             fn sgl() -> &'static eggplant::wrap::pat_rec::PatRecorder {
                 static INSTANCE: std::sync::OnceLock<MyPatRec> = std::sync::OnceLock::new();
                 &INSTANCE

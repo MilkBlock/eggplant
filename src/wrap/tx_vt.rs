@@ -12,7 +12,7 @@ use std::{collections::HashMap, path::PathBuf, sync::Mutex};
 
 #[derive(Default)]
 pub struct TxVT {
-    egraph: Mutex<EGraph>,
+    pub egraph: Mutex<EGraph>,
     map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
     staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
@@ -462,7 +462,7 @@ impl TxCommit for TxVT {
 
 impl NodeDropper for TxVT {}
 impl NodeOwner for TxVT {
-    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 impl NodeSetter for TxVT {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {

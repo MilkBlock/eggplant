@@ -3,14 +3,13 @@ use eggplant::EgglogNode;
 use eggplant::LocateVersion;
 use eggplant::SingletonGetter;
 use eggplant::basic_tx_vt;
-use eggplant::eggplant_ty;
 use std::{path::PathBuf, str::FromStr};
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum Eq {
     EqItem { v1: Var, v2: Var },
 }
-#[eggplant_ty]
+#[eggplant::ty]
 enum Var {
     VarItem { num: i64 },
     Expr { eq: Eq },

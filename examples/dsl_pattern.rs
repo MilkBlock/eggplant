@@ -1,38 +1,39 @@
 use eggplant::{
-    PH, PatRecorder, SingletonGetter, WithPatRecSgl, basic_patttern_recorder, basic_tx_rx_vt_pr,
-    eggplant_ty,
+    Commit, PH, PatRecSgl, RuleRunnerSgl, RunConfig, SingletonGetter, WithPatRecSgl,
+    basic_patttern_recorder, basic_tx_rx_vt_pr, tx_rx_vt_pr,
 };
 
-#[eggplant_ty]
-enum Node {
-    Value { v: i64 },
+#[eggplant::ty]
+enum Expr {
+    Const { num: i64 },
 }
-#[eggplant_ty]
-enum _Root {
-    Root { node: Node },
+#[eggplant::ty]
+enum GraphRoot {
+    Root { node: Expr },
 }
-
-basic_tx_rx_vt_pr!(MyTx);
-basic_patttern_recorder!(MyPatRec);
+tx_rx_vt_pr!(MyTx, MyPatRec);
 // bind pattern recorder for MyTx
-impl WithPatRecSgl for MyTx {
-    type PatRecSgl = MyPatRec;
-}
 
-// #[eggplant_pattern]
-// fn xxx_rule() -> (Node,Node,Root){
-//    let n= Node::place_holder();
-//    let b= Node::place_holder_xxxx();
-//    let a = Root::new_nod(node);
-//     // PlaceHolder variant once more
-//    let r= Root::new(n).with_predicate(|xxx|xxxx)
-//    (n,b,r)
-// }
+#[eggplant::patttern_vars]
+struct MyPatternVars<PS: PatRecSgl> {
+    expr: PH<Expr<PS>>,
+}
+fn my_pat<PR: PatRecSgl>() -> MyPatternVars<PR> {
+    let expr_var = Expr::new_ph();
+    let _root = GraphRoot::new(&expr_var);
+    MyPatternVars::new(expr_var)
+}
 
 fn main() {
     env_logger::init();
-    let _root = Root::<MyTx>::new(&Value::new(3));
-    let _p: PH<Value<MyPatRec>> = Node::new_value_ph();
+    let root = Root::<MyTx>::new(&Const::new(3));
+    root.commit();
 
+    let ruleset = MyTx::new_rule_set("my_rule_set");
+    MyTx::add_rule(ruleset, my_pat, |ctx, values| {
+        println!("hello here is a Node Root pair {:?}", values);
+        Some(())
+    });
+    MyTx::run_ruleset(ruleset, RunConfig::None);
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }

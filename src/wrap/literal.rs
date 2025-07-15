@@ -1,9 +1,12 @@
 use std::any::type_name;
 
-use egglog::ast::Literal;
+use egglog::{ast::Literal, sort::OrderedFloat};
 
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;
+}
+pub trait FromBase<T> {
+    fn from_base(base: T) -> Self;
 }
 impl DeLiteral<i64> for Literal {
     fn deliteral(&self) -> i64 {
@@ -82,5 +85,29 @@ impl DeLiteral<bool> for Literal {
                 panic!("can't deliteral bool to {}", type_name::<bool>())
             }
         }
+    }
+}
+
+impl FromBase<bool> for Literal {
+    fn from_base(base: bool) -> Self {
+        Literal::Bool(base)
+    }
+}
+
+impl FromBase<i64> for Literal {
+    fn from_base(base: i64) -> Self {
+        Literal::Int(base)
+    }
+}
+
+impl FromBase<f64> for Literal {
+    fn from_base(base: f64) -> Self {
+        Literal::Float(OrderedFloat(base))
+    }
+}
+
+impl FromBase<String> for Literal {
+    fn from_base(base: String) -> Self {
+        Literal::String(base)
     }
 }

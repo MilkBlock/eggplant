@@ -1,10 +1,12 @@
-use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, pat_rec::PatRecorder};
+use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 
 use super::*;
 use dashmap::DashMap;
 use egglog::{
-    EGraph, SerializeConfig, Value,
-    ast::Command,
+    EGraph, SerializeConfig,
+    ast::{Command, Schedule},
+    prelude::{add_ruleset, rust_rule},
+    span,
     util::{IndexMap, IndexSet},
 };
 use petgraph::{
@@ -22,7 +24,6 @@ pub struct TxRxVTPR {
     pub staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
     checkpoints: Mutex<Vec<CommitCheckPoint>>,
     registry: EgglogTypeRegistry,
-    pub pat_recorder: PatRecorder,
 }
 
 #[allow(unused)]
@@ -157,7 +158,6 @@ impl TxRxVTPR {
             staged_set_map: DashMap::new(),
             staged_new_map: Mutex::new(IndexMap::default()),
             checkpoints: Mutex::new(vec![]),
-            pat_recorder: PatRecorder::new(),
         };
         let type_defs = EgglogTypeRegistry::collect_type_defs();
         for def in type_defs {
@@ -171,31 +171,6 @@ impl TxRxVTPR {
             v.push(Command::Action(egglog_action))
         }
         v
-        // static COUNTER: OnceLock<AtomicU32> = OnceLock::new();
-        // let counter = COUNTER.get_or_init(|| AtomicU32::new(0));
-        // let rule_set_name = format!(
-        //     "anonymous_rule_set_{}",
-        //     counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst)
-        // );
-        // let new_rule_set = Command::AddRuleset(span!(), rule_set_name.clone());
-        // let rule = GenericRule {
-        //     span: span!(),
-        //     head: GenericActions::new(actions),
-        //     body: vec![],
-        // };
-        // let action_rule_set = Command::Rule {
-        //     name: format!(""),
-        //     ruleset: rule_set_name.clone(),
-        //     rule,
-        // };
-        // let run = Command::RunSchedule(GenericSchedule::Run(
-        //     span!(),
-        //     GenericRunConfig {
-        //         ruleset: rule_set_name.clone(),
-        //         until: None,
-        //     },
-        // ));
-        // vec![new_rule_set, action_rule_set, run]
     }
     fn add_node(&self, mut node: WorkAreaNode, auto_latest: bool) {
         let sym = node.cur_sym();
@@ -581,7 +556,7 @@ impl Rx for TxRxVTPR {
             let output = get_func_value(egraph, F::FUNC_NAME, input_nodes);
             output
         };
-        let sym = self.on_pull_value::<F::Output>(output);
+        let sym = self.on_pull_value(Value::<F::Output>::new(output));
         match sym {
             SymLit::Sym(sym) => {
                 let node = &self.map.get(&sym).unwrap().egglog;
@@ -602,12 +577,12 @@ impl Rx for TxRxVTPR {
     )> {
         todo!()
     }
-    fn on_pull_value<T: EgglogTy>(&self, value: Value) -> SymLit {
+    fn on_pull_value<T: EgglogTy>(&self, value: Value<T>) -> SymLit {
         log::debug!("pulling value {:?}", value);
         let egraph = self.egraph.lock().unwrap();
         let sort = egraph.get_sort_by_name(T::TY_NAME).unwrap();
         let mut term2sym = HashMap::new();
-        let (term_dag, start_term, cost) = egraph.extract_value(sort, value).unwrap();
+        let (term_dag, start_term, cost) = egraph.extract_value(sort, value.val).unwrap();
 
         let root_idx = term_dag.lookup(&start_term);
         println!("{:?}, {:?}", term_dag, start_term);
@@ -651,13 +626,13 @@ impl Rx for TxRxVTPR {
     }
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
         let value = sym.get_value(&mut self.egraph.lock().unwrap());
-        self.on_pull_value::<T>(value)
+        self.on_pull_value(Value::<T>::new(value))
     }
 }
 
 impl NodeDropper for TxRxVTPR {}
 impl NodeOwner for TxRxVTPR {
-    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 
 impl NodeSetter for TxRxVTPR {
@@ -665,5 +640,50 @@ impl NodeSetter for TxRxVTPR {
         // do nothing
         // the node may be set but we don't care
         // the rst will be committed throguh commit API
+    }
+}
+
+impl RuleRunner for TxRxVTPR {
+    fn add_rule<T: WithPatRecSgl, P: PatVars<T::PatRecSgl>>(
+        &self,
+        rule_set: RuleSetId,
+        pat: impl Fn() -> P,
+        action: impl Fn(RuleCtx, &P::Valued) -> Option<()> + Send + Sync + 'static + Clone,
+    ) {
+        let mut egraph = self.egraph.lock().unwrap();
+        T::PatRecSgl::on_record_start();
+        let pat_vars = pat();
+        let pat_id = T::PatRecSgl::on_record_end(&pat_vars);
+
+        let facts = T::PatRecSgl::pat_to_facts(pat_id);
+        let vars = &P::into_str_arcsort(&egraph);
+
+        rust_rule(&mut egraph, rule_set.0, vars, facts, move |ctx, values| {
+            let ctx = RuleCtx::new(ctx);
+            let valued_pat_vars = P::Valued::from_plain_values(values);
+            action(ctx, &valued_pat_vars).unwrap();
+            Some(())
+        })
+        .unwrap();
+    }
+
+    fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId {
+        let mut egraph = self.egraph.lock().unwrap();
+        add_ruleset(&mut egraph, rule_set).unwrap();
+        RuleSetId(rule_set)
+    }
+
+    #[track_caller]
+    fn run_ruleset(&self, ruleset_id: RuleSetId, until: RunConfig) -> Vec<String> {
+        let mut egraph = self.egraph.lock().unwrap();
+        egraph
+            .run_program(vec![Command::RunSchedule(Schedule::Run(
+                span!(),
+                egglog::ast::RunConfig {
+                    ruleset: ruleset_id.0.to_owned(),
+                    until,
+                },
+            ))])
+            .unwrap()
     }
 }

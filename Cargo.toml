@@ -11,6 +11,7 @@ readme.workspace = true
 [features]
 
 [dependencies]
+derive_more = { workspace = true }
 smallvec = "1.15.1"
 symbol_table = { version = "0.4.0", features = ["global"] }
 inventory = "0.3.20"
@@ -19,12 +20,11 @@ dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
-egglog = { git = "https://github.com/MilkBlock/egglog", rev="41710d945bb01b3ed5a4c17ff432b235763a9ef6"}
-derive_more.workspace = true
+egglog = { git = "https://github.com/MilkBlock/egglog", rev = "41710d945bb01b3ed5a4c17ff432b235763a9ef6" }
 
 [workspace]
 members = ["eggplant-macros"]
-resolver = "2"  # 推荐使用 2021 Edition 的解析kkkk
+resolver = "2"                # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
@@ -36,6 +36,11 @@ license = "MIT"
 readme = "README.md"
 
 [workspace.dependencies]
-eggplant-macros = {path = "./eggplant-macros", version = "0.1.0"}
+eggplant-macros = { path = "./eggplant-macros", version = "0.1.0" }
 # egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}
-derive_more = { version = "2.0.1", features = ["deref_mut", "deref", "into_iterator"] }
+derive_more = { version = "2.0.1", features = [
+    "deref_mut",
+    "deref",
+    "into_iterator",
+    "debug",
+] }

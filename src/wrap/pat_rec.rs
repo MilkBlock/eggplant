@@ -1,51 +1,101 @@
 use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
-use egglog::ast::Command;
 
 use super::*;
 use dashmap::DashMap;
-use egglog::{EGraph, SerializeConfig, util::IndexSet};
-use std::{path::PathBuf, sync::Mutex};
+use derive_more::Debug;
+use egglog::{
+    TermDag,
+    ast::{Facts, GenericFact},
+    span,
+    util::IndexSet,
+};
+use std::{
+    collections::HashMap,
+    sync::{Mutex, atomic::AtomicU32},
+};
 
+#[derive(Debug)]
 pub struct PatRecorder {
-    pub egraph: Mutex<EGraph>,
-    map: DashMap<Sym, WorkAreaNode>,
-    pub place_holders: Mutex<IndexSet<Sym>>,
+    #[debug(skip)]
+    map: DashMap<Sym, PatRecordNode>,
+    /// place_holders field records current building pattern's all place holders
+    pub patterns: Mutex<HashMap<PatId, HashMap<Sym, &'static str>>>,
+    /// one pattern may have multiple root nodes
+    #[debug(skip)]
+    pub root_table: DashMap<PatId, Vec<Sym>>,
     _registry: EgglogTypeRegistry,
+    /// next_pat_id increment when on_record_end is called
+    next_pat_id: AtomicU32,
+}
+struct PatRecordNode {
+    work_node: WorkAreaNode,
+    pat_id: PatId,
+}
+
+enum _RecordNodeTy {
+    PlaceHolder(String),
+    Normal,
+}
+
+impl PatRecordNode {
+    pub fn new_normal(node: Box<dyn EgglogNode>, pat_id: u32) -> Self {
+        Self {
+            work_node: WorkAreaNode {
+                preds: Syms::default(),
+                egglog: node,
+                next: None,
+                prev: None,
+            },
+            pat_id: PatId(pat_id),
+        }
+    }
+    pub fn new_place_holder(node: Box<dyn EgglogNode>, pat_id: u32) -> Self {
+        Self {
+            work_node: WorkAreaNode {
+                preds: Syms::default(),
+                egglog: node,
+                next: None,
+                prev: None,
+            },
+            pat_id: PatId(pat_id),
+        }
+    }
+    pub fn succs_mut(&mut self) -> impl Iterator<Item = &mut Sym> {
+        self.work_node.egglog.succs_mut().into_iter()
+    }
+    #[allow(unused)]
+    pub fn preds_mut(&mut self) -> impl Iterator<Item = &mut Sym> {
+        self.work_node.preds.iter_mut()
+    }
+    pub fn succs(&self) -> impl Iterator<Item = Sym> {
+        self.work_node.egglog.succs().into_iter()
+    }
+    pub fn preds(&self) -> impl Iterator<Item = Sym> {
+        self.work_node.preds.iter().cloned()
+    }
+    pub fn next(&self) -> Option<&Sym> {
+        self.work_node.next.as_ref()
+    }
 }
 
 /// Pattern Recorder, so that you could define pattern in a function
 impl PatRecorder {
-    pub fn new_with_type_defs(type_defs: Vec<Command>) -> Self {
+    pub fn new() -> Self {
         Self {
-            egraph: Mutex::new({
-                let mut e = EGraph::default();
-                log::info!("{:?}", type_defs);
-                e.run_program(type_defs).unwrap();
-                e
-            }),
             map: DashMap::default(),
             _registry: EgglogTypeRegistry::new_with_inventory(),
-            place_holders: Mutex::new(IndexSet::default()),
+            patterns: Mutex::new(Default::default()),
+            next_pat_id: AtomicU32::new(0),
+            root_table: DashMap::default(),
         }
-    }
-    pub fn new() -> Self {
-        Self::new_with_type_defs(EgglogTypeRegistry::collect_type_defs())
-    }
-    pub fn to_dot(&self, file_name: PathBuf) {
-        let egraph = self.egraph.lock().unwrap();
-        let serialized = egraph.serialize(SerializeConfig::default());
-        let dot_path = file_name.with_extension("dot");
-        serialized
-            .to_dot_file(dot_path.clone())
-            .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
     }
     // collect all ancestors of cur_sym, without cur_sym
     pub fn collect_latest_ancestors(&self, cur_sym: Sym, index_set: &mut IndexSet<Sym>) {
         let node = self.map.get(&cur_sym).unwrap();
-        let succss = node.preds.clone();
+        let succss = node.work_node.preds.clone();
         drop(node);
         for pred in succss {
-            if index_set.contains(&pred) || self.map.get(&pred).unwrap().next.is_some() {
+            if index_set.contains(&pred) || self.map.get(&pred).unwrap().next().is_some() {
                 // do nothing
             } else {
                 index_set.insert(pred);
@@ -53,8 +103,8 @@ impl PatRecorder {
             }
         }
     }
-    /// start nodes is asserted to be zero input degree
-    pub fn topo_sort(&self, starts: IndexSet<Sym>, index_set: &IndexSet<Sym>) -> Vec<Sym> {
+    /// start nodes is asserted to be zero in degree
+    pub fn _topo_sort(&self, starts: IndexSet<Sym>, index_set: &IndexSet<Sym>) -> Vec<Sym> {
         let map = &self.map;
         // init in degrees and out degrees
         let mut ins = Vec::new();
@@ -64,8 +114,7 @@ impl PatRecorder {
         for (i, (in_degree, out_degree)) in ins.iter_mut().zip(outs.iter_mut()).enumerate() {
             let sym = index_set[i];
             let node = map.get(&sym).unwrap();
-            *in_degree =
-                PatRecorder::degree_in_subgraph(node.preds().into_iter().map(|x| *x), index_set);
+            *in_degree = PatRecorder::degree_in_subgraph(node.preds().into_iter(), index_set);
             *out_degree = PatRecorder::degree_in_subgraph(node.succs().into_iter(), index_set);
         }
         let mut rst = Vec::new();
@@ -77,17 +126,59 @@ impl PatRecorder {
         }
         while !wait_for_release.is_empty() {
             let popped = wait_for_release.pop().unwrap();
-            for target in &map.get(&popped).unwrap().preds {
-                let idx = index_set.get_index_of(target).unwrap();
+            for target in map.get(&popped).unwrap().preds() {
+                let idx = index_set.get_index_of(&target).unwrap();
                 outs[idx] -= 1;
                 if outs[idx] == 0 {
-                    wait_for_release.push(*target);
+                    wait_for_release.push(target);
                 }
             }
             rst.push(popped);
         }
         rst
     }
+    /// topo all input nodes with specified direction
+    pub fn topo_sort(&self, index_set: &IndexSet<Sym>, direction: TopoDirection) -> Vec<Sym> {
+        // init in degrees and out degrees
+        let mut ins = Vec::new();
+        let mut outs = Vec::new();
+        ins.resize(index_set.len(), 0);
+        outs.resize(index_set.len(), 0);
+        for (i, (in_degree, out_degree)) in ins.iter_mut().zip(outs.iter_mut()).enumerate() {
+            let sym = index_set[i];
+            let node = self.map.get(&sym).unwrap();
+            *in_degree = Self::degree_in_subgraph(node.preds().into_iter().map(|x| x), index_set);
+            *out_degree = Self::degree_in_subgraph(node.succs().into_iter(), index_set);
+        }
+        let (mut _ins, mut outs) = match direction {
+            TopoDirection::Up => (ins, outs),
+            TopoDirection::Down => (outs, ins),
+        };
+        let mut rst = Vec::new();
+        let mut wait_for_release = Vec::new();
+        // start node should not have any out edges in subgraph
+        for (idx, _value) in outs.iter().enumerate() {
+            if 0 == outs[idx] {
+                wait_for_release.push(index_set[idx]);
+            }
+        }
+        while !wait_for_release.is_empty() {
+            let popped = wait_for_release.pop().unwrap();
+            for target in self.map.get(&popped).unwrap().preds() {
+                if let Some(idx) = index_set.get_index_of(&target) {
+                    outs[idx] -= 1;
+                    if outs[idx] == 0 {
+                        log::debug!("{} found to be 0", target);
+                        wait_for_release.push(target);
+                    }
+                }
+            }
+            rst.push(popped);
+        }
+        log::debug!("{:?}", rst);
+        rst
+    }
+
     /// calculate the edges in the subgraph
     pub fn degree_in_subgraph(nodes: impl Iterator<Item = Sym>, index_set: &IndexSet<Sym>) -> u32 {
         nodes.fold(0, |acc, item| {
@@ -99,20 +190,39 @@ impl PatRecorder {
         })
     }
 
-    fn add_node(&self, node: &(impl EgglogNode + 'static)) {
-        self.send(TxCommand::NativeCommand {
-            command: Command::Action(node.to_egglog()),
-        });
-        let mut node = WorkAreaNode::new(node.clone_dyn());
-        let sym = node.cur_sym();
+    fn add_node_normal(&self, node: &(impl EgglogNode + 'static)) {
+        let node = node.clone_dyn();
+        let mut node = PatRecordNode::new_normal(
+            node,
+            self.next_pat_id.load(std::sync::atomic::Ordering::Acquire),
+        );
+        let sym = node.work_node.cur_sym();
         for succ_node in node.succs_mut() {
             self.map
                 .get_mut(succ_node)
                 .unwrap_or_else(|| panic!("node {} not found", succ_node.as_str()))
+                .work_node
                 .preds
                 .push(sym);
         }
-        self.map.insert(node.cur_sym(), node);
+        self.map.insert(node.work_node.cur_sym(), node);
+    }
+    fn add_node_place_holder(&self, node: &(impl EgglogNode + 'static)) {
+        let node = node.clone_dyn();
+        let mut node = PatRecordNode::new_place_holder(
+            node,
+            self.next_pat_id.load(std::sync::atomic::Ordering::Acquire),
+        );
+        let sym = node.work_node.cur_sym();
+        for succ_node in node.succs_mut() {
+            self.map
+                .get_mut(succ_node)
+                .unwrap_or_else(|| panic!("node {} not found", succ_node.as_str()))
+                .work_node
+                .preds
+                .push(sym);
+        }
+        self.map.insert(node.work_node.cur_sym(), node);
     }
 }
 
@@ -120,57 +230,35 @@ unsafe impl Send for PatRecorder {}
 unsafe impl Sync for PatRecorder {}
 // MARK: Tx
 impl Tx for PatRecorder {
-    fn send(&self, received: TxCommand) {
-        match received {
-            TxCommand::StringCommand { command } => {
-                {
-                    log::info!("{}", command);
-                    let mut egraph = self.egraph.lock().unwrap();
-                    egraph
-                        .parse_and_run_program(None, command.as_str())
-                        .unwrap();
-                };
-            }
-            TxCommand::NativeCommand { command } => {
-                let mut egraph = self.egraph.lock().unwrap();
-                egraph.run_program(vec![command]).unwrap();
-            }
-        }
+    fn send(&self, _: TxCommand) {
+        panic!("should not impl send")
     }
 
     fn on_new(&self, symnode: &(impl EgglogNode + 'static)) {
-        self.add_node(symnode);
+        self.add_node_normal(symnode);
     }
 
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
-        input: <F::Input as EgglogFuncInputs>::Ref<'a>,
-        output: <F::Output as EgglogFuncOutput>::Ref<'a>,
+        _: <F::Input as EgglogFuncInputs>::Ref<'a>,
+        _: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
-        let input_nodes = input.as_evalues();
-        let input_syms = input_nodes.iter().map(|x| x.get_symlit());
-        let output = output.as_evalue().get_symlit();
-        self.send(TxCommand::StringCommand {
-            command: format!(
-                "(set ({} {}) {} )",
-                F::FUNC_NAME,
-                input_syms.map(|x| format!("{}", x)).collect::<String>(),
-                output
-            ),
-        });
+        panic!("should not impl on_func_set");
     }
 
-    fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
-        self.send(TxCommand::StringCommand {
-            command: format!("(union {} {})", node1.cur_sym(), node2.cur_sym()),
-        });
+    fn on_union(&self, _: &(impl EgglogNode + 'static), _: &(impl EgglogNode + 'static)) {
+        panic!("should not impl on_union");
     }
 }
 
-impl NodeDropper for PatRecorder {}
+impl NodeDropper for PatRecorder {
+    fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
+        // todo pattern combine feature
+    }
+}
 impl NodeOwner for PatRecorder {
-    type OwnerSpecificDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = u32;
 }
 impl NodeSetter for PatRecorder {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
@@ -179,9 +267,79 @@ impl NodeSetter for PatRecorder {
 }
 
 impl PatRec for PatRecorder {
-    fn new_place_holder(&self, node: &(impl EgglogNode + 'static)) {
-        self.add_node(node);
-        let mut place_holders = self.place_holders.lock().unwrap();
-        place_holders.insert(node.cur_sym());
+    fn on_new_place_holder(&self, node: &(impl EgglogNode + 'static)) {
+        self.add_node_place_holder(node);
+    }
+
+    fn on_record_start(&self) {
+        println!("record start");
+    }
+
+    fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId {
+        println!("record end");
+        let current_pat_id = PatId(self.next_pat_id.load(std::sync::atomic::Ordering::Acquire));
+        // build root_table, put all nodes with 0 indegree into root_table
+        let sym_set = IndexSet::from_iter(self.map.iter().map(|entry| *entry.key()));
+        let mut roots = Vec::new();
+        for node in self.map.iter() {
+            let in_deg = Self::degree_in_subgraph(node.value().preds(), &sym_set);
+            if in_deg == 0 {
+                // push root node
+                roots.push(node.value().work_node.cur_sym());
+            }
+        }
+        self.root_table.insert(current_pat_id, roots);
+        self.patterns
+            .lock()
+            .unwrap()
+            .insert(current_pat_id, pat_vars.sym2ph_name());
+
+        PatId(
+            self.next_pat_id
+                .fetch_add(1, std::sync::atomic::Ordering::SeqCst),
+        )
+    }
+    // find pattern defined in current Tx and transformed it into [Facts<String,String>]
+    // one pattern may has multiple roots
+    fn pat_to_facts(&self, pat_id: PatId) -> Facts<String, String> {
+        let roots = self
+            .root_table
+            .get(&pat_id)
+            .unwrap()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+        // build TermDag from roots
+        let pat_nodes = IndexSet::from_iter(self.map.iter().filter_map(|x| {
+            if x.value().pat_id == pat_id {
+                Some(*x.key())
+            } else {
+                None
+            }
+        }));
+        let topo_syms = self.topo_sort(&pat_nodes, TopoDirection::Up);
+        let mut term_dag = TermDag::default();
+        let mut sym2term = HashMap::new();
+        println!("{:?}", topo_syms);
+        for sym in topo_syms {
+            let node = self.map.get(&sym).unwrap();
+            println!("{:?} {}", term_dag, sym);
+            let _ = node.work_node.egglog.to_term(
+                &mut term_dag,
+                &mut sym2term,
+                self.patterns.lock().unwrap().get(&pat_id).unwrap(),
+            );
+        }
+
+        let mut facts = Vec::new();
+        println!("{:?}", term_dag);
+        for root in roots {
+            facts.push(GenericFact::Fact(term_dag.term_to_expr(
+                term_dag.get(*sym2term.get(&root).unwrap()),
+                span!(),
+            )));
+        }
+
+        Facts(facts)
     }
 }

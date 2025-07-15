@@ -1,14 +1,13 @@
 use eggplant::SingletonGetter;
 use eggplant::basic_tx_no_vt;
-use eggplant::eggplant_ty;
 use std::path::PathBuf;
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum A {
     ACon { b: B },
 }
 
-#[eggplant_ty]
+#[eggplant::ty]
 enum B {
     BCon { a: A },
     Empty {},

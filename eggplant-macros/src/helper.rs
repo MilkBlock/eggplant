@@ -60,7 +60,7 @@ pub fn eggplant_path() -> String {
         crate_name("eggplant"),
         std::env::var("CARGO_CRATE_NAME").as_deref(),
     ) {
-        (Ok(FoundCrate::Itself), Ok(_)) => "::eggplant".to_string(),
+        (Ok(FoundCrate::Itself), Ok(_)) => "eggplant".to_string(),
         (Ok(FoundCrate::Name(name)), _) => {
             let ident = proc_macro2::Ident::new(&name, Span::call_site());
             format!("::{}", ident)
@@ -173,19 +173,18 @@ pub fn is_basic_ty(ty: &proc_macro2::TokenStream) -> bool {
     false
 }
 pub fn get_first_generic(ty: &Type) -> &Type {
-    if let Type::Path(type_path) = ty {
-        if let Some(segment) = type_path.path.segments.last() {
-            if let PathArguments::AngleBracketed(args) = &segment.arguments {
-                let arg = args
-                    .args
-                    .iter()
-                    .nth(0)
-                    .expect("type should at least have one generic");
-                if let GenericArgument::Type(inner_ty) = arg {
-                    // inner_ty is Vec<T>'s T
-                    return inner_ty;
-                }
-            }
+    if let Type::Path(type_path) = ty
+        && let Some(segment) = type_path.path.segments.last()
+        && let PathArguments::AngleBracketed(args) = &segment.arguments
+    {
+        let arg = args
+            .args
+            .iter()
+            .nth(0)
+            .expect("type should at least have one generic");
+        if let GenericArgument::Type(inner_ty) = arg {
+            // inner_ty is Vec<T>'s T
+            return inner_ty;
         }
     }
     panic!("first generic generic can only be Type")
