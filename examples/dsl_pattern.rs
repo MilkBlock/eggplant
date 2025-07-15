@@ -1,7 +1,4 @@
-use eggplant::{
-    Commit, PH, PatRecSgl, RuleRunnerSgl, RunConfig, SingletonGetter, WithPatRecSgl,
-    basic_patttern_recorder, basic_tx_rx_vt_pr, tx_rx_vt_pr,
-};
+use eggplant::{Commit, PH, PatRecSgl, RuleRunnerSgl, RunConfig, SingletonGetter, tx_rx_vt_pr};
 
 #[eggplant::ty]
 enum Expr {
@@ -16,6 +13,7 @@ tx_rx_vt_pr!(MyTx, MyPatRec);
 
 #[eggplant::patttern_vars]
 struct MyPatternVars<PS: PatRecSgl> {
+    #[allow(unused)]
     expr: PH<Expr<PS>>,
 }
 fn my_pat<PR: PatRecSgl>() -> MyPatternVars<PR> {
@@ -30,7 +28,7 @@ fn main() {
     root.commit();
 
     let ruleset = MyTx::new_rule_set("my_rule_set");
-    MyTx::add_rule(ruleset, my_pat, |ctx, values| {
+    MyTx::add_rule(ruleset, my_pat, |_ctx, values| {
         println!("hello here is a Node Root pair {:?}", values);
         Some(())
     });
