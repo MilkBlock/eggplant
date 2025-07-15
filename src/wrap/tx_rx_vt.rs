@@ -442,7 +442,7 @@ impl Tx for TxRxVT {
                 egraph.parse_and_run_program(None, &command).unwrap();
             }
             TxCommand::NativeCommand { command } => {
-                println!("{}", command.to_string());
+                log::info!("{}", command.to_string());
                 egraph.run_program(vec![command]).unwrap();
             }
         }
@@ -608,7 +608,7 @@ impl Rx for TxRxVT {
         let (term_dag, start_term, cost) = egraph.extract_value(sort, value.val).unwrap();
 
         let root_idx = term_dag.lookup(&start_term);
-        println!("{:?}, {:?}", term_dag, start_term);
+        log::debug!("term_dag:{:?}, {:?}", term_dag, start_term);
         let mut ret_sym = None;
 
         let topo = topo_sort(&term_dag);

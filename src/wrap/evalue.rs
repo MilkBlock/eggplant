@@ -17,7 +17,7 @@ use crate::{EgglogNode, Sym};
 /// before commited, in that way we should represent them by Sym in place of Value.
 pub trait EValue {
     fn get_value(&self, egraph: &mut EGraph) -> Value;
-    fn get_eexpr(&self) -> GenericExpr<String, String>;
+    fn get_egglog_expr(&self) -> GenericExpr<String, String>;
     fn get_symlit(&self) -> SymLit;
 }
 
@@ -30,8 +30,8 @@ impl<T: EgglogNode> EValue for T {
     fn get_value(&self, egraph: &mut EGraph) -> Value {
         self.cur_sym().get_value(egraph)
     }
-    fn get_eexpr(&self) -> Expr {
-        self.cur_sym().get_eexpr()
+    fn get_egglog_expr(&self) -> Expr {
+        self.cur_sym().get_egglog_expr()
     }
 
     fn get_symlit(&self) -> SymLit {
@@ -40,9 +40,9 @@ impl<T: EgglogNode> EValue for T {
 }
 impl EValue for Sym {
     fn get_value(&self, egraph: &mut EGraph) -> Value {
-        egraph.eval_expr(&self.get_eexpr()).unwrap().1
+        egraph.eval_expr(&self.get_egglog_expr()).unwrap().1
     }
-    fn get_eexpr(&self) -> Expr {
+    fn get_egglog_expr(&self) -> Expr {
         Expr::Call(span!(), self.to_string(), vec![])
     }
     fn get_symlit(&self) -> SymLit {
@@ -56,7 +56,7 @@ pub fn get_func_value(egraph: &mut EGraph, name: &str, args: Box<[&dyn EValue]>)
         .eval_expr(&egglog::ast::GenericExpr::Call(
             span!(),
             name.to_string(),
-            args.iter().map(|y| y.get_eexpr()).collect(),
+            args.iter().map(|y| y.get_egglog_expr()).collect(),
         ))
         .unwrap();
     expr_value
@@ -66,7 +66,7 @@ impl EValue for i64 {
     fn get_value(&self, egraph: &mut EGraph) -> Value {
         egraph.base_to_value(*self)
     }
-    fn get_eexpr(&self) -> GenericExpr<String, String> {
+    fn get_egglog_expr(&self) -> GenericExpr<String, String> {
         GenericExpr::Lit(span!(), egglog::ast::Literal::Int(*self))
     }
     fn get_symlit(&self) -> SymLit {
@@ -77,7 +77,7 @@ impl EValue for String {
     fn get_value(&self, egraph: &mut EGraph) -> Value {
         egraph.base_to_value(self.clone())
     }
-    fn get_eexpr(&self) -> GenericExpr<String, String> {
+    fn get_egglog_expr(&self) -> GenericExpr<String, String> {
         GenericExpr::Lit(span!(), egglog::ast::Literal::String(self.clone()))
     }
     fn get_symlit(&self) -> SymLit {
@@ -88,7 +88,7 @@ impl EValue for bool {
     fn get_value(&self, egraph: &mut EGraph) -> Value {
         egraph.base_to_value(*self)
     }
-    fn get_eexpr(&self) -> GenericExpr<String, String> {
+    fn get_egglog_expr(&self) -> GenericExpr<String, String> {
         GenericExpr::Lit(span!(), egglog::ast::Literal::Bool(*self))
     }
     fn get_symlit(&self) -> SymLit {

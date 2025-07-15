@@ -272,11 +272,11 @@ impl PatRec for PatRecorder {
     }
 
     fn on_record_start(&self) {
-        println!("record start");
+        log::debug!("record start");
     }
 
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId {
-        println!("record end");
+        log::debug!("record end");
         let current_pat_id = PatId(self.next_pat_id.load(std::sync::atomic::Ordering::Acquire));
         // build root_table, put all nodes with 0 indegree into root_table
         let sym_set = IndexSet::from_iter(self.map.iter().map(|entry| *entry.key()));
@@ -320,10 +320,10 @@ impl PatRec for PatRecorder {
         let topo_syms = self.topo_sort(&pat_nodes, TopoDirection::Up);
         let mut term_dag = TermDag::default();
         let mut sym2term = HashMap::new();
-        println!("{:?}", topo_syms);
+        log::debug!("topo:{:?}", topo_syms);
         for sym in topo_syms {
             let node = self.map.get(&sym).unwrap();
-            println!("{:?} {}", term_dag, sym);
+            log::debug!("term_dag:{:?} {}", term_dag, sym);
             let _ = node.work_node.egglog.to_term(
                 &mut term_dag,
                 &mut sym2term,
@@ -332,7 +332,7 @@ impl PatRec for PatRecorder {
         }
 
         let mut facts = Vec::new();
-        println!("{:?}", term_dag);
+        log::debug!("{:?}", term_dag);
         for root in roots {
             facts.push(GenericFact::Fact(term_dag.term_to_expr(
                 term_dag.get(*sym2term.get(&root).unwrap()),
