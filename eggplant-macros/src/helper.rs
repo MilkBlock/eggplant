@@ -215,6 +215,13 @@ pub fn variant_to_ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStre
         },
     )
 }
+pub fn variant_to_valued_ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
+    variant_to_mapped_ident_type_list(
+        variant,
+        |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
+        |complex, complex_ty| Some(quote! {#complex: impl #W::ToValue<#complex_ty<(), ()>>}),
+    )
+}
 pub fn variant_to_ref_node_list_leave_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
     variant_to_mapped_ident_type_list(
         variant,
@@ -309,15 +316,3 @@ pub fn variant_marker_names(data_enum: &DataEnum) -> (Vec<Ident>, Vec<Ident>) {
         .map(|v| variant_marker_name(v))
         .collect()
 }
-
-// /// given variant a{ x:Box<X>}
-// /// return  dyn AsRef<#_first_generic<T, ()>>
-// /// given variant a{ x:i32}
-// /// return  i32
-// pub fn variant_to_as_ref_type(variant: &Variant) -> (proc_macro2::TokenStream, bool){
-//     let mut is_basic = false;
-//     (variant_to_mapped_ident_type_list(variant,
-//         |_,basic_ty|{is_basic = true;Some( quote!{#basic_ty})},
-//         |_,complex|{Some(quote!{dyn AsRef<#complex<T,()>>})}).first().unwrap().clone()
-//     ,is_basic)
-// }

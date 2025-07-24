@@ -20,7 +20,8 @@ dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "41710d945bb01b3ed5a4c17ff432b235763a9ef6" }
+# egglog = { git = "https://github.com/MilkBlock/egglog", rev = "41710d945bb01b3ed5a4c17ff432b235763a9ef6" }
+egglog = { git = "https://github.com/MilkBlock/egglog" }
 
 [workspace]
 members = ["eggplant-macros"]

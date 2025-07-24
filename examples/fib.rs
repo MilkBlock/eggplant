@@ -48,8 +48,8 @@ fn main() {
             let f0 = ctx.value_to_base::<i64>(*f0);
             let f1 = ctx.value_to_base::<i64>(*f1);
 
-            let y = ctx.base_to_value::<i64>(x + 2);
-            let f2 = ctx.base_to_value::<i64>(f0 + f1);
+            let y = ctx.base_to_value(x + 2);
+            let f2 = ctx.base_to_value(f0 + f1);
             ctx.insert("fib", [y, f2].into_iter());
             Some(())
         },

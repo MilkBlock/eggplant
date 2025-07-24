@@ -16,7 +16,7 @@ struct MyPatternVars<PS: PatRecSgl> {
     #[allow(unused)]
     expr: PH<Expr<PS>>,
 }
-fn my_pat<PR: PatRecSgl>() -> MyPatternVars<PR> {
+fn my_pat<PS: PatRecSgl>() -> MyPatternVars<PS> {
     let expr_var = Expr::new_ph();
     let _root = GraphRoot::new(&expr_var);
     MyPatternVars::new(expr_var)
@@ -28,8 +28,13 @@ fn main() {
     root.commit();
 
     let ruleset = MyTx::new_rule_set("my_rule_set");
-    MyTx::add_rule(ruleset, my_pat, |_ctx, values| {
+    MyTx::add_rule(ruleset, my_pat, |ctx, values| {
         println!("hello here is a Node Root pair {:?}", values);
+        let con_node = ctx.insert_const(5);
+        ctx.insert_root(con_node);
+        // rule_ctx.insert(table, row);
+        // _ctx.rule_ctx.insert(table, row);
+        // _ctx.rule_ctx.lookup(table, key)
         Some(())
     });
     MyTx::run_ruleset(ruleset, RunConfig::None);

@@ -648,7 +648,7 @@ impl RuleRunner for TxRxVTPR {
         &self,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(RuleCtx, &P::Valued) -> Option<()> + Send + Sync + 'static + Clone,
+        action: impl Fn(&mut RuleCtx, &P::Valued) -> Option<()> + Send + Sync + 'static + Clone,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
         T::PatRecSgl::on_record_start();
@@ -659,9 +659,9 @@ impl RuleRunner for TxRxVTPR {
         let vars = &P::into_str_arcsort(&egraph);
 
         rust_rule(&mut egraph, rule_set.0, vars, facts, move |ctx, values| {
-            let ctx = RuleCtx::new(ctx);
+            let mut ctx = RuleCtx::new(ctx);
             let valued_pat_vars = P::Valued::from_plain_values(values);
-            action(ctx, &valued_pat_vars).unwrap();
+            action(&mut ctx, &valued_pat_vars).unwrap();
             Some(())
         })
         .unwrap();

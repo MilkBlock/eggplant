@@ -1,7 +1,6 @@
 use crate::{
-    EValue, EgglogTy, SymLit,
+    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, RuleCtx, SymLit,
     wrap::tx_rx_vt::TxRxVT,
-    {EgglogFunc, EgglogFuncInputs, EgglogFuncOutput},
 };
 use derive_more::{Deref, DerefMut, IntoIterator};
 use egglog::{
@@ -561,7 +560,7 @@ impl From<Vec<Sym>> for Syms {
 /// global commit
 /// This trait should be implemented for Tx singleton
 /// usage:
-/// ```rust
+/// ```text
 /// let last_version_node = node.clone();
 /// Tx::commit(&self, node);
 /// ```
@@ -596,7 +595,7 @@ where
 /// single node commit
 /// This trait should be implemented for Node
 /// usage:
-/// ```rust
+/// ```text
 /// let last_version_node = node.clone();
 /// node.set_a()
 ///     .set_b()
@@ -803,7 +802,7 @@ impl SymOrValueConstructor for Sym {
 /// a wrapper for EgglogBackend Value with type info
 /// It's useful for Node Type because in rust_rule's action part you should specify
 /// value for Node rather than Sym
-pub struct Value<T: EgglogTy> {
+pub struct Value<T> {
     pub val: egglog::Value,
     p: PhantomData<T>,
 }
@@ -813,6 +812,9 @@ impl<T: EgglogTy> Value<T> {
             val,
             p: PhantomData,
         }
+    }
+    pub fn detype(&self) -> egglog::Value {
+        self.val
     }
 }
 impl<T: EgglogTy> fmt::Debug for Value<T> {
@@ -837,3 +839,17 @@ pub trait ToStrArcSort {
 pub trait FromPlainValues {
     fn from_plain_values(values: &[egglog::Value]) -> Self;
 }
+
+pub trait ToValue<ValueTy> {
+    fn to_value(&self, ctx: &mut RuleCtx) -> Value<ValueTy>;
+}
+
+impl<T: EgglogTy> Clone for Value<T> {
+    fn clone(&self) -> Self {
+        Self {
+            val: self.val.clone(),
+            p: PhantomData,
+        }
+    }
+}
+impl<T: EgglogTy> Copy for Value<T> {}

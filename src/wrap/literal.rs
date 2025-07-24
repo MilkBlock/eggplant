@@ -1,6 +1,11 @@
 use std::any::type_name;
 
-use egglog::{ast::Literal, sort::OrderedFloat};
+use egglog::{
+    ast::Literal,
+    sort::{Boxed, OrderedFloat, Q},
+};
+
+use crate::ToValue;
 
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;
@@ -109,5 +114,35 @@ impl FromBase<f64> for Literal {
 impl FromBase<String> for Literal {
     fn from_base(base: String) -> Self {
         Literal::String(base)
+    }
+}
+
+impl ToValue<i64> for i64 {
+    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<i64> {
+        ctx.intern_base(*self)
+    }
+}
+
+impl ToValue<bool> for bool {
+    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<bool> {
+        ctx.intern_base(*self)
+    }
+}
+
+impl ToValue<String> for String {
+    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<String> {
+        ctx.intern_base(self.clone())
+    }
+}
+
+impl ToValue<Q> for Q {
+    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<Q> {
+        ctx.intern_base(self.clone())
+    }
+}
+
+impl ToValue<f64> for f64 {
+    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<f64> {
+        ctx.intern_base(Boxed(OrderedFloat(*self)))
     }
 }

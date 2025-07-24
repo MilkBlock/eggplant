@@ -12,6 +12,9 @@ use syn::{
 mod helper;
 use helper::{DE, E, INVE, W};
 
+use crate::enum_related::*;
+mod enum_related;
+
 #[proc_macro_attribute]
 pub fn func(
     attr: proc_macro::TokenStream,
@@ -524,6 +527,11 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                 }
                             }
                         }
+                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::ToValue<self::#name_node<T, ()>> for #W::Value<self::#name_node<T, V>> {
+                            fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<T, ()>> {
+                                #W::Value::new(self.detype())
+                            }
+                        }
                         impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
                             fn clone(&self) -> Self {
                                 Self {
@@ -626,153 +634,30 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 }
             });
 
-            let locate_next_match_arms = data_enum.variants.iter().map(|variant| {
-                let variant_idents = variant_to_field_ident(variant);
-                let mapped_variant_idents = variant_to_mapped_ident_type_list(
-                    variant,
-                    |_, _| Some(quote! {}),
-                    |x, _| Some(quote! {T::set_next(#x.erase_mut());}),
-                );
-                let (_variant_marker, variant_name) = variant_marker_name(variant);
-                quote! {
-                    #name_inner::#variant_name {#(#variant_idents),* } => {
-                        T::set_next(self.node.sym.erase_mut());
-                        #(#mapped_variant_idents)*
-                    }
-                }
-            });
-            let locate_prev_match_arms = data_enum.variants.iter().map(|variant| {
-                let variant_idents = variant_to_field_ident(variant);
-                let mapped_variant_idents = variant_to_mapped_ident_type_list(
-                    variant,
-                    |_, _| Some(quote! {}),
-                    |x, _| Some(quote! {T::set_prev(#x.erase_mut());}),
-                );
-                let (_variant_marker, variant_name) = variant_marker_name(variant);
-                quote! {
-                    #name_inner::#variant_name {#(#variant_idents),* } => {
-                        T::set_prev(self.node.sym.erase_mut());
-                        #(#mapped_variant_idents)*
-                    }
-                }
-            });
-            let to_term_match_arms = data_enum.variants.iter().map(|variant| {
-                let variant_idents = variant_to_field_ident(variant);
-                let variant_name = &variant.ident;
-                let body = variant_to_mapped_ident_type_list(variant,
-                    |basic_ident, _|{
-                        Some(quote!{
-                            let #basic_ident = term_dag.lit(#E::ast::Literal::from_base(#basic_ident.clone()));
-                        })
-                    },
-                    |complex_ident, _|{
-                        Some(quote!{
-                            let #complex_ident = sym2term.get(&#complex_ident.erase()).cloned().unwrap();
-                            let #complex_ident = term_dag.get(#complex_ident).clone();
-                        })
-                    }
-                );
-                quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
-                    #(#body)*
-                    let term =term_dag.app(stringify!(#variant_name).to_string(),vec![#( #variant_idents ),* ]);
-                    let term_id = term_dag.lookup(&term);
-                    sym2term.insert(self.cur_sym(), term_id);
-                    term_id
-                }}
-            });
-            let (new_fns, new_fn_names, new_fn_args, new_fn_arg_idents):
-                (Vec<proc_macro2::TokenStream>,Vec<Ident>
-                    ,Vec<Vec<TokenStream>>
-                    ,Vec<Vec<TokenStream>>
-                ) = data_enum.variants.iter().map(|variant|{
-                let ref_node_list = variant_to_ref_node_list(&variant);
-                let ref_node_list_leave_idents = variant_to_ref_node_list_leave_ident(&variant);
+            let locate_next_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| locate_next_match_arms_ts(x, &name_inner));
+            let locate_prev_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| locate_prev_match_arms_ts(x, &name_inner));
 
-                let _new_fn_args= variant_to_sym_list(&variant);
-                let field_idents_assign = variant_to_assign_node_field_list(&variant);
-                let _new_fn_field_idents_assign = variant_to_typed_assign_node_field_list(&variant);
-                let field_idents = variant_to_field_ident(&variant);
-                let (variant_marker,variant_name) = variant_marker_name(variant);
-                let new_fn_name = format_ident!("new_{}",variant_name.to_string().to_snake_case());
-                let _new_fn_name = format_ident!("_new_{}",variant_name.to_string().to_snake_case());
-                let new_from_term_fn_name = format_ident!("new_{}_from_term",variant_name.to_string().to_snake_case());
-                let new_from_term_dyn_fn_name = format_ident!("new_{}_from_term_dyn",variant_name.to_string().to_snake_case());
+            let to_term_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| to_term_match_arms_ts(x, &name_inner));
 
-                let field_ty = variant_to_tys(&variant);
-                let field_assignments: Vec<_> = field_idents.into_iter().zip(field_ty.iter()).enumerate().map(|(i, (ident, ty))| {
-                    if is_basic_ty(ty) {
-                        quote! {
-                            #ident: match term_dag.get(children[#i]) {
-                                #E::Term::Lit(lit) => lit.deliteral(),
-                                #E::Term::Var(v) => panic!(),
-                                #E::Term::App(app,v) => panic!(),
-                            }
-                        }
-                    } else {
-                        quote! {
-                            #ident: term2sym[&children[#i]].typed()
-                        }
-                    }
-                }).collect();
-
-                // MARK: Enum New Fns
-                (quote! {
-                    #[track_caller]
-                    pub fn #new_fn_name(#(#ref_node_list),*) -> self::#name_node<T,#variant_marker>{
-                        let ty = Some(#name_inner::#variant_name {#(#field_idents_assign),*  });
-                        let node = #W::Node {
-                            ty,
-                            sym: #name_counter.next_sym(),
-                            span:Some(std::panic::Location::caller()),
-                            _p:PhantomData,
-                            _s:PhantomData::<#variant_marker>,
-                            sgl_specific: T::OwnerSpecDataInNode::default()
-                        };
-                        let node = #name_node {node};
-                        T::on_new(&node);
-                        node
-                    }
-                    /// with no side-effect (will not send command to EGraph or change node in WorkAreaGraph)
-                    #[track_caller]
-                    pub fn #_new_fn_name(#(#_new_fn_args),*) -> #name_node<T,#variant_marker>{
-                        let ty = Some(#name_inner::#variant_name {#(#_new_fn_field_idents_assign),*  });
-                        let node = #W::Node {
-                            ty,
-                            sym: #name_counter.next_sym(),
-                            span:Some(std::panic::Location::caller()),
-                            _p:PhantomData,
-                            _s:PhantomData::<#variant_marker>,
-                            sgl_specific: T::OwnerSpecDataInNode::default()
-                        };
-                        let node = #name_node {node};
-                        node
-                    }
-                    /// you should guarantee all the dep nodes has been init and store as (TermId, Sym) in term2sym
-                    #[track_caller]
-                    pub fn #new_from_term_fn_name(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> #name_node<T,#variant_marker>{
-                        let children = match term_dag.get(term_id){
-                            #E::Term::App(app,v) => v,
-                            _=> panic!()
-                        };
-                        let ty = Some(#name_inner::#variant_name {#(#field_assignments),*  });
-                        let node = #W::Node {
-                            ty,
-                            sym: #name_counter.next_sym(),
-                            span:Some(std::panic::Location::caller()),
-                            _p:PhantomData,
-                            _s:PhantomData,
-                            sgl_specific: T::OwnerSpecDataInNode::default()
-                        };
-                        let node = self::#name_node {node};
-                        term2sym.insert(term_id, node.cur_sym());
-                        node
-                    }
-                    #[track_caller]
-                    pub fn #new_from_term_dyn_fn_name(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> Box<dyn #W::EgglogNode>{
-                        Box::new(Self::#new_from_term_fn_name(term_id, term_dag, term2sym))
-                    }
-                }, new_fn_name, ref_node_list, ref_node_list_leave_idents)
-            }).collect();
+            let (new_fns, new_fn_names, new_fn_args, new_fn_arg_idents): (
+                Vec<proc_macro2::TokenStream>,
+                Vec<Ident>,
+                Vec<Vec<TokenStream>>,
+                Vec<Vec<TokenStream>>,
+            ) = data_enum
+                .variants
+                .iter()
+                .map(|x| new_fn_ts(x, &name_node, &name_inner, &name_counter))
+                .collect();
             let (new_ph_fns, _new_ph_fn_names, _new_ph_fn_args, _new_ph_fn_arg_idents): (
                 Vec<proc_macro2::TokenStream>,
                 Vec<Ident>,
@@ -781,68 +666,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
             ) = data_enum
                 .variants
                 .iter()
-                .map(|variant| {
-                    let ref_node_list = variant_to_ref_node_list(&variant);
-                    let ref_node_list_leave_idents = variant_to_ref_node_list_leave_ident(&variant);
-
-                    let _new_fn_args = variant_to_sym_list(&variant);
-                    let field_idents_assign = variant_to_field_ident_with_default(&variant);
-                    let _new_fn_field_idents_assign =
-                        variant_to_typed_assign_node_field_list(&variant);
-                    let field_idents = variant_to_field_ident(&variant);
-                    let (variant_marker, variant_name) = variant_marker_name(variant);
-                    let new_ph_fn_name =
-                        format_ident!("new_{}_ph", variant_name.to_string().to_snake_case());
-                    let _new_fn_name =
-                        format_ident!("_new_{}", variant_name.to_string().to_snake_case());
-                    // let new_from_term_fn_name = format_ident!("new_{}_from_term",variant_name.to_string().to_snake_case());
-                    // let new_from_term_dyn_fn_name = format_ident!("new_{}_from_term_dyn",variant_name.to_string().to_snake_case());
-                    let field_ty = variant_to_tys(&variant);
-                    let _field_assignments: Vec<_> = field_idents
-                        .into_iter()
-                        .zip(field_ty.iter())
-                        .enumerate()
-                        .map(|(i, (ident, ty))| {
-                            if is_basic_ty(ty) {
-                                quote! {
-                                    #ident: match term_dag.get(children[#i]) {
-                                        #E::Term::Lit(lit) => lit.deliteral(),
-                                        #E::Term::Var(v) => panic!(),
-                                        #E::Term::App(app,v) => panic!(),
-                                    }
-                                }
-                            } else {
-                                quote! {
-                                    #ident: term2sym[&children[#i]].typed()
-                                }
-                            }
-                        })
-                        .collect();
-
-                    // MARK: Enum New Fns
-                    (
-                        quote! {
-                            #[track_caller]
-                            pub fn #new_ph_fn_name() -> #W::PH<self::#name_node<T,#variant_marker>>{
-                                let ty = Some(#name_inner::#variant_name {#(#field_idents_assign),*  });
-                                let node = #W::Node {
-                                    ty,
-                                    sym: #name_counter.next_sym(),
-                                    span:Some(std::panic::Location::caller()),
-                                    _p:PhantomData,
-                                    _s:PhantomData::<#variant_marker>,
-                                    sgl_specific: T::OwnerSpecDataInNode::default()
-                                };
-                                let node = #name_node {node};
-                                T::on_new(&node);
-                                #W::PH::new(node)
-                            }
-                        },
-                        new_ph_fn_name,
-                        ref_node_list,
-                        ref_node_list_leave_idents,
-                    )
-                })
+                .map(|x| new_ph_fns_tt(x, &name_node, &name_inner, &name_counter))
                 .collect();
             let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
                 let (variant_marker, variant_name) = variant_marker_name(variant);
@@ -856,82 +680,28 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 }
             });
 
-            let set_fns = data_enum.variants.iter().map(|variant|{
-                let ref_node_list = variant_to_ref_node_list(&variant);
-                let assign_node_field_list = variant_to_assign_node_field_list_without_prefixed_ident(&variant);
-                let field_idents = variant_to_field_ident(variant);
-                let (variant_marker,variant_name) = variant_marker_name(variant);
-
-                let set_fns = assign_node_field_list.iter().zip(ref_node_list.iter().zip(field_idents.iter()
-                    )).map(
-                    |(assign_node_field,(ref_node,field_ident))|{
-                        let set_fn_name = format_ident!("set_{}",field_ident.to_string());
-                        quote! {
-                            /// set fn of node, firstly update the sym version and specified field and then informs rx what happen on this node
-                            /// rx's behavior depends on whether version control is enabled
-                            #[track_caller]
-                            pub fn #set_fn_name(&mut self,#ref_node) -> &mut Self{
-                                let ___sym = #assign_node_field;
-                                if let Some(#name_inner::#variant_name{ #(#field_idents),*}) = &mut self.node.ty{
-                                    *#field_ident = ___sym
-                                };
-                                T::on_set(self);
-                                self
-                            }
-                        }
-                    }
-                );
-                let sym_list = variants_to_sym_type_list(variant);
-                let get_sym_fns = sym_list.iter().zip(field_idents.iter()
-                    ).map(
-                    |(sym,field_ident)|{
-                        let get_fn_name = format_ident!("{}_sym",field_ident.to_string());
-                        quote! {
-                            pub fn #get_fn_name(&self) -> #sym{
-                                if let Some(#name_inner::#variant_name{ #(#field_idents),*}) = &self.node.ty{
-                                    #field_ident.clone()
-                                }else{
-                                    panic!()
-                                }
-                            }
-                        }
-                    }
-                );
-                let get_mut_sym_fns = sym_list.iter().zip(field_idents.iter()
-                    ).map(
-                    |(sym,field_ident)|{
-                        let get_fn_name = format_ident!("{}_sym_mut",field_ident.to_string());
-                        quote! {
-                            pub fn #get_fn_name(&mut self) -> &mut #sym{
-                                if let Some(#name_inner::#variant_name{ #(#field_idents),*}) = &mut self.node.ty{
-                                    #field_ident
-                                }else{
-                                    panic!()
-                                }
-                            }
-                        }
-                    }
-                );
-
-                quote! {
-                    #[allow(unused_variables)]
-                    impl<T:#W::TxSgl> self::#name_node<T,#variant_marker>{
-                        #(
-                            #get_sym_fns
-                        )*
-                        #(
-                            #get_mut_sym_fns
-                        )*
-                    }
-                    impl<T: #W::TxSgl + #W::NodeSetterSgl> self::#name_node<T,#variant_marker>{
-                        #(
-                            #set_fns
-                        )*
-                    }
-                }
-            });
+            let set_fns = data_enum
+                .variants
+                .iter()
+                .map(|x| set_fns_tt(x, &name_inner, &name_node));
 
             let (variant_markers, variant_names) = variant_marker_names(data_enum);
+            let rule_ctx_trait_and_impl = {
+                let (insert_fns, insert_fn_decls): (Vec<TokenStream>, Vec<TokenStream>) = data_enum
+                    .variants
+                    .iter()
+                    .map(|x| ctx_insert_fn_ts(x, &name_node))
+                    .collect();
+                let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
+                quote! {
+                    pub trait #ctx_trait_name {
+                        #(#insert_fn_decls)*
+                    }
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
+                        #(#insert_fns)*
+                    }
+                }
+            };
             // MARK: Enum Expanded
             let expanded = quote! {
                 pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
@@ -950,9 +720,9 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 }
                 #[allow(unused_variables)]
                 const _:() = {
-                    use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr};
+                    use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr, DeLiteral};
                     use std::marker::PhantomData;
-                    use #W::{DeLiteral};
+                    use std::collections::HashMap;
                     use #E::prelude::*;
                     use #E::ast::{GenericAction, GenericExpr};
                     impl<T:#W::TxSgl> self::#name_node<T,()> {
@@ -1019,10 +789,9 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         }
                         #[track_caller]
                         fn to_term(&self,term_dag: &mut #E::TermDag,
-                            sym2term: &mut std::collections::HashMap< #W::Sym, #E::TermId>,
-                            sym2ph_name:& std::collections::HashMap<#W::Sym, &'static str>) -> #E::TermId{
-                            use #W::FromBase;
-                            use #W::{EgglogTy,EgglogNode};
+                            sym2term: &mut HashMap< #W::Sym, #E::TermId>,
+                            sym2ph_name:& HashMap<#W::Sym, &'static str>) -> #E::TermId{
+                            use #W::{FromBase,EgglogTy,EgglogNode};
                             if let Some(ty) = &self.node.ty{
                                 match ty{
                                     #(#to_term_match_arms)*,
@@ -1125,6 +894,12 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     static #name_counter: #W::TyCounter<#name_egglogty_impl<()>> = #W::TyCounter::new();
                     #(#set_fns)*
                 };
+                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::ToValue<self::#name_node<T, ()>> for #W::Value<self::#name_node<T, V>> {
+                    fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<T, ()>> {
+                        #W::Value::new(self.detype())
+                    }
+                }
+                #rule_ctx_trait_and_impl
             };
             expanded
         }

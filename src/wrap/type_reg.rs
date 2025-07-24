@@ -4,6 +4,7 @@ use derive_more::Deref;
 use egglog::{
     Term, TermDag, TermId,
     ast::{Command, GenericExpr, Literal, Schema, Span, Subdatatypes, Variant},
+    sort::Q,
     span, var,
 };
 
@@ -21,6 +22,11 @@ impl EgglogTy for i64 {
     const TY_NAME_LOWER: &'static str = "i64";
     type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
 }
+impl EgglogTy for f64 {
+    const TY_NAME: &'static str = "f64";
+    const TY_NAME_LOWER: &'static str = "f64";
+    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
+}
 impl EgglogTy for bool {
     const TY_NAME: &'static str = "bool";
     const TY_NAME_LOWER: &'static str = "bool";
@@ -35,6 +41,13 @@ pub trait EgglogTy {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
     type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy>;
+}
+impl EgglogTy for Q {
+    const TY_NAME: &'static str = "BigRational";
+
+    const TY_NAME_LOWER: &'static str = "big_rational";
+
+    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
 }
 
 #[derive(Deref)]
