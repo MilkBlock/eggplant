@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use egglog::{
     EGraph, SerializeConfig,
     ast::{Command, Schedule},
-    prelude::{add_ruleset, rust_rule},
+    prelude::add_ruleset,
     span,
     util::{IndexMap, IndexSet},
 };
@@ -646,25 +646,34 @@ impl NodeSetter for TxRxVTPR {
 impl RuleRunner for TxRxVTPR {
     fn add_rule<T: WithPatRecSgl, P: PatVars<T::PatRecSgl>>(
         &self,
+        rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&mut RuleCtx, &P::Valued) -> Option<()> + Send + Sync + 'static + Clone,
+        action: impl Fn(&mut RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
         T::PatRecSgl::on_record_start();
         let pat_vars = pat();
         let pat_id = T::PatRecSgl::on_record_end(&pat_vars);
 
-        let facts = T::PatRecSgl::pat_to_facts(pat_id);
-        let vars = &P::into_str_arcsort(&egraph);
+        let query = T::PatRecSgl::pat2query(pat_id).build(&egraph);
+        let vars = pat_vars.to_str_arcsort(&egraph);
+        log::debug!("{:#?}", query);
+        log::debug!("{:#?}", vars);
 
-        rust_rule(&mut egraph, rule_set.0, vars, facts, move |ctx, values| {
-            let mut ctx = RuleCtx::new(ctx);
-            let valued_pat_vars = P::Valued::from_plain_values(values);
-            action(&mut ctx, &valued_pat_vars).unwrap();
-            Some(())
-        })
-        .unwrap();
+        let rst = egraph.raw_add_rule_with_name(
+            rule_name.to_string(),
+            rule_set.0.to_string(),
+            query,
+            vars.as_slice(),
+            move |ctx, values| {
+                let mut ctx = RuleCtx::new(ctx);
+                let valued_pat_vars = P::Valued::from_plain_values(values);
+                action(&mut ctx, &valued_pat_vars);
+                Some(())
+            },
+        );
+        rst.expect("add_rule_set err");
     }
 
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId {

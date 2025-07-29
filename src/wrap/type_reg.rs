@@ -8,7 +8,7 @@ use egglog::{
     span, var,
 };
 
-use crate::{EgglogEnumVariantTy, NodeDropperSgl, TermToNode};
+use crate::{TermToNode, Value};
 
 pub trait EgglogContainerTy: EgglogTy {
     type EleTy: EgglogTy;
@@ -16,38 +16,37 @@ pub trait EgglogContainerTy: EgglogTy {
 pub trait EgglogMultiConTy: EgglogTy {
     const CONSTRUCTORS: TyConstructors;
 }
-// basic type don't need NodeTypeCon, this is for Container & EnumTy
 impl EgglogTy for i64 {
     const TY_NAME: &'static str = "i64";
     const TY_NAME_LOWER: &'static str = "i64";
-    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
+    type Valued = Value<Self>;
 }
 impl EgglogTy for f64 {
     const TY_NAME: &'static str = "f64";
     const TY_NAME_LOWER: &'static str = "f64";
-    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
+    type Valued = Value<Self>;
 }
 impl EgglogTy for bool {
     const TY_NAME: &'static str = "bool";
     const TY_NAME_LOWER: &'static str = "bool";
-    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
+    type Valued = Value<Self>;
 }
 impl EgglogTy for String {
     const TY_NAME: &'static str = "String";
     const TY_NAME_LOWER: &'static str = "string";
-    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
+    type Valued = Value<Self>;
 }
+/// basic type only need default [`EgglogTy::Valued`]
+/// while for EnumTy they need to specify ValuedVars when pattern recognized to be values
 pub trait EgglogTy {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
-    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy>;
+    type Valued;
 }
 impl EgglogTy for Q {
     const TY_NAME: &'static str = "BigRational";
-
     const TY_NAME_LOWER: &'static str = "big_rational";
-
-    type NodeTypeCon<T: NodeDropperSgl, S: EgglogEnumVariantTy> = ();
+    type Valued = Value<Self>;
 }
 
 #[derive(Deref)]
@@ -58,7 +57,7 @@ pub struct TyConstructor {
     pub cons_name: &'static str,
     pub input: &'static [&'static str],
     pub output: &'static str,
-    pub cost: Option<usize>,
+    pub cost: Option<u64>,
     pub unextractable: bool,
     pub term_to_node: TermToNode,
 }

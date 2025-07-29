@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "add_primitive"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog#12661d61eeba0e8b84d8584b7dd2674641b31fe5"
+source = "git+https://github.com/MilkBlock/egglog?rev=2d2c7e8#2d2c7e8bfda942ebf19ba56ad3283d3b7a2a57fc"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -188,7 +188,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 [[package]]
 name = "concurrency"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=1a1f913#1a1f913e88101dbd6f98cc2468be0f0d1b87960b"
+source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
 dependencies = [
  "arc-swap",
  "rayon",
@@ -197,7 +197,7 @@ dependencies = [
 [[package]]
 name = "core-relations"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=1a1f913#1a1f913e88101dbd6f98cc2468be0f0d1b87960b"
+source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -402,7 +402,7 @@ checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 [[package]]
 name = "egglog"
 version = "0.5.0"
-source = "git+https://github.com/MilkBlock/egglog#12661d61eeba0e8b84d8584b7dd2674641b31fe5"
+source = "git+https://github.com/MilkBlock/egglog?rev=2d2c7e8#2d2c7e8bfda942ebf19ba56ad3283d3b7a2a57fc"
 dependencies = [
  "add_primitive",
  "chrono",
@@ -428,7 +428,7 @@ dependencies = [
 [[package]]
 name = "egglog-bridge"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=1a1f913#1a1f913e88101dbd6f98cc2468be0f0d1b87960b"
+source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
 dependencies = [
  "anyhow",
  "core-relations",
@@ -460,6 +460,8 @@ dependencies = [
  "log",
  "petgraph 0.8.2",
  "smallvec",
+ "strum",
+ "strum_macros",
  "symbol_table",
 ]
 
@@ -468,7 +470,6 @@ name = "eggplant-macros"
 version = "0.1.0"
 dependencies = [
  "darling",
- "derive_more",
  "heck",
  "proc-macro-crate",
  "proc-macro2",
@@ -861,7 +862,7 @@ dependencies = [
 [[package]]
 name = "numeric-id"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=1a1f913#1a1f913e88101dbd6f98cc2468be0f0d1b87960b"
+source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
 dependencies = [
  "lazy_static",
  "rayon",
@@ -1229,6 +1230,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7da8b5736845d9f2fcb837ea5d9e2628564b3b043a70948a3f0b778838c5fb4f"
 
 [[package]]
+name = "strum"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af23d6f6c1a224baef9d3f61e287d2761385a5b88fdab4eb4c6f11aeb54c4bcf"
+dependencies = [
+ "strum_macros",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.27.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7695ce3845ea4b33927c055a39dc438a45b059f7c1b3d91d38d10355fb8cbca7"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "syn 2.0.104",
+]
+
+[[package]]
 name = "symbol_table"
 version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1358,7 +1380,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "union-find"
 version = "0.1.0"
-source = "git+https://github.com/egraphs-good/egglog-backend.git?rev=1a1f913#1a1f913e88101dbd6f98cc2468be0f0d1b87960b"
+source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
 dependencies = [
  "concurrency",
  "crossbeam",

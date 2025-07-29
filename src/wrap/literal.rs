@@ -2,10 +2,10 @@ use std::any::type_name;
 
 use egglog::{
     ast::Literal,
-    sort::{Boxed, OrderedFloat, Q},
+    sort::{Boxed, OrderedFloat},
 };
 
-use crate::ToValue;
+use crate::BoxUnbox;
 
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;
@@ -110,39 +110,38 @@ impl FromBase<f64> for Literal {
         Literal::Float(OrderedFloat(base))
     }
 }
-
 impl FromBase<String> for Literal {
     fn from_base(base: String) -> Self {
         Literal::String(base)
     }
 }
 
-impl ToValue<i64> for i64 {
-    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<i64> {
-        ctx.intern_base(*self)
+impl BoxUnbox for f64 {
+    type Boxed = Boxed<OrderedFloat<f64>>;
+    type UnBoxed = f64;
+    fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
+        Boxed(OrderedFloat(self))
+    }
+    fn unbox(boxed: Self::Boxed, _ctx: &mut super::RuleCtx) -> Self::UnBoxed {
+        *boxed.0
     }
 }
+macro_rules! impl_simple_boxunbox_for {
+    ($ty:ident) => {
+        impl BoxUnbox for $ty {
+            type Boxed = $ty;
+            type UnBoxed = $ty;
 
-impl ToValue<bool> for bool {
-    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<bool> {
-        ctx.intern_base(*self)
-    }
-}
+            fn unbox(boxed: Self::Boxed, _ctx: &mut super::RuleCtx) -> Self::UnBoxed {
+                boxed
+            }
 
-impl ToValue<String> for String {
-    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<String> {
-        ctx.intern_base(self.clone())
-    }
+            fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
+                self
+            }
+        }
+    };
 }
-
-impl ToValue<Q> for Q {
-    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<Q> {
-        ctx.intern_base(self.clone())
-    }
-}
-
-impl ToValue<f64> for f64 {
-    fn to_value(&self, ctx: &mut super::RuleCtx) -> super::Value<f64> {
-        ctx.intern_base(Boxed(OrderedFloat(*self)))
-    }
-}
+impl_simple_boxunbox_for!(String);
+impl_simple_boxunbox_for!(i64);
+impl_simple_boxunbox_for!(bool);

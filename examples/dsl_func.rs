@@ -3,6 +3,7 @@ use eggplant::{Commit, SingletonGetter, basic_tx_rx_vt};
 #[eggplant::ty]
 enum Expr {
     Add { v: Expr, con: Expr },
+
     Const { s: i64 },
 }
 

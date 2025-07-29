@@ -35,7 +35,6 @@ pub trait OutputFromLiteral {
 
 impl<T: EgglogNode + EgglogTy> OutputFromLiteral for T {
     type Output = Self;
-
     fn from_literal(lit: &Literal) -> Self::Output {
         panic!("can't transfrom literal {} into {}", lit, T::TY_NAME)
     }

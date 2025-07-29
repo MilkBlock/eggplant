@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::{self as eggplant, RuleRunnerSgl, tx_rx_vt_pr};
-    use eggplant::{Commit, PH, PatRecSgl, RunConfig};
+    use eggplant::{Commit, PatRecSgl, RunConfig};
     use std::sync::{Arc, Mutex};
 
     #[eggplant::ty]
@@ -15,13 +15,13 @@ mod tests {
     tx_rx_vt_pr!(MyTx, MyPatRec);
     // bind pattern recorder for MyTx
 
-    #[eggplant::patttern_vars]
-    struct MyPatternVars<PS: PatRecSgl> {
-        expr: PH<Expr<PS>>,
+    #[eggplant::pat_vars]
+    struct MyPatternVars<PR: PatRecSgl> {
+        expr: Expr<PR>,
     }
     fn my_pat<PR: PatRecSgl>() -> MyPatternVars<PR> {
-        let expr_var = Expr::new_ph();
-        let _root = GraphRoot::new(&expr_var);
+        let expr_var = Expr::query_leaf();
+        let _root = GraphRoot::query(&expr_var);
         MyPatternVars::new(expr_var)
     }
 
@@ -31,14 +31,13 @@ mod tests {
         let root = Root::<MyTx>::new(&Const::new(3));
         root.commit();
 
-        let ruleset = MyTx::new_rule_set("my_rule_set");
+        let ruleset = MyTx::new_ruleset("my_rule_set");
         let executed = Arc::new(Mutex::new(false));
         let cloned_flag = executed.clone();
-        MyTx::add_rule(ruleset, my_pat, move |_ctx, my_pattern_vars| {
+        MyTx::add_rule("my_rule", ruleset, my_pat, move |_ctx, my_pattern_vars| {
             println!("{:?}", my_pattern_vars.expr);
             let mut locked = cloned_flag.lock().unwrap();
             *locked = true;
-            Some(())
         });
         MyTx::run_ruleset(ruleset, RunConfig::None);
         assert_eq!(*executed.lock().unwrap(), true);

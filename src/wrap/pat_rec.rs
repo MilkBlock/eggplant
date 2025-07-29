@@ -3,12 +3,7 @@ use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use super::*;
 use dashmap::DashMap;
 use derive_more::Debug;
-use egglog::{
-    TermDag,
-    ast::{Facts, GenericFact},
-    span,
-    util::IndexSet,
-};
+use egglog::util::IndexSet;
 use std::{
     collections::HashMap,
     sync::{Mutex, atomic::AtomicU32},
@@ -30,15 +25,12 @@ pub struct PatRecorder {
 struct PatRecordNode {
     work_node: WorkAreaNode,
     pat_id: PatId,
-}
-
-enum _RecordNodeTy {
-    PlaceHolder(String),
-    Normal,
+    /// if one node dropped in pattern defining function then it is not selected as action args
+    selected: bool,
 }
 
 impl PatRecordNode {
-    pub fn new_normal(node: Box<dyn EgglogNode>, pat_id: u32) -> Self {
+    pub fn new(node: Box<dyn EgglogNode>, pat_id: u32) -> Self {
         Self {
             work_node: WorkAreaNode {
                 preds: Syms::default(),
@@ -47,17 +39,7 @@ impl PatRecordNode {
                 prev: None,
             },
             pat_id: PatId(pat_id),
-        }
-    }
-    pub fn new_place_holder(node: Box<dyn EgglogNode>, pat_id: u32) -> Self {
-        Self {
-            work_node: WorkAreaNode {
-                preds: Syms::default(),
-                egglog: node,
-                next: None,
-                prev: None,
-            },
-            pat_id: PatId(pat_id),
+            selected: true,
         }
     }
     pub fn succs_mut(&mut self) -> impl Iterator<Item = &mut Sym> {
@@ -190,26 +172,9 @@ impl PatRecorder {
         })
     }
 
-    fn add_node_normal(&self, node: &(impl EgglogNode + 'static)) {
+    fn add_node(&self, node: &(impl EgglogNode + 'static)) {
         let node = node.clone_dyn();
-        let mut node = PatRecordNode::new_normal(
-            node,
-            self.next_pat_id.load(std::sync::atomic::Ordering::Acquire),
-        );
-        let sym = node.work_node.cur_sym();
-        for succ_node in node.succs_mut() {
-            self.map
-                .get_mut(succ_node)
-                .unwrap_or_else(|| panic!("node {} not found", succ_node.as_str()))
-                .work_node
-                .preds
-                .push(sym);
-        }
-        self.map.insert(node.work_node.cur_sym(), node);
-    }
-    fn add_node_place_holder(&self, node: &(impl EgglogNode + 'static)) {
-        let node = node.clone_dyn();
-        let mut node = PatRecordNode::new_place_holder(
+        let mut node = PatRecordNode::new(
             node,
             self.next_pat_id.load(std::sync::atomic::Ordering::Acquire),
         );
@@ -235,7 +200,7 @@ impl Tx for PatRecorder {
     }
 
     fn on_new(&self, symnode: &(impl EgglogNode + 'static)) {
-        self.add_node_normal(symnode);
+        self.add_node(symnode);
     }
 
     #[track_caller]
@@ -253,8 +218,11 @@ impl Tx for PatRecorder {
 }
 
 impl NodeDropper for PatRecorder {
-    fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
-        // todo pattern combine feature
+    fn on_drop(&self, dropped: &mut (impl EgglogNode + 'static)) {
+        self.map
+            .get_mut(&dropped.cur_sym())
+            .expect("should have been inserted")
+            .selected = false;
     }
 }
 impl NodeOwner for PatRecorder {
@@ -267,15 +235,15 @@ impl NodeSetter for PatRecorder {
 }
 
 impl PatRec for PatRecorder {
-    fn on_new_place_holder(&self, node: &(impl EgglogNode + 'static)) {
-        self.add_node_place_holder(node);
+    fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
+        self.add_node(node);
     }
 
     fn on_record_start(&self) {
         log::debug!("record start");
     }
 
-    fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId {
+    fn on_record_end<T: PatRecSgl>(&self, _pat_vars: &impl PatVars<T>) -> PatId {
         log::debug!("record end");
         let current_pat_id = PatId(self.next_pat_id.load(std::sync::atomic::Ordering::Acquire));
         // build root_table, put all nodes with 0 indegree into root_table
@@ -289,10 +257,6 @@ impl PatRec for PatRecorder {
             }
         }
         self.root_table.insert(current_pat_id, roots);
-        self.patterns
-            .lock()
-            .unwrap()
-            .insert(current_pat_id, pat_vars.sym2ph_name());
 
         PatId(
             self.next_pat_id
@@ -301,14 +265,7 @@ impl PatRec for PatRecorder {
     }
     // find pattern defined in current Tx and transformed it into [Facts<String,String>]
     // one pattern may has multiple roots
-    fn pat_to_facts(&self, pat_id: PatId) -> Facts<String, String> {
-        let roots = self
-            .root_table
-            .get(&pat_id)
-            .unwrap()
-            .iter()
-            .cloned()
-            .collect::<Vec<_>>();
+    fn pat2query(&self, pat_id: PatId) -> QueryBuilder {
         // build TermDag from roots
         let pat_nodes = IndexSet::from_iter(self.map.iter().filter_map(|x| {
             if x.value().pat_id == pat_id {
@@ -317,29 +274,16 @@ impl PatRec for PatRecorder {
                 None
             }
         }));
+        let mut query_builder = QueryBuilder::new();
         let topo_syms = self.topo_sort(&pat_nodes, TopoDirection::Up);
-        let mut term_dag = TermDag::default();
-        let mut sym2term = HashMap::new();
+        for sym in pat_nodes {
+            let node = &self.map.get(&sym).unwrap().work_node.egglog;
+            node.add_atom(&mut query_builder);
+        }
         log::debug!("topo:{:?}", topo_syms);
-        for sym in topo_syms {
-            let node = self.map.get(&sym).unwrap();
-            log::debug!("term_dag:{:?} {}", term_dag, sym);
-            let _ = node.work_node.egglog.to_term(
-                &mut term_dag,
-                &mut sym2term,
-                self.patterns.lock().unwrap().get(&pat_id).unwrap(),
-            );
-        }
-
-        let mut facts = Vec::new();
-        log::debug!("{:?}", term_dag);
-        for root in roots {
-            facts.push(GenericFact::Fact(term_dag.term_to_expr(
-                term_dag.get(*sym2term.get(&root).unwrap()),
-                span!(),
-            )));
-        }
-
-        Facts(facts)
+        query_builder
     }
+    // fn pat2atoms_vars() -> (()){
+
+    // }
 }

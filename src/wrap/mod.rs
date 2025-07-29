@@ -43,6 +43,7 @@ macro_rules! basic_tx_no_vt {
                     .tx
             }
         }
+        impl eggplant::wrap::NonPatRecSgl for $name{ }
     };
 }
 /// macro to quickly define a Transimitter with version control
@@ -65,6 +66,7 @@ macro_rules! basic_tx_vt {
                     .tx
             }
         }
+        impl eggplant::wrap::NonPatRecSgl for $name{ }
     };
 }
 /// macro to quickly define a minimal Transimitter
@@ -87,6 +89,7 @@ macro_rules! basic_tx_minimal {
                     .tx
             }
         }
+        impl eggplant::wrap::NonPatRecSgl for $name{ }
     };
 }
 
@@ -109,6 +112,7 @@ macro_rules! basic_tx_rx_vt {
                     .tx
             }
         }
+        impl eggplant::wrap::NonPatRecSgl for $name{ }
     };
 }
 
@@ -131,6 +135,7 @@ macro_rules! basic_tx_rx_vt_pr {
                     .tx
             }
         }
+        impl eggplant::wrap::NonPatRecSgl for $name{ }
     };
 }
 
