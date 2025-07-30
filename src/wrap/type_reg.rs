@@ -8,7 +8,7 @@ use egglog::{
     span, var,
 };
 
-use crate::{EgglogEnumVariantTy, TermToNode, Value};
+use crate::wrap::{EgglogEnumVariantTy, TermToNode, Value};
 
 pub trait EgglogContainerTy: EgglogTy {
     type EleTy: EgglogTy;

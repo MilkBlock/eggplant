@@ -1,5 +1,6 @@
+use eggplant::basic_tx_minimal;
 use eggplant::func;
-use eggplant::{SingletonGetter, basic_tx_minimal};
+use eggplant::prelude::*;
 
 #[eggplant::ty]
 enum Cons {

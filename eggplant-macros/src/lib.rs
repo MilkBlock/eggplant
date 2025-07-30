@@ -100,6 +100,8 @@ pub fn func(
                 pub struct #name_func<T>{_p:std::marker::PhantomData<T>}
                 const _:() = {
                     use #W::EgglogNode;
+                    use #INVE;
+                    use #DE;
                     impl<T:#W::NodeDropperSgl> #W::EgglogFunc for #name_func<T>{
                         type Output=#output_with_generic;
                         type Input=(#(#input_types_with_generic),*);
@@ -235,13 +237,15 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         #(#constructors),*
                     ]);
                 }
-                #INVE::submit!{
-                    #W::Decl::EgglogMultiConTy {
-                        name: <#name_egglogty_impl::<()> as #W::EgglogTy>::TY_NAME,
-                        cons: &<#name_egglogty_impl::<()> as #W::EgglogMultiConTy>::CONSTRUCTORS
+                const _:() = {
+                    use #INVE;
+                    #INVE::submit!{
+                        #W::Decl::EgglogMultiConTy {
+                            name: <#name_egglogty_impl::<()> as #W::EgglogTy>::TY_NAME,
+                            cons: &<#name_egglogty_impl::<()> as #W::EgglogMultiConTy>::CONSTRUCTORS
+                        }
                     }
-                }
-
+                };
             };
             expanded
         }
@@ -423,6 +427,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         use #E::prelude::*;
                         use #E::*;
                         use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr};
+                        use #DE;
+                        use #INVE;
                         impl #W::NodeInner for #name_inner{
                             fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
                                 self.iter_mut().map(|s| s.erase_mut()).collect()
@@ -804,6 +810,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     use std::collections::HashMap;
                     use #E::prelude::*;
                     use #E::ast::{GenericAction, GenericExpr};
+                    use #DE;
+                    use #INVE;
                     impl<T:#W::TxSgl + #W::NonPatRecSgl> self::#name_node<T,()> {
                         #(#new_fns)*
                     }

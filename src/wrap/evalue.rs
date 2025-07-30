@@ -6,7 +6,7 @@ use egglog::{
     span,
 };
 
-use crate::{EgglogNode, Sym};
+use crate::wrap::{EgglogNode, Sym};
 
 /// 2 ways to access database of EGraph
 /// one is direct access by Value

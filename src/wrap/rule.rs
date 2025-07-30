@@ -1,6 +1,5 @@
-use std::sync::Arc;
-
-use crate::{BoxUnbox, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl, wrap::wrap};
+use crate::wrap;
+use crate::wrap::{BoxUnbox, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::{
     BaseValue, Value,
     ast::{FunctionSubtype, GenericFact, ResolvedVar},
@@ -10,6 +9,7 @@ use egglog::{
     span,
     typechecking::FuncType,
 };
+use std::sync::Arc;
 
 // eggplant rule context is a wrapper of egglog rule context.
 // it contains the Tx to which the rule is applied

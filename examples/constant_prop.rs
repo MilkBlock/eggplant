@@ -1,4 +1,5 @@
-use eggplant::{Commit, PatRecSgl, RuleRunnerSgl, RunConfig, SingletonGetter, tx_rx_vt_pr};
+use eggplant::prelude::*;
+use eggplant::tx_rx_vt_pr;
 #[eggplant::ty]
 pub enum Expr {
     Const { num: i64 },

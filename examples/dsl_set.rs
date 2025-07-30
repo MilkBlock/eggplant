@@ -1,5 +1,5 @@
-use eggplant::SingletonGetter;
 use eggplant::basic_tx_no_vt;
+use eggplant::prelude::SingletonGetter;
 
 #[eggplant::ty]
 enum Cons {

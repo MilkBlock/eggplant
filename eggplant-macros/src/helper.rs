@@ -16,13 +16,13 @@ pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 3] = [
     LazyTokenStream::new(|| "0.".to_owned()),
 ];
 
-pub static E: LazyTokenStream = LazyTokenStream::new(|| egglog_path());
+pub static E: LazyTokenStream = LazyTokenStream::new(|| format!("{}::egglog", *EP.s));
 pub static EP: LazyTokenStream = LazyTokenStream::new(|| eggplant_path());
-pub static DE: LazyTokenStream = LazyTokenStream::new(|| derive_more_path());
+pub static DE: LazyTokenStream = LazyTokenStream::new(|| format!("{}::derive_more", *EP.s));
 pub static W: LazyTokenStream = LazyTokenStream::new(|| format!("{}::wrap", *EP.s));
 pub static ENM: LazyTokenStream = LazyTokenStream::new(|| format!("{}::strum_macros", *EP.s));
 pub static EN: LazyTokenStream = LazyTokenStream::new(|| format!("{}::strum", *EP.s));
-pub static INVE: LazyTokenStream = LazyTokenStream::new(|| inventory_path());
+pub static INVE: LazyTokenStream = LazyTokenStream::new(|| format!("{}::inventory", *EP.s));
 pub(crate) struct LazyTokenStream<T: Parse + ToTokens = Path> {
     s: LazyLock<String>,
     p: PhantomData<T>,

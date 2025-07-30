@@ -1,4 +1,4 @@
-use eggplant::{Commit, SingletonGetter, basic_tx_rx_vt};
+use eggplant::{basic_tx_rx_vt, prelude::*};
 
 #[eggplant::ty]
 enum Expr {

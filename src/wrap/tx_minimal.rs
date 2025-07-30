@@ -1,5 +1,5 @@
 use super::*;
-use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use egglog::{EGraph, SerializeConfig, ast::Command};
 use std::{path::PathBuf, sync::Mutex};
 

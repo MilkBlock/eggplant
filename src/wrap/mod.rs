@@ -30,20 +30,20 @@ macro_rules! basic_tx_no_vt {
         pub struct $name {
             tx: eggplant::wrap::tx::TxNoVT,
         }
-        impl eggplant::SingletonGetter for $name {
+        impl eggplant::prelude::SingletonGetter for $name {
             type RetTy = eggplant::wrap::tx::TxNoVT;
             fn sgl() -> &'static eggplant::wrap::tx::TxNoVT {
                 static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
                 &INSTANCE
                     .get_or_init(|| -> $name {
                         Self {
-                            tx: eggplant::tx::TxNoVT::new(),
+                            tx: eggplant::wrap::tx::TxNoVT::new(),
                         }
                     })
                     .tx
             }
         }
-        impl eggplant::wrap::NonPatRecSgl for $name{ }
+        impl eggplant::wrap::NonPatRecSgl for $name {}
     };
 }
 /// macro to quickly define a Transimitter with version control
@@ -53,7 +53,7 @@ macro_rules! basic_tx_vt {
         pub struct $name {
             tx: eggplant::wrap::tx_vt::TxVT,
         }
-        impl eggplant::SingletonGetter for $name {
+        impl eggplant::prelude::SingletonGetter for $name {
             type RetTy = eggplant::wrap::tx_vt::TxVT;
             fn sgl() -> &'static eggplant::wrap::tx_vt::TxVT {
                 static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
@@ -66,7 +66,7 @@ macro_rules! basic_tx_vt {
                     .tx
             }
         }
-        impl eggplant::wrap::NonPatRecSgl for $name{ }
+        impl eggplant::wrap::NonPatRecSgl for $name {}
     };
 }
 /// macro to quickly define a minimal Transimitter
@@ -76,7 +76,7 @@ macro_rules! basic_tx_minimal {
         pub struct $name {
             tx: eggplant::wrap::tx_minimal::TxMinimal,
         }
-        impl eggplant::SingletonGetter for $name {
+        impl eggplant::prelude::SingletonGetter for $name {
             type RetTy = eggplant::wrap::tx_minimal::TxMinimal;
             fn sgl() -> &'static eggplant::wrap::tx_minimal::TxMinimal {
                 static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
@@ -89,7 +89,7 @@ macro_rules! basic_tx_minimal {
                     .tx
             }
         }
-        impl eggplant::wrap::NonPatRecSgl for $name{ }
+        impl eggplant::wrap::NonPatRecSgl for $name {}
     };
 }
 
@@ -99,7 +99,7 @@ macro_rules! basic_tx_rx_vt {
         pub struct $name {
             tx: eggplant::wrap::tx_rx_vt::TxRxVT,
         }
-        impl eggplant::SingletonGetter for $name {
+        impl eggplant::prelude::SingletonGetter for $name {
             type RetTy = eggplant::wrap::tx_rx_vt::TxRxVT;
             fn sgl() -> &'static eggplant::wrap::tx_rx_vt::TxRxVT {
                 static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
@@ -112,7 +112,7 @@ macro_rules! basic_tx_rx_vt {
                     .tx
             }
         }
-        impl eggplant::wrap::NonPatRecSgl for $name{ }
+        impl eggplant::wrap::NonPatRecSgl for $name {}
     };
 }
 
@@ -122,7 +122,7 @@ macro_rules! basic_tx_rx_vt_pr {
         pub struct $name {
             tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR,
         }
-        impl eggplant::SingletonGetter for $name {
+        impl eggplant::prelude::SingletonGetter for $name {
             type RetTy = eggplant::wrap::tx_rx_vt_pr::TxRxVTPR;
             fn sgl() -> &'static eggplant::wrap::tx_rx_vt_pr::TxRxVTPR {
                 static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
@@ -135,7 +135,7 @@ macro_rules! basic_tx_rx_vt_pr {
                     .tx
             }
         }
-        impl eggplant::wrap::NonPatRecSgl for $name{ }
+        impl eggplant::wrap::NonPatRecSgl for $name {}
     };
 }
 
@@ -157,7 +157,7 @@ macro_rules! basic_patttern_recorder {
         pub struct $name {
             tx: eggplant::wrap::PatRecorder,
         }
-        impl eggplant::SingletonGetter for $name {
+        impl eggplant::prelude::SingletonGetter for $name {
             type RetTy = eggplant::wrap::PatRecorder;
             fn sgl() -> &'static eggplant::wrap::pat_rec::PatRecorder {
                 static INSTANCE: std::sync::OnceLock<MyPatRec> = std::sync::OnceLock::new();

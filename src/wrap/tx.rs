@@ -1,4 +1,4 @@
-use crate::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use egglog::ast::Command;
 
 use super::*;

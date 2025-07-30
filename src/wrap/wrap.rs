@@ -1,6 +1,6 @@
-use crate::{
+use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, QueryBuilder, RuleCtx,
-    SortName, SymLit, VarName, wrap::tx_rx_vt::TxRxVT,
+    SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
 };
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::{

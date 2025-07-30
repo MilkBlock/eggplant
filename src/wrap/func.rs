@@ -1,4 +1,4 @@
-use crate::{DeLiteral, EValue, EgglogNode, EgglogTy};
+use crate::wrap::{DeLiteral, EValue, EgglogNode, EgglogTy};
 use egglog::ast::Literal;
 
 /// Trait for input types that can be used in egglog functions

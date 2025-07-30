@@ -5,7 +5,7 @@ use egglog::{
     sort::{Boxed, OrderedFloat},
 };
 
-use crate::BoxUnbox;
+use crate::wrap::BoxUnbox;
 
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;

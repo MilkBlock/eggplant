@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
-    use crate::{self as eggplant, RuleRunnerSgl, tx_rx_vt_pr};
-    use eggplant::{Commit, PatRecSgl, RunConfig};
+    use crate::{self as eggplant, tx_rx_vt_pr};
+    use eggplant::prelude::*;
     use std::sync::{Arc, Mutex};
 
     #[eggplant::ty]

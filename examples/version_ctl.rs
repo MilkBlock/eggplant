@@ -1,5 +1,6 @@
+use eggplant::basic_tx_vt;
 use eggplant::func;
-use eggplant::{Commit, EgglogNode, LocateVersion, SingletonGetter, basic_tx_vt};
+use eggplant::prelude::*;
 
 #[eggplant::ty]
 enum Cons {

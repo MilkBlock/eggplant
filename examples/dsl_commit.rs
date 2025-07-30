@@ -1,6 +1,5 @@
-use eggplant::Commit;
-use eggplant::SingletonGetter;
 use eggplant::basic_tx_vt;
+use eggplant::prelude::*;
 use std::{path::PathBuf, str::FromStr};
 
 #[eggplant::ty]

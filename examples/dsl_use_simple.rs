@@ -1,7 +1,4 @@
-use eggplant::Commit;
-use eggplant::EgglogNode;
-use eggplant::SingletonGetter;
-use eggplant::basic_tx_vt;
+use eggplant::{basic_tx_vt, prelude::*};
 use std::time::Instant;
 
 #[eggplant::ty]

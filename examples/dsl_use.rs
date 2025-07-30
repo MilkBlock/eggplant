@@ -1,4 +1,4 @@
-use eggplant::{Commit, SingletonGetter, basic_tx_vt};
+use eggplant::{basic_tx_vt, prelude::*};
 use std::path::PathBuf;
 
 // Type aliases for Vec types
