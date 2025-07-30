@@ -33,7 +33,6 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         self.rule_ctx.base_to_value(base)
     }
     pub fn insert(&mut self, table: &str, key: &[Value]) -> Value {
-        self.rule_ctx.insert(table, key.iter().copied());
         self.rule_ctx
             .lookup(table, key.iter().copied().collect())
             .unwrap()
@@ -121,16 +120,16 @@ impl QueryBuilder {
     /// for every variable we don't care whether it is selected as Action Input
     fn build_atom(
         egraph: &egglog::EGraph,
-        query_table: TableName,
+        table: TableName,
         vars: Vec<(VarName, SortName)>,
     ) -> GenericAtom<ResolvedCall, ResolvedVar> {
-        log::debug!("table_name:{}", query_table);
+        log::debug!("table_name:{}", table);
         log::debug!("vars::{:?}", vars);
         let (output, inputs) = vars.split_last().unwrap();
         GenericAtom {
             span: span!(),
             head: egglog::core::ResolvedCall::Func(FuncType {
-                name: query_table,
+                name: table,
                 subtype: FunctionSubtype::Constructor,
                 input: inputs
                     .iter()

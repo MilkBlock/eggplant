@@ -228,6 +228,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     const TY_NAME:&'static str = stringify!(#name);
                     const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
                     type Valued = V::ValuedWithDefault<#W::Value<Self>>;
+                    type EnumVariantMarker = V;
                 }
                 impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogMultiConTy for #name_egglogty_impl<T,V> {
                     const CONSTRUCTORS : #W::TyConstructors= #W::TyConstructors(&[
@@ -259,6 +260,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         const TY_NAME:&'static str = stringify!(#name);
                         const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
                         type Valued = V::ValuedWithDefault<#W::Value<Self>>;
+                        type EnumVariantMarker = V;
                     }
                     impl #W::EgglogContainerTy for #name_egglogty_impl {
                         type EleTy = #first_generic_ty;

@@ -8,7 +8,7 @@ use egglog::{
     span, var,
 };
 
-use crate::{TermToNode, Value};
+use crate::{EgglogEnumVariantTy, TermToNode, Value};
 
 pub trait EgglogContainerTy: EgglogTy {
     type EleTy: EgglogTy;
@@ -20,21 +20,25 @@ impl EgglogTy for i64 {
     const TY_NAME: &'static str = "i64";
     const TY_NAME_LOWER: &'static str = "i64";
     type Valued = Value<Self>;
+    type EnumVariantMarker = ();
 }
 impl EgglogTy for f64 {
     const TY_NAME: &'static str = "f64";
     const TY_NAME_LOWER: &'static str = "f64";
     type Valued = Value<Self>;
+    type EnumVariantMarker = ();
 }
 impl EgglogTy for bool {
     const TY_NAME: &'static str = "bool";
     const TY_NAME_LOWER: &'static str = "bool";
     type Valued = Value<Self>;
+    type EnumVariantMarker = ();
 }
 impl EgglogTy for String {
     const TY_NAME: &'static str = "String";
     const TY_NAME_LOWER: &'static str = "string";
     type Valued = Value<Self>;
+    type EnumVariantMarker = ();
 }
 /// basic type only need default [`EgglogTy::Valued`]
 /// while for EnumTy they need to specify ValuedVars when pattern recognized to be values
@@ -42,11 +46,13 @@ pub trait EgglogTy {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
     type Valued;
+    type EnumVariantMarker: EgglogEnumVariantTy;
 }
 impl EgglogTy for Q {
     const TY_NAME: &'static str = "BigRational";
     const TY_NAME_LOWER: &'static str = "big_rational";
     type Valued = Value<Self>;
+    type EnumVariantMarker = ();
 }
 
 #[derive(Deref)]

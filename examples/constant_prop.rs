@@ -25,15 +25,16 @@ macro_rules! prop {
                 let p = $ty::query(&l, &r);
                 $pat_name::new(l, r, p)
             },
-            |ctx: &mut eggplant::RuleCtx<'_, '_, '_>, values| {
+            |ctx, values| {
                 let cal = ctx.devalue(values.l.num) $op ctx.devalue(values.r.num);
-                let mul_value = ctx.insert_const(cal);
-                ctx.union(values.p.itself, mul_value);
+                let op_value = ctx.insert_const(cal);
+                ctx.union(values.p.itself, op_value);
             },
         );
     };
 }
 fn main() {
+    env_logger::init();
     let expr: Expr<MyTx, AddTy> =
         Add::new(&Mul::new(&Const::new(3), &Const::new(2)), &Const::new(4));
     expr.commit();
@@ -43,9 +44,8 @@ fn main() {
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);
-    for _ in 0..3 {
+    for _ in 0..4 {
         let rst = MyTx::run_ruleset(ruleset, RunConfig::None);
-        println!("{:?}", rst);
     }
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }

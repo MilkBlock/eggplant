@@ -847,7 +847,13 @@ impl<T> Value<T> {
 }
 impl<T: EgglogTy> fmt::Debug for Value<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}_{:?}", T::TY_NAME, self.val)
+        write!(
+            f,
+            "{}{}{:?}",
+            T::TY_NAME,
+            T::EnumVariantMarker::TY_NAME,
+            self.val
+        )
     }
 }
 
