@@ -46,7 +46,7 @@ fn main() {
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);
     for _ in 0..4 {
-        let rst = MyTx::run_ruleset(ruleset, RunConfig::None);
+        let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
     }
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }

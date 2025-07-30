@@ -44,7 +44,7 @@ impl<T: Parse + ToTokens> ToTokens for LazyTokenStream<T> {
     }
 }
 
-pub fn egglog_path() -> String {
+pub fn _egglog_path() -> String {
     match (
         crate_name("egglog"),
         std::env::var("CARGO_CRATE_NAME").as_deref(),
@@ -70,7 +70,7 @@ pub fn eggplant_path() -> String {
         _ => panic!("can't find eggplant"),
     }
 }
-pub fn derive_more_path() -> String {
+pub fn _derive_more_path() -> String {
     match (
         crate_name("derive_more"),
         std::env::var("CARGO_CRATE_NAME").as_deref(),
@@ -83,7 +83,7 @@ pub fn derive_more_path() -> String {
         _ => panic!("can't find derive_more"),
     }
 }
-pub fn inventory_path() -> String {
+pub fn _inventory_path() -> String {
     match (
         crate_name("inventory"),
         std::env::var("CARGO_CRATE_NAME").as_deref(),
