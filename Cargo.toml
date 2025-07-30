@@ -11,7 +11,12 @@ readme.workspace = true
 [features]
 
 [dependencies]
-derive_more = { workspace = true }
+derive_more = { version = "2.0.1", features = [
+    "deref_mut",
+    "deref",
+    "into_iterator",
+    "debug",
+] }
 smallvec = "1.15.1"
 symbol_table = { version = "0.4.0", features = ["global"] }
 inventory = "0.3.20"
@@ -42,9 +47,3 @@ readme = "README.md"
 [workspace.dependencies]
 eggplant-macros = { path = "./eggplant-macros", version = "0.1.0" }
 # egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}
-derive_more = { version = "2.0.1", features = [
-    "deref_mut",
-    "deref",
-    "into_iterator",
-    "debug",
-] }
