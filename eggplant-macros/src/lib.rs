@@ -947,6 +947,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                 #(#to_egglog_match_arms),*
                             }
                         }
+
                     }
                     #[allow(unused_variables)]
                     impl<T:#W::TxSgl + #W::VersionCtlSgl + #W::NonPatRecSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
@@ -1052,6 +1053,74 @@ pub fn pat_vars(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let mut input = parse_macro_input!(item as DeriveInput);
+
+    // append <PR> if it donesn't exist
+    if input.generics.params.is_empty() {
+        input.generics.params.push(parse_quote!(PR: PatRecSgl));
+    } else {
+        // check whether PR is contained
+        let has_pr = input.generics.params.iter().any(|param| {
+            if let syn::GenericParam::Type(type_param) = param {
+                type_param.ident == "PR"
+            } else {
+                false
+            }
+        });
+
+        if !has_pr {
+            // append PR: PatRecSgl
+            input.generics.params.insert(0, parse_quote!(PR: PatRecSgl));
+        }
+    }
+
+    // append <PR> to struct fields' generic
+    if let Data::Struct(data_struct) = &mut input.data {
+        for field in &mut data_struct.fields {
+            // check whether PR is contained
+            if let syn::Type::Path(type_path) = &mut field.ty {
+                if let Some(last_segment) = type_path.path.segments.last_mut() {
+                    // check whether the field has generic
+                    if last_segment.arguments.is_empty() {
+                        // if do not have generic append <PR>
+                        let mut args = syn::punctuated::Punctuated::new();
+                        args.push(syn::GenericArgument::Type(parse_quote!(PR)));
+                        last_segment.arguments = syn::PathArguments::AngleBracketed(
+                            syn::AngleBracketedGenericArguments {
+                                colon2_token: None,
+                                lt_token: syn::token::Lt::default(),
+                                args,
+                                gt_token: syn::token::Gt::default(),
+                            },
+                        );
+                    } else if let syn::PathArguments::AngleBracketed(args) =
+                        &mut last_segment.arguments
+                    {
+                        // check whether PR is contained
+                        let has_pr = args.args.iter().any(|arg| {
+                            if let syn::GenericArgument::Type(type_arg) = arg {
+                                if let syn::Type::Path(arg_path) = type_arg {
+                                    return arg_path.path.segments.last().unwrap().ident == "PR";
+                                }
+                            }
+                            false
+                        });
+
+                        if !has_pr {
+                            if let Some(first_arg) = args.args.first_mut() {
+                                if let syn::GenericArgument::Type(_) = first_arg {
+                                    // replace
+                                    *first_arg = syn::GenericArgument::Type(parse_quote!(PR));
+                                }
+                            } else {
+                                args.args.push(syn::GenericArgument::Type(parse_quote!(PR)));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     let expanded = match &input.data {
         Data::Struct(data_struct) => {
             let members = data_struct.fields.members();

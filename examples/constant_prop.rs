@@ -12,10 +12,10 @@ tx_rx_vt_pr!(MyTx, MyPatRec);
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
         #[eggplant::pat_vars]
-        struct $pat_name<PR: PatRecSgl> {
-            l: Const<PR>,
-            r: Const<PR>,
-            p: $ty<PR>,
+        struct $pat_name {
+            l: Const,
+            r: Const,
+            p: $ty,
         }
         MyTx::add_rule(
             stringify!($pat_name),
@@ -48,5 +48,4 @@ fn main() {
     for _ in 0..4 {
         let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
     }
-    MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }
