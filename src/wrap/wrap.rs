@@ -982,7 +982,3 @@ where
 /// because currently rust doesn't support `!PatRecSgl` clause
 pub trait NonPatRecSgl {}
 impl NonPatRecSgl for () {}
-
-pub trait ValuedCons {
-    type Valued;
-}
