@@ -160,9 +160,9 @@ macro_rules! basic_patttern_recorder {
         impl eggplant::prelude::SingletonGetter for $name {
             type RetTy = eggplant::wrap::PatRecorder;
             fn sgl() -> &'static eggplant::wrap::pat_rec::PatRecorder {
-                static INSTANCE: std::sync::OnceLock<MyPatRec> = std::sync::OnceLock::new();
+                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
                 &INSTANCE
-                    .get_or_init(|| -> MyPatRec {
+                    .get_or_init(|| -> $name {
                         Self {
                             tx: eggplant::wrap::pat_rec::PatRecorder::new(),
                         }

@@ -229,7 +229,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                     const TY_NAME:&'static str = stringify!(#name);
                     const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
-                    type Valued = V::ValuedWithDefault<#W::Value<Self>>;
+                    type Valued = V::ValuedWithDefault<Self>;
                     type EnumVariantMarker = V;
                 }
                 impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogMultiConTy for #name_egglogty_impl<T,V> {
@@ -341,6 +341,16 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                 #E::ast::GenericExpr::Call(self.span.to_span(),"vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
+                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                            // use ctx.insert to insert
+                            // todo
+                            let sym = self.cur_sym();
+                            if let Some(value) = sym_to_value_map.get(&sym) {
+                                value.clone()
+                            } else {
+                                panic!("{}'s value not found, maybe haven't committed", sym)
+                            }
+                        }
                     }
                 }
             } else {
@@ -353,6 +363,16 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                             #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
                                 #E::ast::GenericExpr::Call(self.span.to_span(), "vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
+                        }
+                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                            // use ctx.insert to insert
+                            // todo
+                            let sym = self.cur_sym();
+                            if let Some(value) = sym_to_value_map.get(&sym) {
+                                value.clone()
+                            } else {
+                                panic!("{}'s value not found, maybe haven't committed", sym)
+                            }
                         }
                     }
                     impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
@@ -493,7 +513,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                     sym: #name_counter.next_sym(),
                                     span:Some(std::panic::Location::caller()),
                                     _p:PhantomData,
-                                    _s:PhantomData::<()>,
+                                    _s:PhantomData,
                                     sgl_specific:T::OwnerSpecDataInNode::default()
                                 };
                                 let node = self::#name_node {node};
@@ -534,7 +554,9 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                 use #W::EgglogTy;
 
                             }
-                            #[track_caller] fn collect_var( &self, query_builder:&mut Vec<(#W::VarName, #W::SortName)>
+                        }
+                        impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
+                            #[track_caller] fn collect_vars( &self, query_builder:&mut Vec<(#W::VarName, #W::SortName)>
                             ) {
                                 use #W::EgglogTy;
                                 todo!()
@@ -676,6 +698,46 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 .map(|x| collect_var_match_arms_ts(x, &name_inner))
                 .collect::<Vec<_>>();
 
+            let native_egglog_match_arms = data_enum.variants.iter().map(|variant| {
+                let variant_idents = variant2field_ident(variant);
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
+                let insert_fn_name =
+                    format_ident!("insert_{}", variant_name.to_string().to_snake_case());
+
+                // 使用 variant2mapped_ident_type_list 来处理字段映射
+                let recursive_calls = variant2mapped_ident_type_list(
+                    variant,
+                    |ident, _| {
+                        // for basic type use source value
+                        Some(quote! {
+                            let #ident = #ident.clone();
+                        })
+                    },
+                    |complex_ident, complex_ty| {
+                        // for complex type，fetch value from sym_to_value_map 
+                        // transform Sym<Expr> into Sym as key
+                        Some(quote! {
+                            let #complex_ident: #W::Value<#complex_ty<(),()>> = #W::Value::new(sym_to_value_map.get(&#complex_ident.erase()).unwrap().clone());
+                        })
+                    },
+                );
+
+                let field_args = variant2mapped_ident_type_list(
+                    variant,
+                    |ident, _| Some(quote! { #ident }),
+                    |ident, _| Some(quote! { #ident }),
+                );
+
+                quote! {
+                    #name_inner::#variant_name { #(#variant_idents),* } => {
+                        #(#recursive_calls)*
+                        let value = ctx.#insert_fn_name(#(#field_args),*);
+                        sym_to_value_map.insert(sym, value.detype());
+                        value.detype()
+                    }
+                }
+            });
+
             let (new_fns, new_fn_names, new_fn_args, new_fn_arg_idents): (
                 Vec<proc_macro2::TokenStream>,
                 Vec<Ident>,
@@ -737,7 +799,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 quote! {
                     #[derive(Clone)]
                     pub struct #variant_marker;
-                    #[derive(Debug)]
+                    #[derive(Debug,Clone,Copy)]
                     pub struct #valued_variant_name{
                         itself: #W::Value<#name_node<(), #variant_marker>>,
                         #(#values_with_types),*
@@ -749,11 +811,23 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                 #(#basic_field_idents),*
                             }
                         }
-                        pub fn new_from_iter(vals:&mut impl Iterator<Item=#E::Value>) -> Self{
+                    }
+                    impl #W::FromPlainValues for #valued_variant_name {
+                        fn from_plain_values(vals: &mut impl Iterator<Item=#E::Value>) -> Self{
                             Self {
                                 itself: #W::Value::new(vals.next().unwrap()),
                                 #(#value_iter),*
                             }
+                        }
+                    }
+                    // impl #W::ToValue<#name_node<(),#variant_marker>> for #valued_variant_name {
+                    //     fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                    //         self.itself
+                    //     }
+                    // }
+                    impl #W::ToValue<#name_node<(),()>> for #valued_variant_name {
+                        fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
+                            #W::Value::new(self.itself.val)
                         }
                     }
                     impl #W::EgglogEnumVariantTy for #variant_marker {
@@ -912,8 +986,10 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                 }
                             }
                         }
+                    }
+                    impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
                         #[track_caller]
-                        fn collect_var(
+                        fn collect_vars(
                             &self,
                             vars: &mut Vec<(#W::VarName, #W::SortName)>
                         ) {
@@ -929,7 +1005,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                         #(#collect_var_match_arms),*
                                     }
                                 },
-                                // only itself
+                                // only itself as complex field
                                 #W::TyPH::PH => {
                                     vars.push((self.cur_sym().to_string(), <Self as #W::EgglogTy>::TY_NAME.to_string()));
                                 }
@@ -947,7 +1023,26 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                 #(#to_egglog_match_arms),*
                             }
                         }
-
+                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                            // 使用 ctx.insert 将节点插入到 egraph 中
+                            // 这里可以根据 sym_to_value_map 查询已有的值
+                            let sym = self.cur_sym();
+                            if let Some(value) = sym_to_value_map.get(&sym) {
+                                // 如果 sym 已经在 map 中，返回对应的值
+                                value.clone()
+                            } else {
+                                // 否则，使用 ctx.insert 插入新节点
+                                // 根据节点类型调用相应的 insert 方法
+                                match &*self.node.ty.unwrap_ref() {
+                                    inner => {
+                                        // 动态调用相应的 insert 方法
+                                        match inner {
+                                            #(#native_egglog_match_arms),*
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                     #[allow(unused_variables)]
                     impl<T:#W::TxSgl + #W::VersionCtlSgl + #W::NonPatRecSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
@@ -1148,7 +1243,7 @@ pub fn pat_vars(
                         // } else {
                         //     panic!()
                         // }
-                        x.ty = parse_quote!(<#ty_itself as #W::EgglogTy>::Valued);
+                        x.ty = parse_quote!(<#ty_itself as #W::PatVars<PR>>::Valued);
                         valued_tys.push(x.ty.clone())
                     });
                 }
@@ -1171,13 +1266,11 @@ pub fn pat_vars(
             quote! {
                 #[derive(Debug)]
                 #valued_input_struct
-                // !MARK: 这个构造函数还要改
                 impl #impl_generics #W::FromPlainValues for #valued_ident #ty_generics #where_clause {
-                    fn from_plain_values(values:&[#E::Value]) -> Self {
-                        let mut iter = values.iter().cloned();
+                    fn from_plain_values(values:&mut impl Iterator<Item=#E::Value>) -> Self {
                         use #W::Value;
                         Self {
-                            #(#members: #valued_tys::new_from_iter(&mut iter),)*
+                            #(#members: #valued_tys::from_plain_values(values),)*
                             _p: std::marker::PhantomData
                         }
                     }
@@ -1188,18 +1281,24 @@ pub fn pat_vars(
                 impl #impl_generics #W::ToStrArcSort for #ident #ty_generics #where_clause{
                     fn to_str_arcsort(&self, egraph: &#E::EGraph) -> Vec<(#W::VarName, #E::ArcSort)> {
                         let mut v = Vec::new();
-                        use #W::{EgglogNode, EgglogTy};
-                        #(
-                            let mut vars = Vec::new();
-                            self.#field_idents.collect_var(&mut vars);
-                            for (basic_field_name,basic_field_type) in vars{
-                                v.push(( basic_field_name, egraph
-                                    .get_sort_by_name(basic_field_type.as_str())
-                                    .unwrap()
-                                    .clone()));
-                            }
-                        )*
+                        use #W::{EgglogNode, EgglogTy, VarsCollector};
+                        let mut vars = Vec::new();
+                        self.collect_vars(&mut vars);
+                        for (basic_field_name,basic_field_type) in vars{
+                            v.push(( basic_field_name, egraph
+                                .get_sort_by_name(basic_field_type.as_str())
+                                .unwrap()
+                                .clone()));
+                        }
                         v.into()
+                    }
+                }
+                impl #impl_generics #W::VarsCollector for #ident #ty_generics #where_clause{
+                    #[track_caller]
+                    fn collect_vars(&self, vars:&mut Vec<(#W::VarName, #W::SortName)>){
+                        #(
+                            self.#field_idents.collect_vars(vars);
+                        )*
                     }
                 }
                 impl #impl_generics #ident #ty_generics #where_clause{

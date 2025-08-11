@@ -168,7 +168,7 @@ pub fn new_fn_ts(
                     sym: #name_counter.next_sym(),
                     span:Some(std::panic::Location::caller()),
                     _p:PhantomData,
-                    _s:PhantomData::<#variant_marker>,
+                    _s:PhantomData,
                     sgl_specific: T::OwnerSpecDataInNode::default()
                 };
                 let node = #name_node {node};
@@ -184,7 +184,7 @@ pub fn new_fn_ts(
                     sym: #name_counter.next_sym(),
                     span:Some(std::panic::Location::caller()),
                     _p:PhantomData,
-                    _s:PhantomData::<#variant_marker>,
+                    _s:PhantomData,
                     sgl_specific: T::OwnerSpecDataInNode::default()
                 };
                 let node = #name_node {node};
@@ -255,7 +255,7 @@ pub fn query_fn_ts(
                     sym: #name_counter.next_sym(),
                     span:Some(std::panic::Location::caller()),
                     _p:PhantomData,
-                    _s:PhantomData::<#variant_marker>,
+                    _s:PhantomData,
                     sgl_specific: T::OwnerSpecDataInNode::default()
                 };
                 let node = #name_node {node};
@@ -271,7 +271,7 @@ pub fn query_fn_ts(
                     sym: #name_counter.next_sym(),
                     span:Some(std::panic::Location::caller()),
                     _p:PhantomData,
-                    _s:PhantomData::<#variant_marker>,
+                    _s:PhantomData,
                     sgl_specific: T::OwnerSpecDataInNode::default()
                 };
                 let node = #name_node {node};
@@ -333,7 +333,7 @@ pub fn query_leaf_fns_tt(
                     sym: #name_counter.next_sym(),
                     span:Some(std::panic::Location::caller()),
                     _p:PhantomData,
-                    _s:PhantomData::<#variant_marker>,
+                    _s:PhantomData,
                     sgl_specific: T::OwnerSpecDataInNode::default()
                 };
                 let node = #name_node {node};

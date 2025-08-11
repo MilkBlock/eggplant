@@ -1,4 +1,4 @@
-use crate::wrap;
+use crate::wrap::{self, PatRecSgl, ToValue};
 use crate::wrap::{BoxUnbox, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::{
     BaseValue, Value,
@@ -37,12 +37,14 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
             .lookup(table, key.iter().copied().collect())
             .unwrap()
     }
-    pub fn union<T0, T1>(&mut self, x: wrap::Value<T0>, y: wrap::Value<T1>) {
+    pub fn union<T0, T1>(&mut self, x: impl ToValue<T0>, y: impl ToValue<T1>) {
+        let x = x.to_value(self);
+        let y = y.to_value(self);
         self.rule_ctx.union(x.val, y.val);
     }
 }
 pub trait RuleRunner {
-    fn add_rule<T: WithPatRecSgl, P: PatVars<T::PatRecSgl>>(
+    fn add_rule<T: PatRecSgl, P: PatVars<T>>(
         &self,
         rule_name: &str,
         rule_set: RuleSetId,
@@ -72,7 +74,7 @@ where
         pat: impl Fn() -> P,
         action: impl Fn(&mut RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
     ) {
-        Self::sgl().add_rule::<T, P>(rule_name, rule_set, pat, action);
+        Self::sgl().add_rule::<T::PatRecSgl, P>(rule_name, rule_set, pat, action);
     }
     fn new_ruleset(rule_set: &'static str) -> RuleSetId {
         Self::sgl().new_ruleset(rule_set)

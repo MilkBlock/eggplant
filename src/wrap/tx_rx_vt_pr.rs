@@ -5,7 +5,7 @@ use dashmap::DashMap;
 use egglog::{
     EGraph, SerializeConfig,
     ast::{Command, Schedule},
-    prelude::add_ruleset,
+    prelude::{add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
 };
@@ -14,7 +14,13 @@ use petgraph::{
     dot::{Config, Dot},
     prelude::{StableDiGraph, StableGraph},
 };
-use std::{collections::HashMap, fs::File, io::Write, path::PathBuf, sync::Mutex};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Write,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 pub struct TxRxVTPR {
     pub egraph: Mutex<EGraph>,
@@ -24,6 +30,8 @@ pub struct TxRxVTPR {
     pub staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
     checkpoints: Mutex<Vec<CommitCheckPoint>>,
     registry: EgglogTypeRegistry,
+    /// mapping from sym to value, used to query [`Value`] in EGraph of specified [`Sym`]
+    pub sym2value_map: Arc<DashMap<Sym, egglog::Value>>,
 }
 
 #[allow(unused)]
@@ -36,6 +44,11 @@ pub struct CommitCheckPoint {
 
 /// Tx with version ctl feature
 impl TxRxVTPR {
+    pub fn clear_egraph(&self) {
+        let mut egraph = self.egraph.lock().unwrap();
+        self.sym2value_map.clear();
+        *egraph = EGraph::default();
+    }
     pub fn egraph_to_dot(&self, file_name: PathBuf) {
         let egraph = self.egraph.lock().unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
@@ -74,7 +87,7 @@ impl TxRxVTPR {
             }
         }
     }
-    // collect all strict descendants of cur_sym, without cur_sym
+    /// collect all strict descendants of cur_sym, without cur_sym
     pub fn collect_descendants(&self, cur_sym: Sym, index_set: &mut IndexSet<Sym>) {
         let succs = self
             .staged_set_map
@@ -158,6 +171,7 @@ impl TxRxVTPR {
             staged_set_map: DashMap::new(),
             staged_new_map: Mutex::new(IndexMap::default()),
             checkpoints: Mutex::new(vec![]),
+            sym2value_map: Arc::new(DashMap::new()),
         };
         let type_defs = EgglogTypeRegistry::collect_type_defs();
         for def in type_defs {
@@ -461,9 +475,10 @@ impl Tx for TxRxVTPR {
 impl TxCommit for TxRxVTPR {
     /// commit behavior:
     /// 1. commit all descendants (if you also call set fn on subnodes they will also be committed)
-    /// 2. commit basing the latest version of the working graph (working graph record all versions)
+    /// 2. commit basing on the latest ersion of the working graph (working graph records all versions)
     /// 3. if TxCommit is implemented you can change egraph by `commit` rather than `set`. It's lazy because it uses a buffer to store all `staged set`.
     /// 4. if you didn't stage `set` on nodes, it will do nothing on commited node only flush all staged_new_node buffer
+    /// 5. after commit, you can get [`egglog::Value`] of [`Sym`] because they has been committed to egrpah
     fn on_commit<T: EgglogNode>(&self, commit_root: &T) {
         log::debug!("on_commit {:?}", commit_root.to_egglog_string());
         let check_point = CommitCheckPoint {
@@ -484,32 +499,16 @@ impl TxCommit for TxRxVTPR {
 
         // process new nodes
         let mut news = self.staged_new_map.lock().unwrap();
+        // set of staged_new_map to avoid repeat stage since they have been topo ordered.
+        // we don't need to do topo sort as below's
         let mut backup_staged_new_syms = IndexSet::default();
         let len = news.len();
         for (new, new_node) in news.drain(0..len) {
             self.add_node(WorkAreaNode::new(new_node.clone_dyn()), false);
             backup_staged_new_syms.insert(new);
         }
-        // send egglog string to egraph
-        let actions = backup_staged_new_syms
-            .into_iter()
-            .map(|sym| self.map.get(&sym).unwrap().egglog.to_egglog())
-            .collect::<Vec<_>>();
-        let commands = Self::pack_actions(actions);
-        for command in commands {
-            self.send(TxCommand::NativeCommand { command });
-        }
-
+        // collect all staged ndoes
         let all_staged = IndexSet::from_iter(self.staged_set_map.iter().map(|a| *a.key()));
-        // // check any absent node
-        // let mut panic_list = IndexSet::default();
-        // for &sym in &all_staged{
-        //     if !self.map.contains_key(&sym){
-        //         panic_list.insert(sym);
-        //     }
-        // }
-        // if panic_list.len()>0 {panic!("node {:?} not exist",panic_list )};
-
         let mut descendants = IndexSet::default();
         self.collect_descendants(commit_root.cur_sym(), &mut descendants);
         descendants.insert(commit_root.cur_sym());
@@ -528,15 +527,72 @@ impl TxCommit for TxRxVTPR {
         let created = self.update_nodes(commit_root.cur_sym(), iter_impl.collect());
         log::trace!("created {:#?}", created);
 
-        log::trace!("nodes to topo:{:?}", created);
-        let actions = self
-            .topo_sort(&created, TopoDirection::Up)
-            .into_iter()
-            .map(|sym| self.map.get(&sym).unwrap().egglog.to_egglog())
-            .collect::<Vec<_>>();
-        for command in Self::pack_actions(actions) {
-            self.send(TxCommand::NativeCommand { command })
-        }
+        let topo_sorted_nodes = self.topo_sort(&created, TopoDirection::Up);
+        log::trace!("nodes to topo:{:?}", topo_sorted_nodes);
+
+        // 使用 add_rule API 创建规则，并使用 native_egglog API
+        // 创建一个简单的规则集
+        // commit rule_name
+        let rule_name = format!(
+            "commit_rule_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        // build check point
+        let ruleset_name = format!("{}_ruleset", rule_name);
+
+        let sym2value_map = Arc::clone(&self.sym2value_map);
+        let topo_sorted_nodes_clone = topo_sorted_nodes.clone();
+        log::debug!("sorted to be {:?}", topo_sorted_nodes);
+        let map_clone = self.map.clone();
+
+        // 使用 add_rule API 创建规则
+        let mut egraph = self.egraph.lock().unwrap();
+        egglog::prelude::add_ruleset(&mut egraph, &ruleset_name).unwrap();
+        let rule_rst = egglog::prelude::rust_rule(
+            &mut egraph,
+            &ruleset_name,
+            &[],
+            egglog::prelude::Facts(vec![]),
+            move |ctx, _| {
+                let mut ctx = RuleCtx::new(ctx);
+                let sym2value_map = sym2value_map.clone();
+                for &sym in &backup_staged_new_syms {
+                    log::debug!("topo_insert:{}", sym);
+                    if let Some(node) = map_clone.get(&sym) {
+                        // add node to egraph using native_egglog API
+                        let value = node.egglog.native_egglog(&mut ctx, &sym2value_map);
+                        // store sym value pair to sym_to_value_map
+                        sym2value_map.insert(sym, value);
+                        log::debug!("Added node {} to sym_to_value_map using native_egglog", sym);
+                    }
+                }
+
+                // append all topo sorted nodes
+                for &sym in &topo_sorted_nodes_clone {
+                    log::debug!("topo_update:{}", sym);
+                    if let Some(node) = map_clone.get(&sym) {
+                        // add node to egraph using native_egglog API
+                        let value = node.egglog.native_egglog(&mut ctx, &sym2value_map);
+                        // store sym value pair to sym_to_value_map
+                        sym2value_map.insert(sym, value);
+                        log::debug!(
+                            "Update node {} to sym_to_value_map using native_egglog",
+                            sym
+                        );
+                    }
+                }
+
+                Some(())
+            },
+        );
+        log::debug!("Commit Rule define {:?}", rule_rst);
+
+        // 执行规则集
+        let rst = run_ruleset(&mut egraph, &ruleset_name);
+        log::debug!("Commit Rule execution results: {:?}", rst);
     }
 
     fn on_stage<T: EgglogNode + ?Sized>(&self, node: &T) {
@@ -644,7 +700,7 @@ impl NodeSetter for TxRxVTPR {
 }
 
 impl RuleRunner for TxRxVTPR {
-    fn add_rule<T: WithPatRecSgl, P: PatVars<T::PatRecSgl>>(
+    fn add_rule<PR: PatRecSgl, P: PatVars<PR>>(
         &self,
         rule_name: &str,
         rule_set: RuleSetId,
@@ -652,11 +708,11 @@ impl RuleRunner for TxRxVTPR {
         action: impl Fn(&mut RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
-        T::PatRecSgl::on_record_start();
+        PR::on_record_start();
         let pat_vars = pat();
-        let pat_id = T::PatRecSgl::on_record_end(&pat_vars);
+        let pat_id = PR::on_record_end(&pat_vars);
 
-        let query = T::PatRecSgl::pat2query(pat_id).build(&egraph);
+        let query = PR::pat2query(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
         log::debug!("{:#?}", query);
         log::debug!("{:#?}", vars);
@@ -668,7 +724,7 @@ impl RuleRunner for TxRxVTPR {
             vars.as_slice(),
             move |ctx, values| {
                 let mut ctx = RuleCtx::new(ctx);
-                let valued_pat_vars = P::Valued::from_plain_values(values);
+                let valued_pat_vars = P::Valued::from_plain_values(&mut values.iter().cloned());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },

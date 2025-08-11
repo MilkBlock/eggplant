@@ -12,10 +12,10 @@ enum GraphRoot {
 tx_rx_vt_pr!(MyTx, MyPatRec);
 // bind pattern recorder for MyTx
 #[eggplant::pat_vars]
-struct MulCommuVars<PR: PatRecSgl> {
-    l_expr: Expr<PR>,
-    r_expr: Expr<PR>,
-    p_expr: Mul<PR>,
+struct MulCommuVars {
+    l_expr: Expr,
+    r_expr: Expr,
+    p_expr: Mul,
 }
 
 fn main() {

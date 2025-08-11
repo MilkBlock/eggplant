@@ -1,0 +1,116 @@
+use eggplant::prelude::*;
+use eggplant::tx_rx_vt_pr;
+#[eggplant::ty]
+pub enum Math {
+    MNum { num: i64 },
+    MVar { s: String },
+    MAdd { l: Math, r: Math },
+    MSub { l: Math, r: Math },
+    MMul { l: Math, r: Math },
+    MDiv { l: Math, r: Math },
+    MMod { l: Math, r: Math },
+    MMin { l: Math, r: Math },
+    MMax { l: Math, r: Math },
+    MAnd { l: Math, r: Math },
+    MOr { l: Math, r: Math },
+    MGte { l: Math, r: Math },
+    MLt { l: Math, r: Math },
+    MFloorTo { l: Math, r: Math },
+    MReplace { l: Math, r: Math, s: Math },
+    MAccum {},
+}
+#[eggplant::ty]
+pub enum LoopType {
+    Loop { s: String, math: Math },
+}
+#[eggplant::ty]
+pub enum Expr {
+    Tensor {
+        name: String,
+    },
+    LoopIn {
+        expr: Expr,
+        loop_type: LoopType,
+        math: Math,
+    },
+    Sub {
+        l: Expr,
+        r: Expr,
+    },
+    Add {
+        l: Expr,
+        r: Expr,
+    },
+    Div {
+        l: Expr,
+        r: Expr,
+    },
+    Exp {
+        base: Expr,
+    },
+    Recip {
+        recip: Expr,
+    },
+    Max {
+        l: Expr,
+        r: Expr,
+    },
+    Binary {
+        op: String,
+        l: Expr,
+        r: Expr,
+    },
+    NewAcc {
+        acc: i64,
+    },
+    AccOut {
+        expr: Expr,
+        loop_ty: LoopType,
+    },
+    SwapLoops {
+        expr: Expr,
+        a: String,
+        b: String,
+    },
+}
+tx_rx_vt_pr!(MyTx, MyPatRec);
+// macro_rules! prop {
+//     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
+//         #[eggplant::pat_vars]
+//         struct $pat_name {
+//             l: Const,
+//             r: Const,
+//             p: $ty,
+//         }
+//         MyTx::add_rule(
+//             stringify!($pat_name),
+//             $ruleset,
+//             || {
+//                 let l = Const::query();
+//                 let r = Const::query();
+//                 let p = $ty::query(&l, &r);
+//                 $pat_name::new(l, r, p)
+//             },
+//             |ctx, values| {
+//                 let cal = ctx.devalue(values.l.num) $op ctx.devalue(values.r.num);
+//                 let op_value = ctx.insert_const(cal);
+//                 ctx.union(values.p.itself, op_value);
+//             },
+//         );
+//     };
+// }
+fn main() {
+    // env_logger::init();
+    // let expr: Expr<MyTx, AddTy> =
+    //     Add::new(&Mul::new(&Const::new(3), &Const::new(2)), &Const::new(4));
+    // expr.commit();
+
+    // let ruleset = MyTx::new_ruleset("constant_prop");
+    // prop!(Add,+,AddPat,ruleset);
+    // prop!(Sub,-,SubPat,ruleset);
+    // prop!(Mul,*,MulPat,ruleset);
+    // prop!(Div,/,DivPat,ruleset);
+    // for _ in 0..4 {
+    //     let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
+    // }
+}

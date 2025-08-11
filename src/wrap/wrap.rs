@@ -2,6 +2,7 @@ use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, QueryBuilder, RuleCtx,
     SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
 };
+use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::{
     ArcSort, BaseValue, EGraph,
@@ -86,11 +87,11 @@ pub trait SingletonGetter: 'static {
 }
 pub trait NodeOwnerSgl: SingletonGetter + 'static {
     /// helpful when you want to append additional data to node specific to your NodeOwner
-    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default + Copy;
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default + Copy + Send + Sync;
 }
 pub trait NodeOwner: 'static {
     /// helpful when you want to append additional data to node specific to your singleton
-    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default + Copy;
+    type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy>: Default + Copy + Send + Sync;
 }
 impl<S: SingletonGetter> NodeOwnerSgl for S
 where
@@ -324,6 +325,11 @@ impl Sym {
 pub trait ToEgglog {
     fn to_egglog_string(&self) -> String;
     fn to_egglog(&self) -> EgglogAction;
+    fn native_egglog(
+        &self,
+        ctx: &mut RuleCtx,
+        sym_to_value_map: &DashMap<Sym, egglog::Value>,
+    ) -> egglog::Value;
 }
 
 /// version control triat
@@ -334,7 +340,7 @@ pub trait LocateVersion {
     fn locate_prev(&mut self);
 }
 /// trait of node behavior
-pub trait EgglogNode: ToEgglog + Any + EValue {
+pub trait EgglogNode: ToEgglog + Any + EValue + Send + Sync {
     fn succs_mut(&mut self) -> Vec<&mut Sym>;
     fn succs(&self) -> Vec<Sym>;
     /// set new sym and return the new sym
@@ -360,20 +366,24 @@ pub trait EgglogNode: ToEgglog + Any + EValue {
 
     #[track_caller]
     fn add_atom(&self, query_builder: &mut QueryBuilder);
-
-    fn collect_var(&self, vars: &mut Vec<(VarName, SortName)>);
+}
+pub trait VarsCollector {
+    /// 1. if self is a typed placeholder [`TyPH::VarPH`], collect itself and its basic vars
+    /// 2. if self is a typed placeholder [`TyPH::PH`], only collect itself
+    /// 3. if self is a [`PatVars`] collect recursively
+    fn collect_vars(&self, vars: &mut Vec<(VarName, SortName)>);
 }
 
-pub trait EgglogEnumVariantTy: Clone + 'static {
+pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
     const TY_NAME: &'static str;
     /// T represent the type call that call this type
     /// This is useful when we want to specify default for a type
-    type ValuedWithDefault<T>;
+    type ValuedWithDefault<T>: FromPlainValues;
     /// fields names of valued variant struct
     const BASIC_FIELD_NAMES: &[&'static str];
     const BASIC_FIELD_TYPES: &[&'static str];
 }
-/// instance of specified EgglogTy & its VariantTy
+/// instance of specified [`EgglogTy`] & its VariantTy
 #[derive(Debug, Clone)]
 pub struct Node<T, R, I, S>
 where
@@ -388,9 +398,15 @@ where
     pub sgl_specific: R::OwnerSpecDataInNode<T, S>,
     pub span: Option<&'static Location<'static>>,
     pub sym: Sym<T>,
-    pub _p: PhantomData<R>,
-    pub _s: PhantomData<S>,
+    /// Rule closure requires send and sync. Make them happy.
+    pub _p: PhantomData<SendSyncWrap<R>>,
+    pub _s: PhantomData<SendSyncWrap<S>>,
 }
+pub struct SendSyncWrap<T> {
+    _p: PhantomData<T>,
+}
+unsafe impl<T> Send for SendSyncWrap<T> {}
+unsafe impl<T> Sync for SendSyncWrap<T> {}
 
 /// allow type erasure on S
 impl<T, R, I, S> AsRef<Node<T, R, I, ()>> for Node<T, R, I, S>
@@ -491,7 +507,7 @@ impl<T: EgglogTy> TyCounter<T> {
 
 impl EgglogEnumVariantTy for () {
     const TY_NAME: &'static str = "Unknown";
-    type ValuedWithDefault<T> = T;
+    type ValuedWithDefault<T> = Value<T>;
     const BASIC_FIELD_NAMES: &[&'static str] = &[];
     const BASIC_FIELD_TYPES: &[&'static str] = &[];
 }
@@ -870,7 +886,7 @@ pub trait ToStrArcSort {
 }
 
 pub trait FromPlainValues {
-    fn from_plain_values(values: &[egglog::Value]) -> Self;
+    fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self;
 }
 
 pub trait ToValue<T> {
@@ -887,6 +903,9 @@ impl<T: EgglogTy> Clone for Value<T> {
 }
 impl<T: EgglogTy> Copy for Value<T> {}
 
+/// if one struct BoxUnBox that means it can be converted to a boxed value in database
+/// this is an essential condition to be insert into egglog_backend
+/// any struct implements this trait inferred to be [`ToValue`]
 pub trait BoxUnbox {
     type Boxed: BaseValue;
     type UnBoxed;
@@ -963,3 +982,7 @@ where
 /// because currently rust doesn't support `!PatRecSgl` clause
 pub trait NonPatRecSgl {}
 impl NonPatRecSgl for () {}
+
+pub trait ValuedCons {
+    type Valued;
+}
