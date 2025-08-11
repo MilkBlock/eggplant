@@ -801,13 +801,13 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     pub struct #variant_marker;
                     #[derive(Debug,Clone,Copy)]
                     pub struct #valued_variant_name{
-                        itself: #W::Value<#name_node<(), #variant_marker>>,
+                        _itself: #W::Value<#name_node<(), #variant_marker>>,
                         #(#values_with_types),*
                     }
                     impl #valued_variant_name{
-                        pub fn new(itself : #W::Value<#name_node<(), #variant_marker>>, #(#values_with_types),*) -> Self{
+                        pub fn new(_itself : #W::Value<#name_node<(), #variant_marker>>, #(#values_with_types),*) -> Self{
                             Self {
-                                itself,
+                                _itself,
                                 #(#basic_field_idents),*
                             }
                         }
@@ -815,19 +815,19 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     impl #W::FromPlainValues for #valued_variant_name {
                         fn from_plain_values(vals: &mut impl Iterator<Item=#E::Value>) -> Self{
                             Self {
-                                itself: #W::Value::new(vals.next().unwrap()),
+                                _itself: #W::Value::new(vals.next().unwrap()),
                                 #(#value_iter),*
                             }
                         }
                     }
                     // impl #W::ToValue<#name_node<(),#variant_marker>> for #valued_variant_name {
                     //     fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
-                    //         self.itself
+                    //         self._itself
                     //     }
                     // }
                     impl #W::ToValue<#name_node<(),()>> for #valued_variant_name {
                         fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
-                            #W::Value::new(self.itself.val)
+                            #W::Value::new(self._itself.val)
                         }
                     }
                     impl #W::EgglogEnumVariantTy for #variant_marker {

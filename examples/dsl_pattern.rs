@@ -36,7 +36,7 @@ fn main() {
         |ctx, values| {
             println!("Commun values detected {:?}", values);
             let mul = ctx.insert_mul(values.l_expr, values.r_expr);
-            ctx.union(mul, values.p_expr.itself);
+            ctx.union(mul, values.p_expr);
         },
     );
 

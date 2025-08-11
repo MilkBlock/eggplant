@@ -67,7 +67,7 @@ Defining a Pattern is actually defining two things: what to extract from the Pat
 let action = |ctx, values| {
     let cal = ctx.devalue(values.l.num) + ctx.devalue(values.r.num); // Used as struct rather than enum
     let add_value = ctx.insert_const(cal);
-    ctx.union(values.p.itself, add_value);
+    ctx.union(values.p, add_value);
 },
 ```
 
@@ -156,7 +156,7 @@ macro_rules! prop {
             |ctx, values| {
                 let cal = ctx.devalue(values.l.num) $op ctx.devalue(values.r.num);
                 let op_value = ctx.insert_const(cal);
-                ctx.union(values.p.itself, op_value);
+                ctx.union(values.p, op_value);
             },
         );
     };

@@ -57,7 +57,7 @@ fn main() {
     );
     let ruleset = MyTx::new_ruleset("intrinsic_recognize");
     MyTx::add_rule("fnamadd rule", ruleset, fnamadd_pat, |ctx, values| {
-        println!("Fnamadd values detected {:?}", values);
+        println!("Fnamadd values detected {:#?}", values);
         let fnamadd = ctx.insert_fnamadd(values.neg_product.l, values.neg_product.r, values.added);
         ctx.union(fnamadd, values.root);
     });

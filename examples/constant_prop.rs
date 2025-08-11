@@ -29,7 +29,7 @@ macro_rules! prop {
             |ctx, values| {
                 let cal = ctx.devalue(values.l.num) $op ctx.devalue(values.r.num);
                 let op_value = ctx.insert_const(cal);
-                ctx.union(values.p.itself, op_value);
+                ctx.union(values.p, op_value);
             },
         );
     };
