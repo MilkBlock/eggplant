@@ -22,6 +22,7 @@ pub mod tx_vt;
 
 pub mod rule;
 pub use rule::*;
+mod etc;
 
 /// macro to quickly define a Transimitter with no version control
 #[macro_export]

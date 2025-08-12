@@ -1,4 +1,4 @@
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, etc::topo_sort};
 
 use super::*;
 use dashmap::DashMap;

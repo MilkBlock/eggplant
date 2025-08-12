@@ -36,8 +36,7 @@ macro_rules! prop {
 }
 fn main() {
     env_logger::init();
-    let expr: Expr<MyTx, AddTy> =
-        Add::new(&Mul::new(&Const::new(3), &Const::new(2)), &Const::new(4));
+    let expr: Expr<MyTx, _> = Add::new(&Mul::new(&Const::new(3), &Const::new(2)), &Const::new(4));
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
@@ -48,4 +47,7 @@ fn main() {
     for _ in 0..4 {
         let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
     }
+    MyTx::sgl().egraph_to_dot("egraph.dot".into());
+    // paterns to dot
+    MyPatRec::sgl().pats_to_dot("pats.dot".into());
 }

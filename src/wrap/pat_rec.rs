@@ -1,11 +1,13 @@
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, etc::generate_dot_by_graph};
 
 use super::*;
 use dashmap::DashMap;
 use derive_more::Debug;
 use egglog::util::IndexSet;
+use petgraph::prelude::StableDiGraph;
 use std::{
     collections::HashMap,
+    path::PathBuf,
     sync::{Mutex, atomic::AtomicU32},
 };
 
@@ -85,6 +87,44 @@ impl PatRecorder {
             }
         }
     }
+    pub fn wag_build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
+        // 1. collect all nodes
+        let v = self
+            .map
+            .iter()
+            .map(|x| x.value().work_node.clone())
+            .collect::<Vec<_>>();
+        let mut g = StableDiGraph::new();
+        let mut idxs = Vec::new();
+        // 2. map from WorkAreaNode cur_sym to petgraph::NodeIndex
+        use std::collections::HashMap;
+        let mut sym2idx = HashMap::new();
+        for node in &v {
+            let idx = g.add_node(node.clone());
+            idxs.push(idx);
+            sym2idx.insert(node.egglog.cur_sym(), idx);
+            log::debug!("sym2idx insert {}", node.egglog.cur_sym());
+        }
+        // 3. append edge (succs)
+        for node in &v {
+            let from = node.egglog.cur_sym();
+            let from_idx = sym2idx[&from];
+            log::debug!("succs of {} is {:?}", from, node.egglog.succs());
+            for to in node.egglog.succs() {
+                if let Some(&to_idx) = sym2idx.get(&to) {
+                    g.add_edge(from_idx, to_idx, ());
+                } else {
+                    panic!("{} not found in wag", to)
+                }
+            }
+        }
+        g
+    }
+    pub fn pats_to_dot(&self, path: PathBuf) {
+        let g = self.wag_build_petgraph();
+        generate_dot_by_graph(&g, path, &[]);
+    }
+
     /// start nodes is asserted to be zero in degree
     pub fn _topo_sort(&self, starts: IndexSet<Sym>, index_set: &IndexSet<Sym>) -> Vec<Sym> {
         let map = &self.map;

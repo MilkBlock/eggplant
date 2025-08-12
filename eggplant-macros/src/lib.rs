@@ -541,6 +541,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                             fn cur_sym_mut(&mut self) -> &mut #W::Sym{ self.node.sym.erase_mut() } fn clone_dyn(&self) -> Box<dyn #W::EgglogNode>{ Box::new(self.clone()) }
                             fn ty_name(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME }
                             fn ty_name_lower(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME_LOWER }
+                            fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
                             fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
                             fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
                             #[track_caller]
@@ -947,6 +948,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         fn clone_dyn(&self) -> Box<dyn #W::EgglogNode>{ Box::new(self.clone()) }
                         fn ty_name(&self) -> &'static str{ <#name_node::<()> as #W::EgglogTy>::TY_NAME }
                         fn ty_name_lower(&self) -> &'static str{ <#name_node::<()> as #W::EgglogTy>::TY_NAME_LOWER }
+                        fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
                         fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
                         fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
                         #[track_caller]

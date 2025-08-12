@@ -1,4 +1,7 @@
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::wrap::{
+    EgglogFunc, EgglogFuncInputs, EgglogFuncOutput,
+    etc::{generate_dot_by_graph, topo_sort},
+};
 
 use super::*;
 use dashmap::DashMap;
@@ -9,15 +12,9 @@ use egglog::{
     span,
     util::{IndexMap, IndexSet},
 };
-use petgraph::{
-    EdgeType,
-    dot::{Config, Dot},
-    prelude::{StableDiGraph, StableGraph},
-};
+use petgraph::prelude::StableDiGraph;
 use std::{
     collections::HashMap,
-    fs::File,
-    io::Write,
     path::PathBuf,
     sync::{Arc, Mutex},
 };
@@ -326,22 +323,12 @@ impl TxRxVTPR {
         next_syms
     }
     /// transform WorkAreaGraph into dot file
-    pub fn wag_to_dot(&self, name: String) {
-        pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
-            g: &StableGraph<N, E, Ty>,
-            name: String,
-            graph_config: &[Config],
-        ) {
-            let dot_name = name.clone();
-            let mut f = File::create(dot_name.clone()).unwrap();
-            let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
-            f.write_all(dot_string.as_bytes()).expect("写入失败");
-        }
-        let g = self.build_petgraph();
-        generate_dot_by_graph(&g, name, &[]);
+    pub fn wag_to_dot(&self, path: PathBuf) {
+        let g = self.wag_build_petgraph();
+        generate_dot_by_graph(&g, path, &[]);
     }
-    pub fn build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
-        // 1. 收集所有节点
+    pub fn wag_build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
+        // 1. collect all nodes
         let v = self
             .map
             .iter()
@@ -349,7 +336,7 @@ impl TxRxVTPR {
             .collect::<Vec<_>>();
         let mut g = StableDiGraph::new();
         let mut idxs = Vec::new();
-        // 2. 建立 WorkAreaNode 的 cur_sym 到 petgraph::NodeIndex 的映射
+        // 2. map from WorkAreaNode cur_sym to petgraph::NodeIndex
         use std::collections::HashMap;
         let mut sym2idx = HashMap::new();
         log::debug!("map:{:?}", self.map);
@@ -359,7 +346,7 @@ impl TxRxVTPR {
             sym2idx.insert(node.egglog.cur_sym(), idx);
             log::debug!("sym2idx insert {}", node.egglog.cur_sym());
         }
-        // 3. 添加边（succs）
+        // 3. append edge (succs)
         for node in &v {
             let from = node.egglog.cur_sym();
             let from_idx = sym2idx[&from];
