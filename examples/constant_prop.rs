@@ -44,9 +44,8 @@ fn main() {
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);
-    for _ in 0..4 {
-        let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
-    }
+    let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
+    println!("{:#?}", report);
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot".into());

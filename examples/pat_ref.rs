@@ -62,8 +62,6 @@ fn main() {
         ctx.union(fnamadd, values.root);
     });
     expr.commit();
-    for _ in 1..10 {
-        MyTx::run_ruleset(ruleset, RunConfig::None);
-    }
+    MyTx::run_ruleset(ruleset, RunConfig::Sat);
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }

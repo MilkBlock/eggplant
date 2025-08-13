@@ -1,13 +1,14 @@
 use crate::wrap::{self, PatRecSgl, ToValue};
 use crate::wrap::{BoxUnbox, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
+use egglog::RunReport;
+use egglog::ast::ResolvedVar;
+use egglog::prelude::{FuncType, GenericAtom, GenericAtomTerm, Query, ResolvedCall};
 use egglog::{
     BaseValue, Value,
-    ast::{FunctionSubtype, GenericFact, ResolvedVar},
-    core::{GenericAtom, Query, ResolvedCall},
+    ast::FunctionSubtype,
     prelude::RustRuleContext,
     sort::{EqSort, Sort},
     span,
-    typechecking::FuncType,
 };
 use std::sync::Arc;
 
@@ -52,7 +53,7 @@ pub trait RuleRunner {
         action: impl Fn(&mut RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
-    fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> Vec<String>;
+    fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
 }
 pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     fn add_rule<P: PatVars<Self::PatRecSgl>>(
@@ -62,7 +63,7 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
         action: impl Fn(&mut RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
-    fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> Vec<String>;
+    fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
 }
 impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
 where
@@ -79,7 +80,7 @@ where
     fn new_ruleset(rule_set: &'static str) -> RuleSetId {
         Self::sgl().new_ruleset(rule_set)
     }
-    fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> Vec<String> {
+    fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport {
         Self::sgl().run_ruleset(rule_set_id, run_config)
     }
 }
@@ -87,7 +88,11 @@ where
 #[derive(Clone, Copy)]
 pub struct RuleSetId(pub &'static str);
 
-pub type RunConfig = Option<Vec<GenericFact<String, String>>>;
+pub enum RunConfig {
+    Sat,
+    Times(u32),
+    Once,
+}
 
 pub struct QueryBuilder {
     atoms: Vec<(TableName, Vec<(VarName, SortName)>)>,
@@ -130,7 +135,7 @@ impl QueryBuilder {
         let (output, inputs) = vars.split_last().unwrap();
         GenericAtom {
             span: span!(),
-            head: egglog::core::ResolvedCall::Func(FuncType {
+            head: ResolvedCall::Func(FuncType {
                 name: table,
                 subtype: FunctionSubtype::Constructor,
                 input: inputs
@@ -151,7 +156,7 @@ impl QueryBuilder {
             args: vars
                 .iter()
                 .map(|(var_name, sort_name)| {
-                    egglog::core::GenericAtomTerm::Var(
+                    GenericAtomTerm::Var(
                         span!(),
                         Self::to_resolved_var(&egraph, var_name.clone(), sort_name.clone()),
                     )

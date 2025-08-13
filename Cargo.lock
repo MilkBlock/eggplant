@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "add_primitive"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=2d2c7e8#2d2c7e8bfda942ebf19ba56ad3283d3b7a2a57fc"
+source = "git+https://github.com/MilkBlock/egglog?rev=f9ea9be#f9ea9be29eafd2c2225e6c78d47a331664e7b859"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -123,6 +123,15 @@ name = "bumpalo"
 version = "3.18.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "793db76d6187cd04dff33004d8e6c9cc4e05cd330500379d2394209271b4aeee"
+
+[[package]]
+name = "cc"
+version = "1.2.32"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2352e5597e9c544d5e6d9c95190d5d27738ade584fa8db0a16e130e5c2b5296e"
+dependencies = [
+ "shlex",
+]
 
 [[package]]
 name = "cfg-if"
@@ -402,7 +411,7 @@ checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 [[package]]
 name = "egglog"
 version = "0.5.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=2d2c7e8#2d2c7e8bfda942ebf19ba56ad3283d3b7a2a57fc"
+source = "git+https://github.com/MilkBlock/egglog?rev=f9ea9be#f9ea9be29eafd2c2225e6c78d47a331664e7b859"
 dependencies = [
  "add_primitive",
  "chrono",
@@ -417,9 +426,11 @@ dependencies = [
  "indexmap",
  "lazy_static",
  "log",
+ "mimalloc",
  "num",
  "numeric-id",
  "ordered-float",
+ "rayon",
  "rustc-hash",
  "thiserror 2.0.12",
  "web-time",
@@ -759,6 +770,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1171693293099992e19cddea4e8b849964e9846f4acee11b3948bcc337be8776"
 
 [[package]]
+name = "libmimalloc-sys"
+version = "0.1.43"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf88cd67e9de251c1781dbe2f641a1a3ad66eaae831b8a2c38fbdc5ddae16d4d"
+dependencies = [
+ "cc",
+ "libc",
+]
+
+[[package]]
 name = "linux-raw-sys"
 version = "0.9.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -785,6 +806,15 @@ name = "memchr"
 version = "2.7.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "32a282da65faaf38286cf3be983213fcf1d2e2a58700e808f83f4ea9a4804bc0"
+
+[[package]]
+name = "mimalloc"
+version = "0.1.47"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b1791cbe101e95af5764f06f20f6760521f7158f69dbf9d6baf941ee1bf6bc40"
+dependencies = [
+ "libmimalloc-sys",
+]
 
 [[package]]
 name = "num"
@@ -1206,6 +1236,12 @@ dependencies = [
  "cpufeatures",
  "digest",
 ]
+
+[[package]]
+name = "shlex"
+version = "1.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 
 [[package]]
 name = "sized-chunks"

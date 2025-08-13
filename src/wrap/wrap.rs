@@ -323,7 +323,7 @@ impl Sym {
 
 /// trait of basic functions to interact with egglog
 pub trait ToEgglog {
-    fn to_egglog_string(&self) -> String;
+    fn to_egglog_string(&self) -> Option<String>;
     fn to_egglog(&self) -> EgglogAction;
     fn native_egglog(
         &self,
@@ -537,10 +537,17 @@ impl fmt::Debug for WorkAreaNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} {:?}",
+            "{} {} | {}",
             self.variant_name().unwrap_or(self.ty_name()),
             self.cur_sym(),
-            self.egglog.basic_field_types()
+            self.to_egglog_string().unwrap_or(
+                self.egglog
+                    .basic_field_types()
+                    .iter()
+                    .map(|s| s.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            )
         )
     }
 }
@@ -768,7 +775,12 @@ pub enum TopoDirection {
 
 impl std::fmt::Debug for Box<dyn EgglogNode> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{},{}", self.cur_sym(), self.to_egglog_string())
+        write!(
+            f,
+            "{},{}",
+            self.cur_sym(),
+            self.to_egglog_string().unwrap_or(String::new())
+        )
     }
 }
 
@@ -911,11 +923,25 @@ where
             panic!()
         }
     }
+    pub fn ty_ref(&self) -> Option<&T> {
+        if let TyPH::Ty(ty) = self {
+            Some(ty)
+        } else {
+            None
+        }
+    }
     pub fn unwrap_mut(&mut self) -> &mut T {
         if let TyPH::Ty(ty) = self {
             ty
         } else {
             panic!()
+        }
+    }
+    pub fn ty_mut(&mut self) -> Option<&mut T> {
+        if let TyPH::Ty(ty) = self {
+            Some(ty)
+        } else {
+            None
         }
     }
     pub fn map_ty_ref_or_else<'a, R>(

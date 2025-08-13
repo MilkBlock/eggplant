@@ -109,8 +109,7 @@ fn main() {
     prop!(MSub,-,SubPat,ruleset);
     prop!(MMul,*,MulPat,ruleset);
     prop!(MDiv,/,DivPat,ruleset);
-    for _ in 0..4 {
-        let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
-    }
+    let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
+    println!("{:#?}", report);
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }

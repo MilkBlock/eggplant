@@ -40,6 +40,6 @@ fn main() {
         },
     );
 
-    MyTx::run_ruleset(ruleset, RunConfig::None);
+    MyTx::run_ruleset(ruleset, RunConfig::Once);
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }

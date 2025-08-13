@@ -27,7 +27,7 @@ log = "0.4.27"
 eggplant-macros.workspace = true
 # egglog = { git = "https://github.com/MilkBlock/egglog", rev = "41710d945bb01b3ed5a4c17ff432b235763a9ef6" }
 # egglog = { path = "../egglog" }
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "2d2c7e8" }
+egglog = { git = "https://github.com/MilkBlock/egglog", rev = "f9ea9be" }
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
 

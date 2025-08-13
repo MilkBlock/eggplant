@@ -39,7 +39,7 @@ mod tests {
             let mut locked = cloned_flag.lock().unwrap();
             *locked = true;
         });
-        MyTx::run_ruleset(ruleset, RunConfig::None);
+        MyTx::run_ruleset(ruleset, RunConfig::Once);
         assert_eq!(*executed.lock().unwrap(), true);
     }
 }

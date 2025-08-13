@@ -6,10 +6,9 @@ use crate::wrap::{
 use super::*;
 use dashmap::DashMap;
 use egglog::{
-    EGraph, SerializeConfig,
-    ast::{Command, Schedule},
+    EGraph, RunReport, SerializeConfig,
+    ast::Command,
     prelude::{add_ruleset, run_ruleset},
-    span,
     util::{IndexMap, IndexSet},
 };
 use petgraph::prelude::StableDiGraph;
@@ -726,16 +725,32 @@ impl RuleRunner for TxRxVTPR {
     }
 
     #[track_caller]
-    fn run_ruleset(&self, ruleset_id: RuleSetId, until: RunConfig) -> Vec<String> {
+    fn run_ruleset(&self, ruleset_id: RuleSetId, until: RunConfig) -> RunReport {
         let mut egraph = self.egraph.lock().unwrap();
-        egraph
-            .run_program(vec![Command::RunSchedule(Schedule::Run(
-                span!(),
-                egglog::ast::RunConfig {
-                    ruleset: ruleset_id.0.to_owned(),
-                    until,
-                },
-            ))])
-            .unwrap()
+        match until {
+            RunConfig::Sat => {
+                let mut run_report = RunReport::default();
+                loop {
+                    let iter_report = egraph.step_rules(ruleset_id.0);
+                    let updated = iter_report.updated;
+                    run_report.union(iter_report);
+                    if !updated {
+                        break run_report;
+                    }
+                }
+            }
+            RunConfig::Times(times) => {
+                let mut run_report = RunReport::default();
+                for _ in 0..times {
+                    let iter_report = egraph.step_rules(ruleset_id.0);
+                    run_report.union(iter_report);
+                }
+                run_report
+            }
+            RunConfig::Once => {
+                let run_report = egraph.step_rules(ruleset_id.0);
+                run_report
+            }
+        }
     }
 }

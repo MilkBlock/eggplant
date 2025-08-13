@@ -333,8 +333,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 quote! {
                     impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V>
                     {
-                        fn to_egglog_string(&self) -> String{
-                            format!("(let {} (vec-of {}))",self.node.sym,self.node.ty.unwrap_mut().iter_mut().fold("".to_owned(), |s,item| s+ item.as_str()+" " ))
+                        fn to_egglog_string(&self) -> Option<String>{
+                            Some(format!("(let {} (vec-of {}))",self.node.sym,self.node.ty.unwrap_mut().iter_mut().fold("".to_owned(), |s,item| s+ item.as_str()+" " )))
                         }
                         fn to_egglog(&self) -> #W::EgglogAction{
                             #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
@@ -356,8 +356,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
             } else {
                 quote! {
                     impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
-                        fn to_egglog_string(&self) -> String{
-                            format!("(let {} (vec-of {}))",self.cur_sym(),self.node.ty.unwrap_ref().iter().fold("".to_owned(), |s,item| s+ item.as_str()+" " ))
+                        fn to_egglog_string(&self) -> Option<String>{
+                            Some(format!("(let {} (vec-of {}))",self.cur_sym(),self.node.ty.unwrap_ref().iter().fold("".to_owned(), |s,item| s+ item.as_str()+" " )))
                         }
                         fn to_egglog(&self) -> #W::EgglogAction{
                             #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
@@ -629,7 +629,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 let s = " {:.3}".repeat(variant_idents.len());
                 let format_str = format!("(let {{}} ({} {}))", variant_marker, s);
                 quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
-                    format!(#format_str ,self.node.sym, #(#variant_idents),*)
+                    Some(format!(#format_str ,self.node.sym, #(#variant_idents),*))
                 }}
             });
             let succs_match_arms = data_enum.variants.iter().map(|variant| {
@@ -1015,8 +1015,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         }
                     }
                     impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
-                        fn to_egglog_string(&self) -> String{
-                            match self.node.ty.unwrap_ref(){
+                        fn to_egglog_string(&self) -> Option<String>{
+                            match self.node.ty.ty_ref()?{
                                 #(#to_egglog_string_match_arms),*
                             }
                         }
