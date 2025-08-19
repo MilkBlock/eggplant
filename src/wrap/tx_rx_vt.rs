@@ -34,14 +34,6 @@ pub struct CommitCheckPoint {
 
 /// Tx with version ctl feature
 impl TxRxVT {
-    pub fn egraph_to_dot(&self, file_name: PathBuf) {
-        let egraph = self.egraph.lock().unwrap();
-        let serialized = egraph.serialize(SerializeConfig::default());
-        let dot_path = file_name;
-        serialized
-            .to_dot_file(dot_path.clone())
-            .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
-    }
     // collect all lastest ancestors of cur_sym, without cur_sym
     pub fn collect_latest_ancestors(&self, cur_sym: Sym, index_set: &mut IndexSet<Sym>) {
         let sym_node = self.map.get(&cur_sym).unwrap();
@@ -333,21 +325,6 @@ impl TxRxVT {
         }
         log::debug!("after update_nodes:{:#?}", self.map);
         next_syms
-    }
-    /// transform WorkAreaGraph into dot file
-    pub fn wag_to_dot(&self, name: String) {
-        pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
-            g: &StableGraph<N, E, Ty>,
-            name: String,
-            graph_config: &[Config],
-        ) {
-            let dot_name = name.clone();
-            let mut f = File::create(dot_name.clone()).unwrap();
-            let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
-            f.write_all(dot_string.as_bytes()).expect("写入失败");
-        }
-        let g = self.build_petgraph();
-        generate_dot_by_graph(&g, name, &[]);
     }
     pub fn build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
         // 1. 收集所有节点
@@ -648,7 +625,7 @@ impl Rx for TxRxVT {
         }
     }
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
-        let value = sym.get_value(&mut self.egraph.lock().unwrap());
+        let value = sym.get_value_by_eval_string(&mut self.egraph.lock().unwrap());
         self.on_pull_value(Value::<T>::new(value))
     }
 }
@@ -663,5 +640,49 @@ impl NodeSetter for TxRxVT {
         // do nothing
         // the node may be set but we don't care
         // the rst will be committed throguh commit API
+    }
+}
+
+impl ToDot for TxRxVT {
+    fn egraph_to_dot(&self, path: PathBuf) {
+        let egraph = self.egraph.lock().unwrap();
+        let serialized = egraph.serialize(SerializeConfig::default());
+        let dot_path = path;
+        serialized
+            .to_dot_file(dot_path.clone())
+            .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
+    }
+
+    /// transform WorkAreaGraph into dot file
+    fn wag_to_dot(&self, path: PathBuf) {
+        pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
+            g: &StableGraph<N, E, Ty>,
+            path: PathBuf,
+            graph_config: &[Config],
+        ) {
+            let dot_name = path.clone();
+            let mut f = File::create(dot_name.clone()).unwrap();
+            let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
+            f.write_all(dot_string.as_bytes()).expect("写入失败");
+        }
+        let g = self.build_petgraph();
+        generate_dot_by_graph(&g, path, &[]);
+    }
+
+    fn proof_to_dot(&self, path: PathBuf) {
+        let egraph = self.egraph.lock().unwrap();
+        let proof_graph = &egraph.backend.get_proof_graph().unwrap();
+
+        pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
+            g: &petgraph::Graph<N, E, Ty>,
+            name: PathBuf,
+            graph_config: &[Config],
+        ) {
+            let dot_name = name.clone();
+            let mut f = File::create(dot_name.clone()).unwrap();
+            let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
+            f.write_all(dot_string.as_bytes()).expect("写入失败");
+        }
+        generate_dot_by_graph(&proof_graph, path, &[]);
     }
 }

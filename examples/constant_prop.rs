@@ -46,7 +46,7 @@ fn main() {
     prop!(Div,/,DivPat,ruleset);
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("{:#?}", report);
-    MyTx::sgl().egraph_to_dot("egraph.dot".into());
+    MyTx::egraph_to_dot("egraph.dot".into());
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot".into());
 }

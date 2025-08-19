@@ -439,7 +439,7 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
                 use #W::Value;
                 use #W::ToValue;
                 let key = [
-                        #(#field_idents.to_value(self).detype()),*
+                        #(#field_idents.to_value(self).erase()),*
                     ];
                 #W::Value::new(self.insert(
                     <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,

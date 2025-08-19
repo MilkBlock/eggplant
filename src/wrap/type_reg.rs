@@ -155,7 +155,6 @@ impl EgglogTypeRegistry {
             });
         map
     }
-    pub fn get_type_from_variant() {}
     pub fn collect_type_defs() -> Vec<Command> {
         let mut commands = vec![];
         // split decls to avoid undefined sort
@@ -223,6 +222,8 @@ impl EgglogTypeRegistry {
         }
         commands
     }
+    /// warnning: This funciton returns things like Expr<(),Num> which means you should reform
+    /// it into () after
     pub fn get_fn(&self, term_id: TermId, term_dag: &TermDag) -> Option<TermToNode> {
         match term_dag.get(term_id) {
             Term::Lit(_) => None,

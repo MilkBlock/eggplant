@@ -20,8 +20,8 @@ fn main() {
     add.commit();
 
     LeadTo::set(&add, &c);
-    MyTx::sgl().wag_to_dot("dsl_func.dot".into());
-    MyTx::sgl().egraph_to_dot("dsl_func_egraph.dot".into());
+    MyTx::wag_to_dot("dsl_func.dot".into());
+    MyTx::egraph_to_dot("dsl_func_egraph.dot".into());
 }
 
 basic_tx_rx_vt!(MyTx);

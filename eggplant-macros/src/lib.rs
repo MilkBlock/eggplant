@@ -544,6 +544,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                             fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
                             fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
                             fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
+                            fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
+                            fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
                             #[track_caller]
                             fn to_term(&self,term_dag: &mut #E::TermDag,
                                 sym2term: &mut std::collections::HashMap< #W::Sym, #E::TermId>,
@@ -572,7 +574,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         }
                         impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::ToValue<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
                             fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
-                                #W::Value::new(self.detype())
+                                #W::Value::new(self.erase())
                             }
                         }
                         impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
@@ -733,8 +735,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     #name_inner::#variant_name { #(#variant_idents),* } => {
                         #(#recursive_calls)*
                         let value = ctx.#insert_fn_name(#(#field_args),*);
-                        sym_to_value_map.insert(sym, value.detype());
-                        value.detype()
+                        sym_to_value_map.insert(sym, value.erase());
+                        value.erase()
                     }
                 }
             });
@@ -786,10 +788,20 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     |basic, _| Some(quote!(#basic)),
                     |_, _| None,
                 );
+                let complex_field_idents = variant2mapped_ident_type_list(
+                    variant,
+                    |_, _| None,
+                    |complex, _| Some(quote!(#complex)),
+                );
                 let basic_field_types = variant2mapped_ident_type_list(
                     variant,
                     |_, basic_type| Some(quote!(#basic_type)),
                     |_, _| None,
+                );
+                let complex_field_types = variant2mapped_ident_type_list(
+                    variant,
+                    |_, _| None,
+                    |_, complex_type| Some(quote!(#complex_type)),
                 );
                 let value_iter = variant2mapped_ident_type_list(
                     variant,
@@ -835,6 +847,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         const TY_NAME:&'static str = stringify!(#variant_name);
                         const BASIC_FIELD_NAMES:&[&'static str] = &[#(stringify!(#basic_field_idents)),* ];
                         const BASIC_FIELD_TYPES:&[&'static str] = &[#(stringify!(#basic_field_types)),* ];
+                        const COMPLEX_FIELD_NAMES:&[&'static str] = &[#(stringify!(#complex_field_idents)),* ];
+                        const COMPLEX_FIELD_TYPES:&[&'static str] = &[#(stringify!(#complex_field_types)),* ];
                         type ValuedWithDefault<T> = #valued_variant_name;
                     }
                 }
@@ -951,6 +965,8 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
                         fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
                         fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
+                        fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
+                        fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
                         #[track_caller]
                         fn to_term(&self,term_dag: &mut #E::TermDag,
                             sym2term: &mut HashMap< #W::Sym, #E::TermId>,
@@ -1126,7 +1142,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 };
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::ToValue<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
                     fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
-                        #W::Value::new(self.detype())
+                        #W::Value::new(self.erase())
                     }
                 }
                 #rule_ctx_trait_and_impl

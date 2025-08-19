@@ -16,7 +16,7 @@ use crate::wrap::{EgglogNode, Sym};
 /// It's important to distinguish them because we could never get a value of node  
 /// before commited, in that way we should represent them by Sym in place of Value.
 pub trait EValue {
-    fn get_value(&self, egraph: &mut EGraph) -> Value;
+    fn get_value_by_eval_string(&self, egraph: &mut EGraph) -> Value;
     fn get_egglog_expr(&self) -> GenericExpr<String, String>;
     fn get_symlit(&self) -> SymLit;
 }
@@ -27,8 +27,11 @@ pub enum SymLit {
 }
 
 impl<T: EgglogNode> EValue for T {
-    fn get_value(&self, egraph: &mut EGraph) -> Value {
-        self.cur_sym().get_value(egraph)
+    /// warnning: this function can't be used before the node is commited to egraph
+    ///
+    /// This function is slow because we have to parse the expression
+    fn get_value_by_eval_string(&self, egraph: &mut EGraph) -> Value {
+        self.cur_sym().get_value_by_eval_string(egraph)
     }
     fn get_egglog_expr(&self) -> Expr {
         self.cur_sym().get_egglog_expr()
@@ -39,7 +42,7 @@ impl<T: EgglogNode> EValue for T {
     }
 }
 impl EValue for Sym {
-    fn get_value(&self, egraph: &mut EGraph) -> Value {
+    fn get_value_by_eval_string(&self, egraph: &mut EGraph) -> Value {
         egraph.eval_expr(&self.get_egglog_expr()).unwrap().1
     }
     fn get_egglog_expr(&self) -> Expr {
@@ -63,7 +66,7 @@ pub fn get_func_value(egraph: &mut EGraph, name: &str, args: Box<[&dyn EValue]>)
 }
 
 impl EValue for i64 {
-    fn get_value(&self, egraph: &mut EGraph) -> Value {
+    fn get_value_by_eval_string(&self, egraph: &mut EGraph) -> Value {
         egraph.base_to_value(*self)
     }
     fn get_egglog_expr(&self) -> GenericExpr<String, String> {
@@ -74,7 +77,7 @@ impl EValue for i64 {
     }
 }
 impl EValue for String {
-    fn get_value(&self, egraph: &mut EGraph) -> Value {
+    fn get_value_by_eval_string(&self, egraph: &mut EGraph) -> Value {
         egraph.base_to_value(self.clone())
     }
     fn get_egglog_expr(&self) -> GenericExpr<String, String> {
@@ -85,7 +88,7 @@ impl EValue for String {
     }
 }
 impl EValue for bool {
-    fn get_value(&self, egraph: &mut EGraph) -> Value {
+    fn get_value_by_eval_string(&self, egraph: &mut EGraph) -> Value {
         egraph.base_to_value(*self)
     }
     fn get_egglog_expr(&self) -> GenericExpr<String, String> {

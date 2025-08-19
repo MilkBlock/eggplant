@@ -20,16 +20,18 @@ derive_more = { version = "2.0.1", features = [
 smallvec = "1.15.1"
 symbol_table = { version = "0.4.0", features = ["global"] }
 inventory = "0.3.20"
-petgraph = "0.8.2"
+petgraph = "0.6.5"
 dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
-# egglog = { git = "https://github.com/MilkBlock/egglog", rev = "41710d945bb01b3ed5a4c17ff432b235763a9ef6" }
+egglog = { git = "https://github.com/MilkBlock/egglog", rev = "e166478" }
 # egglog = { path = "../egglog" }
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "f9ea9be" }
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
+graphviz-rust = "0.9.5"
+dot-generator = "0.2.0"
+dot-structures = "0.1.2"
 
 [workspace]
 members = ["eggplant-macros"]

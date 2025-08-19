@@ -1,6 +1,6 @@
 pub use crate::wrap::{
     Commit, EgglogNode, LocateVersion, PatRecSgl, PatRecorder, RuleRunnerSgl, RunConfig, RxSgl,
-    SingletonGetter, ToValue, TxCommit, TxCommitSgl, TxSgl,
+    SingletonGetter, ToDot, ToDotSgl, ToValue, TxCommit, TxCommitSgl, TxSgl,
 };
 pub use derive_more;
 pub use egglog;

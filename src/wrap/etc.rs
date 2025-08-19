@@ -1,4 +1,4 @@
-use std::{fs::File, io::Write, path::PathBuf};
+use std::{fmt, fs::File, io::Write, path::PathBuf};
 
 use egglog::{Term, TermDag};
 use petgraph::{
@@ -58,4 +58,40 @@ pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeTyp
     let mut f = File::create(dot_name.clone()).unwrap();
     let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
     f.write_all(dot_string.as_bytes()).expect("写入失败");
+}
+pub(crate) fn quote(s: &str) -> String {
+    format!("{:?}", s)
+}
+
+pub(crate) struct Escape<'a>(pub &'a str);
+
+impl<'a> fmt::Display for Escape<'a> {
+    fn fmt(&self, fmt: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // Because the internet is always right, turns out there's not that many
+        // characters to escape: http://stackoverflow.com/questions/7381974
+        let Escape(s) = *self;
+        let pile_o_bits = s;
+        let mut last = 0;
+        for (i, ch) in s.char_indices() {
+            let s = match ch {
+                '>' => "&gt;",
+                '<' => "&lt;",
+                '&' => "&amp;",
+                '\'' => "&#39;",
+                '"' => "&quot;",
+                '\n' => "<br/>",
+                _ => continue,
+            };
+            fmt.write_str(&pile_o_bits[last..i])?;
+            fmt.write_str(s)?;
+            // NOTE: we only expect single byte characters here - which is fine as long as we
+            // only match single byte characters
+            last = i + 1;
+        }
+
+        if last < s.len() {
+            fmt.write_str(&pile_o_bits[last..])?;
+        }
+        Ok(())
+    }
 }

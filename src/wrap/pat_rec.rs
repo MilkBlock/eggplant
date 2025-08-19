@@ -39,6 +39,7 @@ impl PatRecordNode {
                 egglog: node,
                 next: None,
                 prev: None,
+                pulled_by: None,
             },
             pat_id: PatId(pat_id),
             selected: true,

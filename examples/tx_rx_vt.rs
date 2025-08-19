@@ -43,12 +43,12 @@ fn main() {
     // MyTx::on_union(&root, &old_root);
     // MyTx::on_union(&node2, &end);
     // MyTx::on_union(&node1, &end);
-    MyTx::sgl().egraph_to_dot("egraph0.dot".into());
-    MyTx::sgl().wag_to_dot("wag0.dot".into());
+    MyTx::egraph_to_dot("egraph0.dot".into());
+    MyTx::wag_to_dot("wag0.dot".into());
     let selected = Selected::<MyTx>::get(());
     println!("selected is {:?}", selected.cur_sym());
-    MyTx::sgl().egraph_to_dot("egraph1.dot".into());
-    MyTx::sgl().wag_to_dot("wag1.dot".into());
+    MyTx::egraph_to_dot("egraph1.dot".into());
+    MyTx::wag_to_dot("wag1.dot".into());
 }
 
 basic_tx_rx_vt!(MyTx);

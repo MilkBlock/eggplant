@@ -1,5 +1,7 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr;
+use eggplant::wrap::Rx;
+// use eggplant::tx_rx_vt_pr_pf;
 #[eggplant::ty]
 pub enum Math {
     MNum { num: i64 },
@@ -111,5 +113,10 @@ fn main() {
     prop!(MDiv,/,DivPat,ruleset);
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("{:#?}", report);
-    MyTx::sgl().egraph_to_dot("egraph.dot".into());
+    MyTx::egraph_to_dot("egraph.dot".into());
+    let val = MyTx::value(&expr);
+    MyTx::sgl().on_pull_value(val);
+    println!("{:?}", val);
+    // let explaination = MyTx::explain(val);
+    // println!("{:#?}", explaination);
 }

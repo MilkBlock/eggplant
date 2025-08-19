@@ -139,11 +139,43 @@ macro_rules! basic_tx_rx_vt_pr {
         impl eggplant::wrap::NonPatRecSgl for $name {}
     };
 }
+#[macro_export]
+macro_rules! basic_tx_rx_vt_pr_pf {
+    ($name:ident) => {
+        pub struct $name {
+            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR,
+        }
+        impl eggplant::prelude::SingletonGetter for $name {
+            type RetTy = eggplant::wrap::tx_rx_vt_pr::TxRxVTPR;
+            fn sgl() -> &'static eggplant::wrap::tx_rx_vt_pr::TxRxVTPR {
+                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
+                &INSTANCE
+                    .get_or_init(|| -> $name {
+                        Self {
+                            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR::new_with_tracing(),
+                        }
+                    })
+                    .tx
+            }
+        }
+        impl eggplant::wrap::NonPatRecSgl for $name {}
+    };
+}
 
 #[macro_export]
 macro_rules! tx_rx_vt_pr {
     ($tx_name:ident, $pat_rec_name:ident) => {
         eggplant::basic_tx_rx_vt_pr!($tx_name);
+        eggplant::basic_patttern_recorder!($pat_rec_name);
+        impl eggplant::wrap::WithPatRecSgl for $tx_name {
+            type PatRecSgl = $pat_rec_name;
+        }
+    };
+}
+#[macro_export]
+macro_rules! tx_rx_vt_pr_pf {
+    ($tx_name:ident, $pat_rec_name:ident) => {
+        eggplant::basic_tx_rx_vt_pr_pf!($tx_name);
         eggplant::basic_patttern_recorder!($pat_rec_name);
         impl eggplant::wrap::WithPatRecSgl for $tx_name {
             type PatRecSgl = $pat_rec_name;

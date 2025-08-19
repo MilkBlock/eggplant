@@ -1,6 +1,6 @@
 use crate::wrap::{
     EgglogFunc, EgglogFuncInputs, EgglogFuncOutput,
-    etc::{generate_dot_by_graph, topo_sort},
+    etc::{Escape, quote, topo_sort},
 };
 
 use super::*;
@@ -8,13 +8,16 @@ use dashmap::DashMap;
 use egglog::{
     EGraph, RunReport, SerializeConfig,
     ast::Command,
-    prelude::{add_ruleset, run_ruleset},
+    prelude::{AnyhowResult, TermProof, add_ruleset, run_ruleset},
     util::{IndexMap, IndexSet},
 };
-use petgraph::prelude::StableDiGraph;
+use petgraph::{EdgeType, prelude::StableDiGraph};
 use std::{
     collections::HashMap,
+    fs::File,
+    io::Write,
     path::PathBuf,
+    rc::Rc,
     sync::{Arc, Mutex},
 };
 
@@ -44,14 +47,6 @@ impl TxRxVTPR {
         let mut egraph = self.egraph.lock().unwrap();
         self.sym2value_map.clear();
         *egraph = EGraph::default();
-    }
-    pub fn egraph_to_dot(&self, file_name: PathBuf) {
-        let egraph = self.egraph.lock().unwrap();
-        let serialized = egraph.serialize(SerializeConfig::default());
-        let dot_path = file_name;
-        serialized
-            .to_dot_file(dot_path.clone())
-            .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
     }
     // collect all lastest ancestors of cur_sym, without cur_sym
     pub fn collect_latest_ancestors(&self, cur_sym: Sym, index_set: &mut IndexSet<Sym>) {
@@ -175,6 +170,25 @@ impl TxRxVTPR {
         }
         tx
     }
+    pub fn new_with_tracing() -> Self {
+        let tx = Self {
+            egraph: Mutex::new({
+                let e = EGraph::with_tracing();
+                e
+            }),
+            registry: EgglogTypeRegistry::new_with_inventory(),
+            map: DashMap::new(),
+            staged_set_map: DashMap::new(),
+            staged_new_map: Mutex::new(IndexMap::default()),
+            checkpoints: Mutex::new(vec![]),
+            sym2value_map: Arc::new(DashMap::new()),
+        };
+        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        for def in type_defs {
+            tx.send(TxCommand::NativeCommand { command: def });
+        }
+        tx
+    }
     pub fn pack_actions(actions: Vec<EgglogAction>) -> Vec<Command> {
         let mut v = vec![];
         for egglog_action in actions {
@@ -182,6 +196,7 @@ impl TxRxVTPR {
         }
         v
     }
+    // if auto_latest is true, it will locate the latest version of the node and add it to the map
     fn add_node(&self, mut node: WorkAreaNode, auto_latest: bool) {
         let sym = node.cur_sym();
         for node in node.succs_mut() {
@@ -320,11 +335,6 @@ impl TxRxVTPR {
         }
         log::debug!("after update_nodes:{:#?}", self.map);
         next_syms
-    }
-    /// transform WorkAreaGraph into dot file
-    pub fn wag_to_dot(&self, path: PathBuf) {
-        let g = self.wag_build_petgraph();
-        generate_dot_by_graph(&g, path, &[]);
     }
     pub fn wag_build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
         // 1. collect all nodes
@@ -624,7 +634,15 @@ impl Rx for TxRxVTPR {
         let egraph = self.egraph.lock().unwrap();
         let sort = egraph.get_sort_by_name(T::TY_NAME).unwrap();
         let mut term2sym = HashMap::new();
-        let (term_dag, start_term, cost) = egraph.extract_value(sort, value.val).unwrap();
+        let (term_dag, start_term, cost) = egraph
+            .extract_value(
+                sort,
+                egraph
+                    .backend
+                    .get_canon_repr(value.val, egglog::sort::ColumnTy::Id),
+            )
+            .unwrap();
+        log::debug!("pulled dag: {:?}", term_dag);
 
         let root_idx = term_dag.lookup(&start_term);
         log::debug!("term_dag:{:?}, {:?}", term_dag, start_term);
@@ -640,7 +658,8 @@ impl Rx for TxRxVTPR {
             if i == root_idx {
                 ret_sym = Some(boxed_node.cur_sym())
             }
-            self.add_node(WorkAreaNode::new(boxed_node), false);
+            log::info!("pulled add node: {:?}", boxed_node);
+            self.add_node(WorkAreaNode::new_pulled(boxed_node, value.erase()), false);
         }
         log::debug!(
             "term:{:?}, term_dag:{:?}, cost:{}",
@@ -667,7 +686,7 @@ impl Rx for TxRxVTPR {
         }
     }
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
-        let value = sym.get_value(&mut self.egraph.lock().unwrap());
+        let value = sym.get_value_by_eval_string(&mut self.egraph.lock().unwrap());
         self.on_pull_value(Value::<T>::new(value))
     }
 }
@@ -752,5 +771,399 @@ impl RuleRunner for TxRxVTPR {
                 run_report
             }
         }
+    }
+
+    fn explain<T: EgglogTy>(&self, value: Value<T>) -> AnyhowResult<Rc<TermProof>> {
+        self.egraph
+            .lock()
+            .unwrap()
+            .backend
+            .explain_term(value.erase())
+    }
+
+    fn value<T: EgglogNode>(&self, node: &T) -> Value<T> {
+        Value::new(
+            *self
+                .sym2value_map
+                .get(&node.cur_sym())
+                .expect("sym should be comitted before get value")
+                .value(),
+        )
+    }
+}
+
+impl ToDot for TxRxVTPR {
+    /// transform EGraph into dot file
+    fn egraph_to_dot(&self, path: PathBuf) {
+        let egraph = self.egraph.lock().unwrap();
+        let serialized = egraph.serialize(SerializeConfig::default());
+        let dot_path = path;
+        serialized
+            .to_dot_file(dot_path.clone())
+            .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
+    }
+
+    /// transform WorkAreaGraph into dot file with enhanced visualization
+    fn wag_to_dot(&self, path: PathBuf) {
+        use graphviz_rust::attributes::NodeAttributes;
+        use graphviz_rust::{
+            attributes::*,
+            dot_generator::*,
+            dot_structures::{
+                Edge, EdgeTy, Graph, GraphAttributes as GA, Id, Node, NodeId, Stmt, Subgraph,
+                Vertex,
+            },
+            printer::{DotPrinter, PrinterContext},
+        };
+        use std::collections::BTreeMap;
+
+        // 1. Group nodes by node.pulled_by
+        let mut groupped_nodes = BTreeMap::new();
+        let mut node_to_type = HashMap::new();
+        let mut version_chains = HashMap::new();
+        // println!("{:#?}", self.map);
+
+        for pair in &self.map {
+            let (sym, node) = (pair.key(), pair.value().clone());
+            // println!(
+            //     "Node: {:?}, Type: {}, Variant: {:?}, Pulled By: {:?}",
+            //     sym,
+            //     node.egglog.ty_name(),
+            //     node.egglog.variant_name(),
+            //     node.pulled_by
+            // );
+            // let typ = node.egglog.ty_name();
+            // let variant = node.egglog.variant_name().unwrap_or("Unknown");
+            let node_info = node.pulled_by;
+
+            node_to_type.insert(*sym, node_info.clone());
+            groupped_nodes
+                .entry(node_info.clone())
+                .or_insert_with(Vec::new)
+                .push((*sym, node.clone()));
+
+            // Track version chains
+            if let Some(next) = node.next {
+                version_chains.insert(*sym, next);
+            }
+        }
+
+        // 2. Start with configuration
+        let mut stmts = vec![
+            stmt!(GraphAttributes::compound(true)),
+            stmt!(GraphAttributes::fontname("helvetica".to_string())),
+            stmt!(GraphAttributes::fontsize(10.0)),
+            stmt!(GraphAttributes::margin(2.0)),
+            stmt!(GraphAttributes::nodesep(0.3)),
+            stmt!(GraphAttributes::ranksep(0.8)),
+            stmt!(GraphAttributes::colorscheme("set312".to_string())),
+            stmt!(GA::Edge(vec![
+                EdgeAttributes::arrowsize(0.8),
+                EdgeAttributes::fontsize(8.0),
+                EdgeAttributes::fontname("helvetica".to_string())
+            ])),
+            stmt!(GA::Node(vec![
+                NodeAttributes::shape(shape::box_),
+                NodeAttributes::style(quote("rounded,filled")),
+                NodeAttributes::margin(0.2),
+                NodeAttributes::fontname("helvetica".to_string()),
+                NodeAttributes::fontsize(9.0)
+            ])),
+        ];
+
+        // 3. Add each type as a subgraph
+        let mut type_colors = HashMap::new();
+        let n_colors = 12;
+        let initial_color = 2;
+
+        for (i, (pulled_from, nodes)) in groupped_nodes.iter().enumerate() {
+            let color_idx = (i + initial_color) % n_colors;
+            let type_color = type_colors.entry(pulled_from.clone()).or_insert(color_idx);
+
+            let mut inner_stmts = vec![];
+
+            // Add nodes for this type
+            for (sym, node) in nodes {
+                let label = format!(
+                    "{}",
+                    node.egglog
+                        .to_egglog_string()
+                        .unwrap_or_else(|| { format!("{}:{}", node.egglog.ty_name(), sym) })
+                );
+
+                let tooltip = format!(
+                    "Type: {}\nSym: {}\nVersion: {:?}",
+                    node.egglog.ty_name(),
+                    sym,
+                    if node.next.is_some() {
+                        "Next"
+                    } else {
+                        "Latest"
+                    }
+                );
+
+                // Create HTML label with version info
+                let html_label = format!(
+                    "<<TABLE BGCOLOR=\"white\" CELLBORDER=\"0\" CELLSPACING=\"0\" CELLPADDING=\"2\" style=\"rounded\">\
+                    <TR><TD BALIGN=\"left\" CELLPADDING=\"4\">{}</TD></TR>\
+                    <TR><TD BALIGN=\"left\" CELLPADDING=\"2\" FONT_SIZE=\"20\">Sym: {}</TD></TR>\
+                    </TABLE>>",
+                    Escape(&label),
+                    sym
+                );
+
+                let qouted_sym = quote(sym.as_str());
+                let node_stmt = node!(
+                    qouted_sym;
+                    NodeAttributes::label(html_label),
+                    NodeAttributes::tooltip(quote(&tooltip)),
+                    NodeAttributes::fillcolor(color_name::aqua)
+                );
+                inner_stmts.push(stmt!(node_stmt));
+            }
+
+            // Create subgraph for this type
+            let subgraph_id = match &pulled_from {
+                Some(pulled_from) => format!("cluster_pulled_from_value{:?}", pulled_from),
+                None => {
+                    format!("main")
+                }
+            };
+            let quoted_subgraph_id = quote(&subgraph_id);
+            let subgraph_label = quote(&subgraph_id);
+
+            let subgraph = subgraph!(
+                quoted_subgraph_id;
+                SubgraphAttributes::label(subgraph_label),
+                NodeAttributes::style(quote("filled")),
+                NodeAttributes::fillcolor(color_name::lightgray),
+                NodeAttributes::fontsize(10.0),
+                subgraph!("",inner_stmts )
+            );
+            stmts.push(stmt!(subgraph));
+        }
+
+        // 4. Add edges for dependencies (succs)
+        for pair in self.map.iter() {
+            let (sym, node) = (pair.key(), pair.value());
+            let from_id = quote(sym.as_str());
+            for succ in node.egglog.succs() {
+                let to_id = quote(succ.as_str());
+                let edge = edge!(node_id!(from_id) => node_id!(to_id);
+                    EdgeAttributes::color(color_name::black),
+                    EdgeAttributes::style(quote("solid"))
+                );
+                stmts.push(stmt!(edge));
+            }
+        }
+
+        // // 5. Add version chain edges (dashed, different color)
+        // for (from_sym, to_sym) in &version_chains {
+        //     let from_id = quote(from_sym.as_str());
+        //     let to_id = quote(to_sym.as_str());
+        //     let edge = edge!(from_id => to_id;
+        //         EdgeAttributes::color(quote("blue")),
+        //         EdgeAttributes::style(quote("dashed")),
+        //         EdgeAttributes::label(quote("next"))
+        //     );
+        //     stmts.push(stmt!(edge));
+        // }
+
+        // 7. Create the final graph
+        let graph = graph!(di id!(), stmts);
+        let dot_string = graph.print(&mut PrinterContext::default());
+
+        // 8. Write to file
+        std::fs::write(path, dot_string).expect("Failed to write dot file");
+    }
+
+    // fn proof_to_dot(&self, path: PathBuf) {
+    //     use graphviz_rust::attributes::NodeAttributes;
+    //     use graphviz_rust::{
+    //         attributes::*,
+    //         dot_generator::*,
+    //         dot_structures::{
+    //             Edge, EdgeTy, Graph, GraphAttributes as GA, Id, Node, NodeId, Stmt, Subgraph,
+    //             Vertex,
+    //         },
+    //         printer::{DotPrinter, PrinterContext},
+    //     };
+    //     use std::collections::BTreeMap;
+
+    //     // 1. Group nodes by node.pulled_by
+    //     let mut groupped_nodes = BTreeMap::new();
+    //     let mut node_to_type = HashMap::new();
+    //     let mut version_chains = HashMap::new();
+    //     println!("{:#?}", self.map);
+
+    //     for pair in &self.map {
+    //         let (sym, node) = (pair.key(), pair.value().clone());
+    //         println!(
+    //             "Node: {:?}, Type: {}, Variant: {:?}, Pulled By: {:?}",
+    //             sym,
+    //             node.egglog.ty_name(),
+    //             node.egglog.variant_name(),
+    //             node.pulled_by
+    //         );
+    //         let typ = node.egglog.ty_name();
+    //         let variant = node.egglog.variant_name().unwrap_or("Unknown");
+    //         let node_info = node.pulled_by;
+
+    //         node_to_type.insert(*sym, node_info.clone());
+    //         groupped_nodes
+    //             .entry(node_info.clone())
+    //             .or_insert_with(Vec::new)
+    //             .push((*sym, node.clone()));
+
+    //         // Track version chains
+    //         if let Some(next) = node.next {
+    //             version_chains.insert(*sym, next);
+    //         }
+    //     }
+    //     println!("{:#?}", groupped_nodes);
+
+    //     // 2. Start with configuration
+    //     let mut stmts = vec![
+    //         stmt!(GraphAttributes::compound(true)),
+    //         stmt!(GraphAttributes::fontname("helvetica".to_string())),
+    //         stmt!(GraphAttributes::fontsize(10.0)),
+    //         stmt!(GraphAttributes::margin(2.0)),
+    //         stmt!(GraphAttributes::nodesep(0.3)),
+    //         stmt!(GraphAttributes::ranksep(0.8)),
+    //         stmt!(GraphAttributes::colorscheme("set312".to_string())),
+    //         stmt!(GA::Edge(vec![
+    //             EdgeAttributes::arrowsize(0.8),
+    //             EdgeAttributes::fontsize(8.0),
+    //             EdgeAttributes::fontname("helvetica".to_string())
+    //         ])),
+    //         stmt!(GA::Node(vec![
+    //             NodeAttributes::shape(shape::box_),
+    //             NodeAttributes::style(quote("rounded,filled")),
+    //             NodeAttributes::margin(0.2),
+    //             NodeAttributes::fontname("helvetica".to_string()),
+    //             NodeAttributes::fontsize(9.0)
+    //         ])),
+    //     ];
+
+    //     // 3. Add each type as a subgraph
+    //     let mut type_colors = HashMap::new();
+    //     let n_colors = 12;
+    //     let initial_color = 2;
+
+    //     for (i, (pulled_from, nodes)) in groupped_nodes.iter().enumerate() {
+    //         let color_idx = (i + initial_color) % n_colors;
+    //         let color = type_colors.entry(pulled_from.clone()).or_insert(color_idx);
+
+    //         let mut inner_stmts = vec![];
+
+    //         // Add nodes for this type
+    //         for (sym, node) in nodes {
+    //             let label = format!(
+    //                 "{}",
+    //                 node.egglog
+    //                     .to_egglog_string()
+    //                     .unwrap_or_else(|| { format!("{}:{}", node.egglog.ty_name(), sym) })
+    //             );
+
+    //             let tooltip = format!(
+    //                 "Type: {}\nSym: {}\nVersion: {:?}",
+    //                 node.egglog.ty_name(),
+    //                 sym,
+    //                 if node.next.is_some() {
+    //                     "Next"
+    //                 } else {
+    //                     "Latest"
+    //                 }
+    //             );
+
+    //             // Create HTML label with version info
+    //             let html_label = format!(
+    //                 "<<TABLE BGCOLOR=\"white\" CELLBORDER=\"0\" CELLSPACING=\"0\" CELLPADDING=\"2\" style=\"rounded\">\
+    //                 <TR><TD BALIGN=\"left\" CELLPADDING=\"4\">{}</TD></TR>\
+    //                 <TR><TD BALIGN=\"left\" CELLPADDING=\"2\" FONT_SIZE=\"20\">Sym: {}</TD></TR>\
+    //                 </TABLE>>",
+    //                 Escape(&label),
+    //                 sym
+    //             );
+
+    //             let qouted_sym = quote(sym.as_str());
+    //             let node_stmt = node!(
+    //                 qouted_sym;
+    //                 NodeAttributes::label(html_label),
+    //                 NodeAttributes::tooltip(quote(&tooltip)),
+    //                 NodeAttributes::fillcolor(color_name::aqua)
+    //             );
+    //             inner_stmts.push(stmt!(node_stmt));
+    //         }
+
+    //         // Create subgraph for this type
+    //         let subgraph_id = match &pulled_from {
+    //             Some(pulled_from) => format!("cluster_pulled_from_value{:?}", pulled_from),
+    //             None => {
+    //                 format!("main")
+    //             }
+    //         };
+    //         let quoted_subgraph_id = quote(&subgraph_id);
+    //         let subgraph_label = quote(&subgraph_id);
+
+    //         let subgraph = subgraph!(
+    //             quoted_subgraph_id;
+    //             SubgraphAttributes::label(subgraph_label),
+    //             NodeAttributes::style(quote("filled")),
+    //             NodeAttributes::fillcolor(color_name::lightgray),
+    //             NodeAttributes::fontsize(10.0),
+    //             subgraph!("",inner_stmts )
+    //         );
+    //         stmts.push(stmt!(subgraph));
+    //     }
+
+    //     // 4. Add edges for dependencies (succs)
+    //     for pair in self.map.iter() {
+    //         let (sym, node) = (pair.key(), pair.value());
+    //         let from_id = quote(sym.as_str());
+    //         for succ in node.egglog.succs() {
+    //             let to_id = quote(succ.as_str());
+    //             let edge = edge!(node_id!(from_id) => node_id!(to_id);
+    //                 EdgeAttributes::color(color_name::black),
+    //                 EdgeAttributes::style(quote("solid"))
+    //             );
+    //             stmts.push(stmt!(edge));
+    //         }
+    //     }
+
+    //     // // 5. Add version chain edges (dashed, different color)
+    //     // for (from_sym, to_sym) in &version_chains {
+    //     //     let from_id = quote(from_sym.as_str());
+    //     //     let to_id = quote(to_sym.as_str());
+    //     //     let edge = edge!(from_id => to_id;
+    //     //         EdgeAttributes::color(quote("blue")),
+    //     //         EdgeAttributes::style(quote("dashed")),
+    //     //         EdgeAttributes::label(quote("next"))
+    //     //     );
+    //     //     stmts.push(stmt!(edge));
+    //     // }
+
+    //     // 7. Create the final graph
+    //     let graph = graph!(di id!(), stmts);
+    //     let dot_string = graph.print(&mut PrinterContext::default());
+
+    //     // 8. Write to file
+    //     std::fs::write(path, dot_string).expect("Failed to write dot file");
+    // }
+    fn proof_to_dot(&self, path: PathBuf) {
+        let egraph = self.egraph.lock().unwrap();
+        let proof_graph = egraph.backend.get_proof_graph().unwrap();
+
+        pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
+            g: &petgraph::Graph<N, E, Ty>,
+            name: PathBuf,
+            graph_config: &[petgraph::dot::Config],
+        ) {
+            let dot_name = name.clone();
+            let mut f = File::create(dot_name.clone()).unwrap();
+            let dot_string = format!("{:?}", petgraph::dot::Dot::with_config(&g, &graph_config));
+            f.write_all(dot_string.as_bytes()).expect("写入失败");
+        }
+        generate_dot_by_graph(&proof_graph, path, &[]);
     }
 }

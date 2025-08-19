@@ -1,16 +1,20 @@
-use crate::wrap::{self, PatRecSgl, ToValue};
+use crate::wrap::{self, EgglogNode, PatRecSgl, ToValue};
 use crate::wrap::{BoxUnbox, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::RunReport;
 use egglog::ast::ResolvedVar;
-use egglog::prelude::{FuncType, GenericAtom, GenericAtomTerm, Query, ResolvedCall};
+use egglog::prelude::{
+    AnyhowResult, FuncType, GenericAtom, GenericAtomTerm, Query, ResolvedCall, TermProof,
+};
 use egglog::{
-    BaseValue, Value,
+    BaseValue,
     ast::FunctionSubtype,
     prelude::RustRuleContext,
     sort::{EqSort, Sort},
     span,
 };
+use std::rc::Rc;
 use std::sync::Arc;
+use wrap::Value;
 
 // eggplant rule context is a wrapper of egglog rule context.
 // it contains the Tx to which the rule is applied
@@ -23,7 +27,7 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
             rule_ctx: egglog_ctx,
         }
     }
-    pub fn devalue<B: BoxUnbox + EgglogTy>(&mut self, val: wrap::Value<B>) -> B::UnBoxed {
+    pub fn devalue<B: BoxUnbox + EgglogTy>(&mut self, val: Value<B>) -> B::UnBoxed {
         B::unbox(self.rule_ctx.value_to_base(val.val), self)
     }
     pub fn intern_base<T: EgglogTy, B: BoxUnbox>(&mut self, base: B) -> wrap::Value<T> {
@@ -33,7 +37,7 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     pub fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
         self.rule_ctx.base_to_value(base)
     }
-    pub fn insert(&mut self, table: &str, key: &[Value]) -> Value {
+    pub fn insert(&mut self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.rule_ctx
             .lookup(table, key.iter().copied().collect())
             .unwrap()
@@ -54,6 +58,8 @@ pub trait RuleRunner {
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
+    fn explain<T: EgglogTy>(&self, value: wrap::Value<T>) -> AnyhowResult<Rc<TermProof>>;
+    fn value<T: EgglogNode>(&self, node: &T) -> Value<T>;
 }
 pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     fn add_rule<P: PatVars<Self::PatRecSgl>>(
@@ -64,6 +70,8 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
+    fn explain<T: EgglogTy>(value: Value<T>) -> AnyhowResult<Rc<TermProof>>;
+    fn value<T: EgglogNode>(node: &T) -> Value<T>;
 }
 impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
 where
@@ -82,6 +90,14 @@ where
     }
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport {
         Self::sgl().run_ruleset(rule_set_id, run_config)
+    }
+
+    fn explain<Ty: EgglogTy>(value: Value<Ty>) -> AnyhowResult<Rc<TermProof>> {
+        Self::sgl().explain(value)
+    }
+
+    fn value<N: EgglogNode>(node: &N) -> Value<N> {
+        Self::sgl().value(node)
     }
 }
 

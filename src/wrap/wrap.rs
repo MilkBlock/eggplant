@@ -18,6 +18,7 @@ use std::{
     hash::Hash,
     marker::PhantomData,
     panic::Location,
+    path::PathBuf,
     sync::{Arc, atomic::AtomicU32},
     usize,
 };
@@ -137,8 +138,9 @@ impl<S: SingletonGetter> NodeDropperSgl for S
 where
     S::RetTy: NodeDropper + 'static,
 {
-    fn on_drop(dropped: &mut (impl EgglogNode + 'static)) {
-        Self::sgl().on_drop(dropped);
+    fn on_drop(_dropped: &mut (impl EgglogNode + 'static)) {
+        // do nothing as default
+        // Self::sgl().on_drop(dropped);
     }
 }
 
@@ -356,6 +358,8 @@ pub trait EgglogNode: ToEgglog + Any + EValue + Send + Sync {
     fn ty_name_lower(&self) -> &'static str;
     fn basic_field_names(&self) -> &[&'static str];
     fn basic_field_types(&self) -> &[&'static str];
+    fn complex_field_names(&self) -> &[&'static str];
+    fn complex_field_types(&self) -> &[&'static str];
 
     #[track_caller]
     fn to_term(
@@ -382,7 +386,9 @@ pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
     type ValuedWithDefault<T>: FromPlainValues;
     /// fields names of valued variant struct
     const BASIC_FIELD_NAMES: &[&'static str];
+    const COMPLEX_FIELD_NAMES: &[&'static str];
     const BASIC_FIELD_TYPES: &[&'static str];
+    const COMPLEX_FIELD_TYPES: &[&'static str];
 }
 /// instance of specified [`EgglogTy`] & its VariantTy
 #[derive(Debug, Clone)]
@@ -511,6 +517,8 @@ impl EgglogEnumVariantTy for () {
     type ValuedWithDefault<T> = Value<T>;
     const BASIC_FIELD_NAMES: &[&'static str] = &[];
     const BASIC_FIELD_TYPES: &[&'static str] = &[];
+    const COMPLEX_FIELD_NAMES: &[&'static str] = &[];
+    const COMPLEX_FIELD_TYPES: &[&'static str] = &[];
 }
 
 #[derive(DerefMut, Deref)]
@@ -521,6 +529,7 @@ pub struct WorkAreaNode {
     #[deref]
     #[deref_mut]
     pub egglog: Box<dyn EgglogNode>,
+    pub pulled_by: Option<egglog::Value>,
 }
 
 impl Clone for WorkAreaNode {
@@ -530,6 +539,7 @@ impl Clone for WorkAreaNode {
             preds: self.preds.clone(),
             egglog: self.egglog.clone_dyn(),
             prev: None,
+            pulled_by: self.pulled_by,
         }
     }
 }
@@ -537,7 +547,7 @@ impl fmt::Debug for WorkAreaNode {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{} {} | {}",
+            "{} {} | {} | pulled_by {:?}",
             self.variant_name().unwrap_or(self.ty_name()),
             self.cur_sym(),
             self.to_egglog_string().unwrap_or(
@@ -547,7 +557,8 @@ impl fmt::Debug for WorkAreaNode {
                     .map(|s| s.to_string())
                     .collect::<Vec<_>>()
                     .join(" ")
-            )
+            ),
+            self.pulled_by
         )
     }
 }
@@ -558,6 +569,16 @@ impl WorkAreaNode {
             egglog: node,
             next: None,
             prev: None,
+            pulled_by: None,
+        }
+    }
+    pub fn new_pulled(node: Box<dyn EgglogNode>, pulled_by: egglog::Value) -> Self {
+        Self {
+            preds: Syms::default(),
+            egglog: node,
+            next: None,
+            prev: None,
+            pulled_by: Some(pulled_by),
         }
     }
     pub fn succs_mut(&mut self) -> impl Iterator<Item = &mut Sym> {
@@ -764,7 +785,7 @@ pub trait FromTerm {
 impl SingletonGetter for () {
     type RetTy = TxRxVT;
     fn sgl() -> &'static Self::RetTy {
-        panic!("illegal singleton getter")
+        panic!("illegal singleton getter, you can't get singleton of ()");
     }
 }
 
@@ -835,7 +856,7 @@ impl<T> Value<T> {
             p: PhantomData,
         }
     }
-    pub fn detype(&self) -> egglog::Value {
+    pub fn erase(&self) -> egglog::Value {
         self.val
     }
 }
@@ -967,6 +988,33 @@ where
             Self::PH => ph_f(),
             Self::VarPH(dis, succs) => var_ph_f(dis, succs),
         }
+    }
+}
+
+pub trait ToDotSgl {
+    fn egraph_to_dot(path: PathBuf);
+    fn wag_to_dot(path: PathBuf);
+    fn proof_to_dot(path: PathBuf);
+}
+pub trait ToDot {
+    fn egraph_to_dot(&self, path: PathBuf);
+    fn wag_to_dot(&self, path: PathBuf);
+    fn proof_to_dot(&self, path: PathBuf);
+}
+impl<S: SingletonGetter> ToDotSgl for S
+where
+    S::RetTy: ToDot + 'static,
+{
+    fn egraph_to_dot(path: PathBuf) {
+        Self::sgl().egraph_to_dot(path);
+    }
+
+    fn wag_to_dot(path: PathBuf) {
+        Self::sgl().wag_to_dot(path);
+    }
+
+    fn proof_to_dot(path: PathBuf) {
+        Self::sgl().proof_to_dot(path);
     }
 }
 

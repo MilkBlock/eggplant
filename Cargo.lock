@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "add_primitive"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=f9ea9be#f9ea9be29eafd2c2225e6c78d47a331664e7b859"
+source = "git+https://github.com/MilkBlock/egglog?rev=e166478#e1664786863a19b05d40e30a20b961aa09ea8e2e"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -126,9 +126,9 @@ checksum = "793db76d6187cd04dff33004d8e6c9cc4e05cd330500379d2394209271b4aeee"
 
 [[package]]
 name = "cc"
-version = "1.2.32"
+version = "1.2.33"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2352e5597e9c544d5e6d9c95190d5d27738ade584fa8db0a16e130e5c2b5296e"
+checksum = "3ee0f8803222ba5a7e2777dd72ca451868909b1ac410621b676adf07280e9b5f"
 dependencies = [
  "shlex",
 ]
@@ -197,7 +197,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 [[package]]
 name = "concurrency"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "arc-swap",
  "rayon",
@@ -206,7 +206,7 @@ dependencies = [
 [[package]]
 name = "core-relations"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -222,7 +222,7 @@ dependencies = [
  "num",
  "numeric-id",
  "once_cell",
- "petgraph 0.6.5",
+ "petgraph",
  "rand",
  "rayon",
  "rustc-hash",
@@ -411,7 +411,7 @@ checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 [[package]]
 name = "egglog"
 version = "0.5.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=f9ea9be#f9ea9be29eafd2c2225e6c78d47a331664e7b859"
+source = "git+https://github.com/MilkBlock/egglog?rev=e166478#e1664786863a19b05d40e30a20b961aa09ea8e2e"
 dependencies = [
  "add_primitive",
  "chrono",
@@ -439,7 +439,7 @@ dependencies = [
 [[package]]
 name = "egglog-bridge"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "anyhow",
  "core-relations",
@@ -450,7 +450,7 @@ dependencies = [
  "num-rational",
  "numeric-id",
  "once_cell",
- "petgraph 0.6.5",
+ "petgraph",
  "rayon",
  "smallvec",
  "thiserror 1.0.69",
@@ -464,12 +464,15 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "derive_more",
+ "dot-generator",
+ "dot-structures",
  "egglog",
  "eggplant-macros",
  "env_logger",
+ "graphviz-rust 0.9.5",
  "inventory",
  "log",
- "petgraph 0.8.2",
+ "petgraph",
  "smallvec",
  "strum",
  "strum_macros",
@@ -494,7 +497,7 @@ version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c31c5c0d7f760f9c1c84e21d73dcd3b3ce7a4770c27689f56a0db26e0f3e79ca"
 dependencies = [
- "graphviz-rust",
+ "graphviz-rust 0.6.6",
  "indexmap",
  "once_cell",
  "ordered-float",
@@ -615,6 +618,22 @@ name = "graphviz-rust"
 version = "0.6.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "27dafd1ac303e0dfb347a3861d9ac440859bab26ec2f534bbceb262ea492a1e0"
+dependencies = [
+ "dot-generator",
+ "dot-structures",
+ "into-attr",
+ "into-attr-derive",
+ "pest",
+ "pest_derive",
+ "rand",
+ "tempfile",
+]
+
+[[package]]
+name = "graphviz-rust"
+version = "0.9.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "844f6cc740402218a8b4c450d4569f368c754d01e41a1917751c4fa3750a942e"
 dependencies = [
  "dot-generator",
  "dot-structures",
@@ -892,7 +911,7 @@ dependencies = [
 [[package]]
 name = "numeric-id"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "lazy_static",
  "rayon",
@@ -986,18 +1005,6 @@ checksum = "b4c5cc86750666a3ed20bdaf5ca2a0344f9c67674cae0515bec2da16fbaa47db"
 dependencies = [
  "fixedbitset 0.4.2",
  "indexmap",
-]
-
-[[package]]
-name = "petgraph"
-version = "0.8.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "54acf3a685220b533e437e264e4d932cfbdc4cc7ec0cd232ed73c08d03b8a7ca"
-dependencies = [
- "fixedbitset 0.5.7",
- "hashbrown 0.15.4",
- "indexmap",
- "serde",
 ]
 
 [[package]]
@@ -1416,7 +1423,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "union-find"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git#1fa1880f90303f8df582e69bf0c3f669640e8c17"
+source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "concurrency",
  "crossbeam",
