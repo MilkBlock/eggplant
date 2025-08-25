@@ -142,6 +142,15 @@ macro_rules! impl_simple_boxunbox_for {
         }
     };
 }
-impl_simple_boxunbox_for!(String);
+impl BoxUnbox for String {
+    type Boxed = Boxed<String>;
+    type UnBoxed = String;
+    fn unbox(boxed: Self::Boxed, _ctx: &mut super::RuleCtx) -> Self::UnBoxed {
+        boxed.0
+    }
+    fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
+        Boxed::new(self)
+    }
+}
 impl_simple_boxunbox_for!(i64);
 impl_simple_boxunbox_for!(bool);
