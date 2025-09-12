@@ -7,7 +7,7 @@ use proc_macro2::{Ident, TokenStream};
 use quote::{ToTokens, format_ident, quote};
 use syn::{Data, DeriveInput, Field, Type, Visibility, parse_macro_input, parse_quote};
 mod helper;
-use helper::{DE, E, INVE, W};
+use helper::{E, INVE, W};
 
 use crate::enum_related::*;
 mod enum_related;
@@ -101,7 +101,6 @@ pub fn func(
                 const _:() = {
                     use #W::EgglogNode;
                     use #INVE;
-                    use #DE;
                     impl<T:#W::NodeDropperSgl> #W::EgglogFunc for #name_func<T>{
                         type Output=#output_with_generic;
                         type Input=(#(#input_types_with_generic),*);
@@ -155,7 +154,7 @@ pub fn func(
 ///
 ///
 /// ```
-/// #[derive(Debug, Clone, ::derive_more::Deref)]
+/// #[derive(Debug, Clone)]
 /// pub struct DurationNode {
 ///     ty: _DurationNode,
 ///     #[deref]
@@ -338,10 +337,10 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         }
                         fn to_egglog(&self) -> #W::EgglogAction{
                             #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
-                                #E::ast::GenericExpr::Call(self.span.to_span(),"vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
+                                #E::ast::GenericExpr::Call(self.node.span.to_span(),"vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
-                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // use ctx.insert to insert
                             // todo
                             let sym = self.cur_sym();
@@ -361,7 +360,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         }
                         fn to_egglog(&self) -> #W::EgglogAction{
                             #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
-                                #E::ast::GenericExpr::Call(self.span.to_span(), "vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
+                                #E::ast::GenericExpr::Call(self.node.span.to_span(), "vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
                         fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
@@ -433,7 +432,6 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 let vec_expanded = quote! {
                     pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
                     #[allow(unused)]
-                    #[derive(#DE::DerefMut,#DE::Deref)]
                     pub struct #name_node<T: #W::NodeDropperSgl =(), V: #W::EgglogEnumVariantTy=()>
                     where Self: #W::EgglogNode + #W::EgglogTy {
                         node:#name_node_alias<T,V>
@@ -447,7 +445,6 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         use #E::prelude::*;
                         use #E::*;
                         use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr};
-                        use #DE;
                         use #INVE;
                         impl #W::NodeInner for #name_inner{
                             fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
@@ -464,7 +461,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
                             #[track_caller]
                             pub fn query(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
-                                let #field_name = #field_name.into_iter().map(|r| r.as_ref().sym).collect();
+                                let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
                                 let node = #W::Node{
                                     ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
                                     span:Some(std::panic::Location::caller()),
@@ -480,7 +477,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         impl<T:#W::TxSgl + #W::NonPatRecSgl> self::#name_node<T,()> {
                             #[track_caller]
                             pub fn new(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
-                                let #field_name = #field_name.into_iter().map(|r| r.as_ref().sym).collect();
+                                let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
                                 let node = #W::Node{
                                     ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
                                     span:Some(std::panic::Location::caller()),
@@ -583,7 +580,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                                     node:
                                         #W::Node {
                                             ty: self.node.ty.clone(),
-                                            span: self.span,
+                                            span: self.node.span,
                                             sym: self.node.sym.clone(),
                                             _p:PhantomData,
                                             _s:PhantomData,
@@ -627,9 +624,9 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
 
             let to_egglog_string_match_arms = data_enum.variants.iter().map(|variant| {
                 let variant_idents = variant2field_ident(variant);
-                let (variant_marker, variant_name) = variant2marker_name(variant);
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
                 let s = " {:.3}".repeat(variant_idents.len());
-                let format_str = format!("(let {{}} ({} {}))", variant_marker, s);
+                let format_str = format!("(let {{}} ({} {}))", variant_name, s);
                 quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
                     Some(format!(#format_str ,self.node.sym, #(#variant_idents),*))
                 }}
@@ -882,7 +879,7 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                 #(pub type #variant_names<T> = self::#name_node<T, #variant_markers>;)*
                 #(#enum_variant_tys_def)*
                 #[allow(unused)]
-                #[derive(#DE::Deref)]
+                // #[derive(#DE::Deref)]
                 pub struct #name_node<T: #W::NodeDropperSgl = (),V:#W::EgglogEnumVariantTy=()>
                 where Self: #W::EgglogNode + #W::EgglogTy {
                     node:#name_node_alias<T,V>
@@ -899,7 +896,6 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                     use std::collections::HashMap;
                     use #E::prelude::*;
                     use #E::ast::{GenericAction, GenericExpr};
-                    use #DE;
                     use #INVE;
                     impl<T:#W::TxSgl + #W::NonPatRecSgl> self::#name_node<T,()> {
                         #(#new_fns)*
@@ -936,6 +932,13 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                         impl<T:TxSgl + PatRecSgl> self::#name_node<T, #variant_markers> {
                             pub fn query(#(#query_fn_args),*) -> Self{
                                 #name_node::<T,()>::#query_fn_names(#(#query_fn_arg_idents),*)
+                            }
+                        }
+                        impl<T:TxSgl> std::ops::Deref for self::#name_node<T, #variant_markers> {
+                            type Target = #name_node<T>;
+
+                            fn deref(&self) -> &Self::Target {
+                                unsafe { std::mem::transmute(self) }
                             }
                         }
                     )*
@@ -1098,9 +1101,9 @@ pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_
                             Self {
                                 node:
                                     #W::Node {
-                                        ty: self.ty.clone(),
-                                        span: self.span ,
-                                        sym: self.sym.clone(),
+                                        ty: self.node.ty.clone(),
+                                        span: self.node.span ,
+                                        sym: self.node.sym.clone(),
                                         _p: PhantomData,
                                         _s: PhantomData,
                                         sgl_specific : T::OwnerSpecDataInNode::default(),

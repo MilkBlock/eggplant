@@ -1,7 +1,8 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr;
+// use eggplant::tx_rx_vt_pr;
+use eggplant::tx_rx_vt_pr_pf;
+use eggplant::wrap::G;
 use eggplant::wrap::Rx;
-// use eggplant::tx_rx_vt_pr_pf;
 #[eggplant::ty]
 pub enum Math {
     MNum { num: i64 },
@@ -23,7 +24,7 @@ pub enum Math {
 }
 #[eggplant::ty]
 pub enum LoopType {
-    Loop { s: String, math: Math },
+    Loop { s: String, range: Math },
 }
 #[eggplant::ty]
 pub enum Expr {
@@ -32,8 +33,13 @@ pub enum Expr {
     },
     LoopIn {
         expr: Expr,
-        loop_type: LoopType,
-        math: Math,
+        arr_and_range: LoopType,
+        stride: Math,
+    },
+    LoopOut {
+        expr: Expr,
+        arr_and_range: LoopType,
+        stride: Math,
     },
     Sub {
         l: Expr,
@@ -75,7 +81,7 @@ pub enum Expr {
         b: String,
     },
 }
-tx_rx_vt_pr!(MyTx, MyPatRec);
+tx_rx_vt_pr_pf!(MyTx, MyPatRec);
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
         #[eggplant::pat_vars]
@@ -103,20 +109,38 @@ macro_rules! prop {
 }
 fn main() {
     env_logger::init();
-    let expr: Math<MyTx, _> = MAdd::new(&MMul::new(&MNum::new(3), &MNum::new(2)), &MNum::new(4));
-    expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
     prop!(MAdd,+,AddPat,ruleset);
     prop!(MSub,-,SubPat,ruleset);
     prop!(MMul,*,MulPat,ruleset);
     prop!(MDiv,/,DivPat,ruleset);
+
+    // compute max in arr
+    let tensor_arr: Expr<MyTx, TensorTy> = Tensor::new("Arr [1,5,2,9]".to_string());
+    let acc_init: Expr<MyTx, NewAccTy> = NewAcc::new(0);
+    let arr_loop = LoopType::new("i".to_string(), &MNum::new(4));
+    let col1 = MVar::new("z".to_string());
+    let arr_loop_in = LoopIn::new(&tensor_arr, &arr_loop, &col1);
+    let acc_loop_in = LoopIn::new(&acc_init, &arr_loop, &MAccum::new());
+    let max = Max::new(&arr_loop_in, &acc_loop_in);
+    let max_arr: Expr<MyTx, LoopOutTy> = LoopOut::new(
+        &max,
+        &Loop::new("fold".to_string(), &MNum::new(4)),
+        &MAccum::new(),
+    );
+    max_arr.commit();
+
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("{:#?}", report);
     MyTx::egraph_to_dot("egraph.dot".into());
-    let val = MyTx::value(&expr);
+
+    let val = MyTx::value(&max);
     MyTx::sgl().on_pull_value(val);
-    println!("{:?}", val);
-    // let explaination = MyTx::explain(val);
-    // println!("{:#?}", explaination);
+    MyTx::wag_to_dot("wag.dot".into());
+    a::<MyTx>();
+}
+
+fn a<T: G>() {
+    MNum::<T>::new(3);
 }

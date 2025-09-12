@@ -324,7 +324,4 @@ impl PatRec for PatRecorder {
         log::debug!("topo:{:?}", topo_syms);
         query_builder
     }
-    // fn pat2atoms_vars() -> (()){
-
-    // }
 }

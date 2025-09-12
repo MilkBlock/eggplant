@@ -206,7 +206,7 @@ pub fn new_fn_ts(
                     _s:PhantomData,
                     sgl_specific: T::OwnerSpecDataInNode::default()
                 };
-                let node = self::#name_node {node};
+                let node:#name_node<T,#variant_marker> = self::#name_node {node};
                 term2sym.insert(term_id, node.cur_sym());
                 node
             }

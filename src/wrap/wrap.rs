@@ -995,11 +995,13 @@ pub trait ToDotSgl {
     fn egraph_to_dot(path: PathBuf);
     fn wag_to_dot(path: PathBuf);
     fn proof_to_dot(path: PathBuf);
+    fn table_view();
 }
 pub trait ToDot {
     fn egraph_to_dot(&self, path: PathBuf);
     fn wag_to_dot(&self, path: PathBuf);
     fn proof_to_dot(&self, path: PathBuf);
+    fn table_view(&self);
 }
 impl<S: SingletonGetter> ToDotSgl for S
 where
@@ -1016,9 +1018,15 @@ where
     fn proof_to_dot(path: PathBuf) {
         Self::sgl().proof_to_dot(path);
     }
+    fn table_view() {
+        Self::sgl().table_view();
+    }
 }
 
 /// a marker trait for those not pattern recorder singleton
 /// because currently rust doesn't support `!PatRecSgl` clause
 pub trait NonPatRecSgl {}
 impl NonPatRecSgl for () {}
+
+pub trait G: TxSgl + NonPatRecSgl {}
+impl<T: TxSgl + NonPatRecSgl> G for T {}

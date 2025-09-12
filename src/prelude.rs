@@ -2,6 +2,7 @@ pub use crate::wrap::{
     Commit, EgglogNode, LocateVersion, PatRecSgl, PatRecorder, RuleRunnerSgl, RunConfig, RxSgl,
     SingletonGetter, ToDot, ToDotSgl, ToValue, TxCommit, TxCommitSgl, TxSgl,
 };
+pub use dashmap;
 pub use derive_more;
 pub use egglog;
 pub use eggplant_macros::*;

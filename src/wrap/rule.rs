@@ -3,7 +3,7 @@ use crate::wrap::{BoxUnbox, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::RunReport;
 use egglog::ast::ResolvedVar;
 use egglog::prelude::{
-    AnyhowResult, FuncType, GenericAtom, GenericAtomTerm, Query, ResolvedCall, TermProof,
+    EqProofId, FuncType, GenericAtom, GenericAtomTerm, Query, ResolvedCall, TermProofId,
 };
 use egglog::{
     BaseValue,
@@ -12,7 +12,6 @@ use egglog::{
     sort::{EqSort, Sort},
     span,
 };
-use std::rc::Rc;
 use std::sync::Arc;
 use wrap::Value;
 
@@ -38,14 +37,15 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         self.rule_ctx.base_to_value(base)
     }
     pub fn insert(&mut self, table: &str, key: &[egglog::Value]) -> egglog::Value {
-        self.rule_ctx
-            .lookup(table, key.iter().copied().collect())
-            .unwrap()
+        self.rule_ctx.lookup(table, key).unwrap()
     }
     pub fn union<T0, T1>(&mut self, x: impl ToValue<T0>, y: impl ToValue<T1>) {
         let x = x.to_value(self);
         let y = y.to_value(self);
         self.rule_ctx.union(x.val, y.val);
+    }
+    pub fn subsume(&mut self, table: &str, key: &[egglog::Value]) {
+        self.rule_ctx.subsume(table, key)
     }
 }
 pub trait RuleRunner {
@@ -58,7 +58,12 @@ pub trait RuleRunner {
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
-    fn explain<T: EgglogTy>(&self, value: wrap::Value<T>) -> AnyhowResult<Rc<TermProof>>;
+    fn explain<T: EgglogTy>(&self, value: wrap::Value<T>) -> TermProofId;
+    fn explain_eq<T1: EgglogTy, T2: EgglogTy>(
+        &self,
+        v1: wrap::Value<T1>,
+        v2: wrap::Value<T2>,
+    ) -> EqProofId;
     fn value<T: EgglogNode>(&self, node: &T) -> Value<T>;
 }
 pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
@@ -70,7 +75,9 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
-    fn explain<T: EgglogTy>(value: Value<T>) -> AnyhowResult<Rc<TermProof>>;
+    fn explain<T: EgglogTy>(value: Value<T>) -> TermProofId;
+    fn explain_eq<T1: EgglogTy, T2: EgglogTy>(v1: Value<T1>, v2: Value<T2>) -> EqProofId;
+    fn explain_eq_raw(v1: u32, v2: u32) -> EqProofId;
     fn value<T: EgglogNode>(node: &T) -> Value<T>;
 }
 impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
@@ -92,12 +99,23 @@ where
         Self::sgl().run_ruleset(rule_set_id, run_config)
     }
 
-    fn explain<Ty: EgglogTy>(value: Value<Ty>) -> AnyhowResult<Rc<TermProof>> {
+    fn explain<Ty: EgglogTy>(value: Value<Ty>) -> TermProofId {
         Self::sgl().explain(value)
     }
 
     fn value<N: EgglogNode>(node: &N) -> Value<N> {
         Self::sgl().value(node)
+    }
+
+    fn explain_eq<T1: EgglogTy, T2: EgglogTy>(v1: Value<T1>, v2: Value<T2>) -> EqProofId {
+        Self::sgl().explain_eq(v1, v2)
+    }
+
+    fn explain_eq_raw(v1: u32, v2: u32) -> EqProofId {
+        Self::sgl().explain_eq(
+            Value::<i64>::new(egglog::Value::new_const(v1)),
+            Value::<i64>::new(egglog::Value::new_const(v2)),
+        )
     }
 }
 
@@ -136,6 +154,7 @@ impl QueryBuilder {
             is_global_ref: false,
         }
     }
+    /// procedural macro call this function to add atom
     pub fn add_atom(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
         self.atoms.push((query_table, vars));
     }

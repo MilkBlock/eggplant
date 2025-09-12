@@ -18,7 +18,7 @@ pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 3] = [
 
 pub static E: LazyTokenStream = LazyTokenStream::new(|| format!("{}::egglog", *EP.s));
 pub static EP: LazyTokenStream = LazyTokenStream::new(|| eggplant_path());
-pub static DE: LazyTokenStream = LazyTokenStream::new(|| format!("{}::derive_more", *EP.s));
+// pub static DE: LazyTokenStream = LazyTokenStream::new(|| format!("{}::derive_more", *EP.s));
 pub static W: LazyTokenStream = LazyTokenStream::new(|| format!("{}::wrap", *EP.s));
 pub static ENM: LazyTokenStream = LazyTokenStream::new(|| format!("{}::strum_macros", *EP.s));
 pub static EN: LazyTokenStream = LazyTokenStream::new(|| format!("{}::strum", *EP.s));
@@ -212,18 +212,14 @@ pub fn variant2ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream>
     variant2mapped_ident_type_list(
         variant,
         |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
-        |complex, complex_ty| {
-            Some(quote! {#complex: &#complex_ty<T, impl #W::EgglogEnumVariantTy>})
-        },
+        |complex, complex_ty| Some(quote! {#complex: &#complex_ty<T>}),
     )
 }
 pub fn variant2ref_node_list_except_basic(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
     variant2mapped_ident_type_list(
         variant,
         |_, _| None,
-        |complex, complex_ty| {
-            Some(quote! {#complex: &#complex_ty<T, impl #W::EgglogEnumVariantTy>})
-        },
+        |complex, complex_ty| Some(quote! {#complex: &#complex_ty<T>}),
     )
 }
 pub fn variant2valued_ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
@@ -265,7 +261,7 @@ pub fn variant2assign_node_field_list(variant: &Variant) -> Vec<proc_macro2::Tok
     variant2mapped_ident_type_list(
         variant,
         |basic, _| Some(quote! {#basic}),
-        |complex, _| Some(quote!(#complex:#complex.sym)),
+        |complex, _| Some(quote!(#complex:#complex.node.sym)),
     )
 }
 pub fn variant2assign_node_field_typed(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
@@ -281,7 +277,7 @@ pub fn variant2assign_node_field_list_without_prefixed_ident(
     variant2mapped_ident_type_list(
         variant,
         |basic, _| Some(quote! {#basic}),
-        |complex, _| Some(quote! {#complex.sym}),
+        |complex, _| Some(quote! {#complex.node.sym}),
     )
 }
 pub fn variant2field_list_complex_ident_only(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
@@ -360,7 +356,7 @@ pub fn variant2field_ident_assign_with_basic_default(
                 // quote! {#ident}
             })
         },
-        |ident, _| Some(quote! {#ident: #ident.sym}),
+        |ident, _| Some(quote! {#ident: #ident.node.sym}),
     )
 }
 pub fn variant2assign_node_field_typed_with_basic_default(

@@ -5,7 +5,6 @@ version = 4
 [[package]]
 name = "add_primitive"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=e166478#e1664786863a19b05d40e30a20b961aa09ea8e2e"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -197,7 +196,6 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 [[package]]
 name = "concurrency"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "arc-swap",
  "rayon",
@@ -206,7 +204,6 @@ dependencies = [
 [[package]]
 name = "core-relations"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -411,7 +408,6 @@ checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 [[package]]
 name = "egglog"
 version = "0.5.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=e166478#e1664786863a19b05d40e30a20b961aa09ea8e2e"
 dependencies = [
  "add_primitive",
  "chrono",
@@ -424,6 +420,7 @@ dependencies = [
  "hashbrown 0.15.4",
  "im-rc",
  "indexmap",
+ "itertools",
  "lazy_static",
  "log",
  "mimalloc",
@@ -439,13 +436,13 @@ dependencies = [
 [[package]]
 name = "egglog-bridge"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "anyhow",
  "core-relations",
  "dyn-clone",
  "hashbrown 0.15.4",
  "indexmap",
+ "itertools",
  "log",
  "num-rational",
  "numeric-id",
@@ -464,8 +461,6 @@ version = "0.1.0"
 dependencies = [
  "dashmap",
  "derive_more",
- "dot-generator",
- "dot-structures",
  "egglog",
  "eggplant-macros",
  "env_logger",
@@ -737,6 +732,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7943c866cc5cd64cbc25b2e01621d07fa8eb2a1a23160ee81ce38704e97b8ecf"
 
 [[package]]
+name = "itertools"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2b192c782037fadd9cfa75548310488aabdbf3d2da73885b31bd0abd03351285"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -911,7 +915,6 @@ dependencies = [
 [[package]]
 name = "numeric-id"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "lazy_static",
  "rayon",
@@ -1423,7 +1426,6 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "union-find"
 version = "0.1.0"
-source = "git+https://github.com/MilkBlock/egglog-backend.git?rev=2d0693f#2d0693f3b5bcb336cedc8ac441b847b371c16fab"
 dependencies = [
  "concurrency",
  "crossbeam",

@@ -685,4 +685,9 @@ impl ToDot for TxRxVT {
         }
         generate_dot_by_graph(&proof_graph, path, &[]);
     }
+
+    fn table_view(&self) {
+        let egraph = self.egraph.lock().unwrap();
+        egraph.backend.dump_debug_info();
+    }
 }
