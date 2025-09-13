@@ -695,8 +695,11 @@ impl Rx for TxRxVTPR {
         }
     }
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
-        let value = sym.get_value_by_eval_string(&mut self.egraph.lock().unwrap());
-        self.on_pull_value(Value::<T>::new(value))
+        if let Some(value) = self.sym2value_map.get(&sym) {
+            self.on_pull_value(Value::<T>::new(*value))
+        } else {
+            panic!("{}'s value not found in sym2value_map", sym)
+        }
     }
 }
 
@@ -792,14 +795,9 @@ impl RuleRunner for TxRxVTPR {
             .backend
             .explain_term(value.erase(), &mut prf_store)
             .unwrap();
-        println!("explained term ");
         prf_store
             .print_term_proof(prf_id, &mut std::io::stdout())
             .unwrap();
-        // prf_store.print_eq_proof_pretty(eq_pf, config, writer)
-        // println!("{:?}", prf_store.termdag);
-        // panic!();
-        // prf_store.print_eq_proof(xx, writer)
         prf_id
     }
 
@@ -833,10 +831,7 @@ impl RuleRunner for TxRxVTPR {
                 &mut std::io::stdout(),
             )
             .unwrap();
-        // prf_store.print_eq_proof_pretty(eq_pf, config, writer)
-        // println!("{:?}", prf_store.termdag);
-        // panic!();
-        // prf_store.print_eq_proof(xx, writer)
+        println!("");
         prf_id
     }
 }

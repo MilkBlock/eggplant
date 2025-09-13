@@ -46,10 +46,13 @@ fn main() {
     prop!(Div,/,DivPat,ruleset);
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("{:#?}", report);
-    MyTx::egraph_to_dot("egraph.dot".into());
-    // paterns to dot
-    MyTx::wag_to_dot("wag.dot".into());
     MyTx::table_view();
     MyTx::explain_eq_raw(6, 4);
+    MyTx::explain_raw(5);
+
+    expr.pull();
+    MyTx::egraph_to_dot("egraph.dot".into());
+    MyTx::wag_to_dot("wag.dot".into());
+    // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot".into());
 }

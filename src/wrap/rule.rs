@@ -76,6 +76,7 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
     fn explain<T: EgglogTy>(value: Value<T>) -> TermProofId;
+    fn explain_raw(value: u32) -> TermProofId;
     fn explain_eq<T1: EgglogTy, T2: EgglogTy>(v1: Value<T1>, v2: Value<T2>) -> EqProofId;
     fn explain_eq_raw(v1: u32, v2: u32) -> EqProofId;
     fn value<T: EgglogNode>(node: &T) -> Value<T>;
@@ -101,6 +102,9 @@ where
 
     fn explain<Ty: EgglogTy>(value: Value<Ty>) -> TermProofId {
         Self::sgl().explain(value)
+    }
+    fn explain_raw(value: u32) -> TermProofId {
+        Self::sgl().explain(Value::<i64>::new(egglog::Value::new_const(value)))
     }
 
     fn value<N: EgglogNode>(node: &N) -> Value<N> {
