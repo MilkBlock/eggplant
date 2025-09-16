@@ -5,7 +5,7 @@ use crate::wrap::{
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::{
-    ArcSort, BaseValue, EGraph,
+    ArcSort, BaseValue, ContainerValue, EGraph,
     ast::{Command, GenericAction, GenericExpr, RustSpan, Span},
 };
 use egglog::{TermDag, TermId, ast::Literal, span};
@@ -892,16 +892,19 @@ impl<T: EgglogTy> Copy for Value<T> {}
 /// if one struct BoxUnBox that means it can be converted to a boxed value in database
 /// this is an essential condition to be insert into egglog_backend
 /// any struct implements this trait inferred to be [`ToValue`]
-pub trait BoxUnbox {
+pub trait BoxedBase {
     type Boxed: BaseValue;
     type UnBoxed;
     fn unbox(boxed: Self::Boxed, ctx: &mut RuleCtx) -> Self::UnBoxed;
     fn box_it(self, ctx: &mut RuleCtx) -> Self::Boxed;
 }
+pub trait BoxedContainer {
+    type Container: ContainerValue;
+}
 
 pub trait SingleFieldVariant {}
 
-impl<T0, T1, B: BoxUnbox<Boxed = T0, UnBoxed = T1> + EgglogTy + Clone> ToValue<B> for B {
+impl<T0, T1, B: BoxedBase<Boxed = T0, UnBoxed = T1> + EgglogTy + Clone> ToValue<B> for B {
     fn to_value(&self, ctx: &mut RuleCtx) -> Value<B> {
         ctx.intern_base(self.clone())
     }

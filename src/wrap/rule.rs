@@ -1,6 +1,5 @@
-use crate::wrap::{self, EgglogNode, PatRecSgl, ToValue};
-use crate::wrap::{BoxUnbox, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
-use egglog::RunReport;
+use crate::wrap::{self, BoxedContainer, EgglogNode, PatRecSgl, ToValue};
+use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::ast::ResolvedVar;
 use egglog::prelude::{
     EqProofId, FuncType, GenericAtom, GenericAtomTerm, Query, ResolvedCall, TermProofId,
@@ -12,6 +11,7 @@ use egglog::{
     sort::{EqSort, Sort},
     span,
 };
+use egglog::{ContainerValue, RunReport};
 use std::sync::Arc;
 use wrap::Value;
 
@@ -26,15 +26,27 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
             rule_ctx: egglog_ctx,
         }
     }
-    pub fn devalue<B: BoxUnbox + EgglogTy>(&mut self, val: Value<B>) -> B::UnBoxed {
+    pub fn devalue<B: BoxedBase + EgglogTy>(&mut self, val: Value<B>) -> B::UnBoxed {
         B::unbox(self.rule_ctx.value_to_base(val.val), self)
     }
-    pub fn intern_base<T: EgglogTy, B: BoxUnbox>(&mut self, base: B) -> wrap::Value<T> {
+    pub fn intern_base<T: EgglogTy, B: BoxedBase>(&mut self, base: B) -> wrap::Value<T> {
         let boxed = base.box_it(self);
         wrap::Value::new(self._intern_base::<T, B::Boxed>(boxed))
     }
+    pub fn intern_container<T: EgglogTy, C: BoxedContainer>(
+        &mut self,
+        container: C::Container,
+    ) -> wrap::Value<T> {
+        wrap::Value::new(self._intern_container::<T, C::Container>(container))
+    }
     pub fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
         self.rule_ctx.base_to_value(base)
+    }
+    pub fn _intern_container<T: EgglogTy, C: ContainerValue>(
+        &mut self,
+        container: C,
+    ) -> egglog::Value {
+        self.rule_ctx.container_to_value(container)
     }
     pub fn insert(&mut self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.rule_ctx.lookup(table, key).unwrap()

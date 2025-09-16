@@ -2,10 +2,10 @@ use std::any::type_name;
 
 use egglog::{
     ast::Literal,
-    sort::{Boxed, OrderedFloat},
+    sort::{Boxed, OrderedFloat, VecContainer},
 };
 
-use crate::wrap::BoxUnbox;
+use crate::wrap::{BoxedBase, BoxedContainer};
 
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;
@@ -140,7 +140,7 @@ impl FromBase<&'static str> for Literal {
     }
 }
 
-impl BoxUnbox for f64 {
+impl BoxedBase for f64 {
     type Boxed = Boxed<OrderedFloat<f64>>;
     type UnBoxed = f64;
     fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
@@ -152,7 +152,7 @@ impl BoxUnbox for f64 {
 }
 macro_rules! impl_simple_boxunbox_for {
     ($ty:ty) => {
-        impl BoxUnbox for $ty {
+        impl BoxedBase for $ty {
             type Boxed = $ty;
             type UnBoxed = $ty;
 
@@ -166,7 +166,7 @@ macro_rules! impl_simple_boxunbox_for {
         }
     };
 }
-impl BoxUnbox for String {
+impl BoxedBase for String {
     type Boxed = Boxed<String>;
     type UnBoxed = String;
     fn unbox(boxed: Self::Boxed, _ctx: &mut super::RuleCtx) -> Self::UnBoxed {
@@ -175,6 +175,9 @@ impl BoxUnbox for String {
     fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
         Boxed::new(self)
     }
+}
+impl BoxedContainer for VecContainer {
+    type Container = VecContainer;
 }
 impl_simple_boxunbox_for!(i64);
 impl_simple_boxunbox_for!(&'static str);

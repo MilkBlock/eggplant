@@ -348,14 +348,12 @@ pub fn dsl(
                             )
                         }
                         fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
-                            // use ctx.insert to insert
-                            // todo
-                            let sym = self.cur_sym();
-                            if let Some(value) = sym_to_value_map.get(&sym) {
-                                value.clone()
-                            } else {
-                                panic!("{}'s value not found, maybe haven't committed", sym)
-                            }
+                            let vec = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
+                                inner.into_iter().map(|x| ctx.intern_base(x)).collect()
+                            }else {
+                                panic!()
+                            };
+                            ctx.intern_container::<Self, #E::sort::VecContainer>(#E::sort::VecContainer{do_rebuild:false, data:vec}).val
                         }
                     }
                 }
@@ -372,13 +370,17 @@ pub fn dsl(
                         }
                         fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // use ctx.insert to insert
-                            // todo
-                            let sym = self.cur_sym();
-                            if let Some(value) = sym_to_value_map.get(&sym) {
-                                value.clone()
-                            } else {
-                                panic!("{}'s value not found, maybe haven't committed", sym)
-                            }
+                            let vec = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
+                                inner.into_iter().map(|sym|
+                                    if let Some(value) = sym_to_value_map.get(&sym.erase()) {
+                                        value.clone()
+                                    } else {
+                                        panic!("{}'s value not found, maybe haven't committed", sym)
+                                    }).collect()
+                            }else {
+                                panic!()
+                            };
+                            ctx.intern_container::<Self, #E::sort::VecContainer>(#E::sort::VecContainer{do_rebuild:false, data:vec}).val
                         }
                     }
                     impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
@@ -1424,7 +1426,7 @@ pub fn base_ty(
             type Valued = eggplant::prelude::Value<Self>;
             type EnumVariantMarker = ();
         }
-        impl #W::BoxUnbox for #ident {
+        impl #W::BoxedBase for #ident {
             type Boxed = #E::sort::Boxed<#ident>;
             type UnBoxed = #ident;
             fn unbox(boxed: Self::Boxed, ctx: &mut eggplant::wrap::RuleCtx) -> Self::UnBoxed {

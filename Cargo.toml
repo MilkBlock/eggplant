@@ -25,8 +25,8 @@ dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "808a304" }
-# egglog = { path = "../egglog" }
+# egglog = { git = "https://github.com/MilkBlock/egglog", rev = "808a304" }
+egglog = { path = "../egglog" }
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
 graphviz-rust = "0.9.5"
