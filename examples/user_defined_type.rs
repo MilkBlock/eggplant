@@ -1,15 +1,6 @@
-// use std::fmt::Display;
-// use egglog::prelude::BaseSort;
-// use egglog::sort::Boxed;
-// use egglog::span;
 use eggplant::prelude::*;
-// use eggplant::serde::{Deserialize, Serialize};
 use eggplant::tx_rx_vt_pr_pf;
-use serde::Deserialize;
-use serde::Serialize;
-// use eggplant::wrap::FromBase;
-// use eggplant::wrap::{BoxUnbox, DeLiteral};
-// use eggplant::wrap::{EgglogTy, UserBaseSort};
+use serde::{Deserialize, Serialize};
 
 #[eggplant::dsl(base=Op)]
 pub enum Expr {
