@@ -5,6 +5,7 @@ version = 4
 [[package]]
 name = "add_primitive"
 version = "0.1.0"
+source = "git+https://github.com/MilkBlock/egglog?rev=08acb51#08acb51d5a4e04017120d144110db740428a0003"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -196,6 +197,7 @@ checksum = "b05b61dc5112cbb17e4b6cd61790d9845d13888356391624cbe7e41efeac1e75"
 [[package]]
 name = "concurrency"
 version = "0.1.0"
+source = "git+https://github.com/MilkBlock/egglog?rev=08acb51#08acb51d5a4e04017120d144110db740428a0003"
 dependencies = [
  "arc-swap",
  "rayon",
@@ -204,6 +206,7 @@ dependencies = [
 [[package]]
 name = "core-relations"
 version = "0.1.0"
+source = "git+https://github.com/MilkBlock/egglog?rev=08acb51#08acb51d5a4e04017120d144110db740428a0003"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -408,6 +411,7 @@ checksum = "1c7a8fb8a9fbf66c1f703fe16184d10ca0ee9d23be5b4436400408ba54a95005"
 [[package]]
 name = "egglog"
 version = "0.5.0"
+source = "git+https://github.com/MilkBlock/egglog?rev=08acb51#08acb51d5a4e04017120d144110db740428a0003"
 dependencies = [
  "add_primitive",
  "chrono",
@@ -436,6 +440,7 @@ dependencies = [
 [[package]]
 name = "egglog-bridge"
 version = "0.1.0"
+source = "git+https://github.com/MilkBlock/egglog?rev=08acb51#08acb51d5a4e04017120d144110db740428a0003"
 dependencies = [
  "anyhow",
  "core-relations",
@@ -917,6 +922,7 @@ dependencies = [
 [[package]]
 name = "numeric-id"
 version = "0.1.0"
+source = "git+https://github.com/MilkBlock/egglog?rev=08acb51#08acb51d5a4e04017120d144110db740428a0003"
 dependencies = [
  "lazy_static",
  "rayon",
@@ -1439,6 +1445,7 @@ checksum = "ebc1c04c71510c7f702b52b7c350734c9ff1295c464a03335b00bb84fc54f853"
 [[package]]
 name = "union-find"
 version = "0.1.0"
+source = "git+https://github.com/MilkBlock/egglog?rev=08acb51#08acb51d5a4e04017120d144110db740428a0003"
 dependencies = [
  "concurrency",
  "crossbeam",
