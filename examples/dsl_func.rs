@@ -1,6 +1,6 @@
 use eggplant::{basic_tx_rx_vt, prelude::*};
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Expr {
     Add { v: Expr, con: Expr },
 

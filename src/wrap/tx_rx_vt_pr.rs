@@ -8,9 +8,9 @@ use core::panic;
 use dashmap::DashMap;
 use egglog::{
     EGraph, PrettyPrintConfig, RunReport, SerializeConfig,
-    ast::Command,
     core::Query,
     prelude::{ProofStore, TermProofId, add_ruleset, run_ruleset},
+    span,
     util::{IndexMap, IndexSet},
 };
 use graphviz_rust::dot_structures::Attribute;
@@ -24,6 +24,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 
+/// support features:
+/// 1. Tx: send command to egraph
+/// 2. Rx: get value from egraph
+/// 3. VersionCtl: version control for nodes
+/// 4. PR: Pattern recorder
+/// 5. generate proof (opt.)
 pub struct TxRxVTPR {
     pub egraph: Mutex<EGraph>,
     pub map: DashMap<Sym, WorkAreaNode>,
@@ -159,7 +165,8 @@ impl TxRxVTPR {
     pub fn new() -> Self {
         let tx = Self {
             egraph: Mutex::new({
-                let e = EGraph::default();
+                let mut e = EGraph::default();
+                Self::add_eggplant_sorts(&mut e);
                 e
             }),
             registry: EgglogTypeRegistry::new_with_inventory(),
@@ -176,11 +183,18 @@ impl TxRxVTPR {
             tx.send(TxCommand::NativeCommand { command: def });
         }
         tx
+    }
+    fn add_eggplant_sorts(e: &mut EGraph) {
+        egglog::prelude::add_leaf_sort(e, StaticStrSort, span!()).unwrap();
+        for sort_fn in inventory::iter::<UserBaseSort> {
+            (sort_fn.sort_insert_fn)(e)
+        }
     }
     pub fn new_with_tracing() -> Self {
         let tx = Self {
             egraph: Mutex::new({
-                let e = EGraph::with_tracing();
+                let mut e = EGraph::with_tracing();
+                Self::add_eggplant_sorts(&mut e);
                 e
             }),
             registry: EgglogTypeRegistry::new_with_inventory(),
@@ -197,13 +211,6 @@ impl TxRxVTPR {
             tx.send(TxCommand::NativeCommand { command: def });
         }
         tx
-    }
-    pub fn pack_actions(actions: Vec<EgglogAction>) -> Vec<Command> {
-        let mut v = vec![];
-        for egglog_action in actions {
-            v.push(Command::Action(egglog_action))
-        }
-        v
     }
     // if auto_latest is true, it will locate the latest version of the node and add it to the map
     fn add_node(&self, mut node: WorkAreaNode, auto_latest: bool) {

@@ -2,7 +2,7 @@ use eggplant::{
     prelude::*,
     wrap::{Rx, Value},
 };
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Math {
     MNum { num: i64 },
     MAdd { l: Math, r: Math },

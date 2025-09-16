@@ -1,5 +1,5 @@
 use eggplant::{prelude::*, tx_rx_vt_pr};
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Expr {
     Add {
         l: Expr,

@@ -2,8 +2,9 @@ use std::collections::HashMap;
 
 use derive_more::Deref;
 use egglog::{
-    Term, TermDag, TermId,
+    EGraph, Term, TermDag, TermId,
     ast::{Command, GenericExpr, Literal, Schema, Span, Subdatatypes, Variant},
+    prelude::BaseSort,
     sort::Q,
     span, var,
 };
@@ -42,6 +43,12 @@ impl EgglogTy for String {
     type Valued = Value<Self>;
     type EnumVariantMarker = ();
 }
+impl EgglogTy for &'static str {
+    const TY_NAME: &'static str = "&'static str";
+    const TY_NAME_LOWER: &'static str = "&'static str";
+    type Valued = Value<Self>;
+    type EnumVariantMarker = ();
+}
 /// basic type only need default [`EgglogTy::Valued`]
 /// while for EnumTy they need to specify ValuedVars when pattern recognized to be values
 pub trait EgglogTy {
@@ -77,9 +84,14 @@ pub struct TyConstructor {
     pub unextractable: bool,
     pub term_to_node: TermToNode,
 }
+/// newtype for ArcSort
+pub struct UserBaseSort {
+    pub sort_insert_fn: fn(&mut EGraph),
+}
 
 // collect all sorts into inventory, so that we could send the definitions of types.
 inventory::collect!(Decl);
+inventory::collect!(UserBaseSort);
 
 pub enum Decl {
     EgglogMultiConTy {
@@ -260,5 +272,26 @@ impl EgglogTypeRegistry {
 impl<T> FromPlainValues for Value<T> {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self {
         Value::new(values.next().unwrap())
+    }
+}
+
+#[derive(Debug)]
+pub struct StaticStrSort;
+impl BaseSort for StaticStrSort {
+    type Base = &'static str;
+
+    fn name(&self) -> &str {
+        "& 'static str"
+    }
+
+    fn reconstruct_termdag(
+        &self,
+        base_values: &egglog::sort::BaseValues,
+        value: egglog::Value,
+        term_dag: &mut TermDag,
+    ) -> Term {
+        let str: &'static str = base_values.unwrap(value);
+        let term = term_dag.lit(Literal::String(str.to_string()));
+        term
     }
 }

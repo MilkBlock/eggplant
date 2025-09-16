@@ -2,19 +2,68 @@ use core::panic;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
-use std::{marker::PhantomData, sync::LazyLock};
+use std::{
+    marker::PhantomData,
+    sync::{LazyLock, Mutex, MutexGuard},
+};
 use syn::{
     DataEnum, Expr, Fields, GenericArgument, Path, PathArguments, Type, Variant, parse::Parse,
     parse_str,
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
-pub const EGGLOG_BASIC_TY_LIST: [&'static str; 3] = ["String", "i64", "f64"];
-pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 3] = [
+pub const EGGLOG_BASIC_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "& 'static str"];
+pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 4] = [
     LazyTokenStream::new(|| "String::new()".to_owned()),
     LazyTokenStream::new(|| "0".to_owned()),
     LazyTokenStream::new(|| "0.".to_owned()),
+    LazyTokenStream::new(|| r#""""#.to_owned()),
 ];
+pub struct EgglogUserDefined {
+    user_defined: Mutex<UserDefined>,
+}
+unsafe impl Send for EgglogUserDefined {}
+unsafe impl Sync for EgglogUserDefined {}
+impl EgglogUserDefined {
+    fn sgl() -> MutexGuard<'static, UserDefined> {
+        static INSTANCE: std::sync::OnceLock<EgglogUserDefined> = std::sync::OnceLock::new();
+        INSTANCE
+            .get_or_init(|| -> Self {
+                Self {
+                    user_defined: Mutex::new(UserDefined {
+                        containers: vec![],
+                        base_types: vec![],
+                    }),
+                }
+            })
+            .user_defined
+            .lock()
+            .unwrap()
+    }
+    pub fn set(containers: Vec<Ident>, base_types: Vec<Ident>) {
+        Self::sgl().containers = containers;
+        Self::sgl().base_types = base_types;
+    }
+    pub fn _contain_container(ty: &str) -> bool {
+        Self::sgl()
+            .containers
+            .iter()
+            .position(|x| x.to_string() == ty)
+            .is_some()
+    }
+    pub fn contain_base_type(ty: &str) -> bool {
+        Self::sgl()
+            .base_types
+            .iter()
+            .position(|x| x.to_string() == ty)
+            .is_some()
+    }
+}
+
+pub struct UserDefined {
+    containers: Vec<Ident>,
+    base_types: Vec<Ident>,
+}
 
 pub static E: LazyTokenStream = LazyTokenStream::new(|| format!("{}::egglog", *EP.s));
 pub static EP: LazyTokenStream = LazyTokenStream::new(|| eggplant_path());
@@ -39,7 +88,7 @@ unsafe impl<T: Parse + ToTokens> Sync for LazyTokenStream<T> {}
 unsafe impl<T: Parse + ToTokens> Send for LazyTokenStream<T> {}
 impl<T: Parse + ToTokens> ToTokens for LazyTokenStream<T> {
     fn to_tokens(&self, tokens: &mut TokenStream) {
-        let p = parse_str(&*self.s).unwrap();
+        let p = parse_str(&*self.s).expect("can't parse this");
         T::to_tokens(&p, tokens);
     }
 }
@@ -99,8 +148,8 @@ pub fn _inventory_path() -> String {
 
 pub fn variant2mapped_ident_type_list(
     variant: &Variant,
-    mut map_basic_ident: impl FnMut(&Ident, &Ident) -> Option<TokenStream>,
-    mut map_complex_ident: impl FnMut(&Ident, &Ident) -> Option<TokenStream>,
+    mut map_basic_ident: impl FnMut(&Ident, &TokenStream) -> Option<TokenStream>,
+    mut map_complex_ident: impl FnMut(&Ident, &TokenStream) -> Option<TokenStream>,
 ) -> Vec<proc_macro2::TokenStream> {
     let types_and_idents = match &variant.fields {
         Fields::Named(fields_named) => fields_named.named.iter(),
@@ -123,12 +172,12 @@ pub fn variant2mapped_ident_type_list(
         }
     })
     .map(|(f1, f2)| {
-        let f1 = &format_ident!("{}", &f1.to_token_stream().to_string());
+        let f1 = &f1.to_token_stream();
         match f1.to_string().as_str() {
             x if PANIC_TY_LIST.contains(&x) => {
                 panic!("{} not supported", x)
             }
-            x if EGGLOG_BASIC_TY_LIST.contains(&x) => map_basic_ident(&f2, &f1),
+            x if is_str_basic_ty(x) => map_basic_ident(&f2, &f1),
             _ => map_complex_ident(&f2, &f1),
         }
         .map(|x| quote! {  #x})
@@ -168,8 +217,17 @@ pub fn is_box_type(ty: &Type) -> bool {
     }
     false
 }
+/// two source of basic ty.
+/// 1. User defined basic type, you can specify them in eggplant's attribute like `#[eggplant(base= X)]`
+/// 2. fixed basic type list in egglog, see `EGGLOG_BASIC_TY_LIST`
 pub fn is_basic_ty(ty: &proc_macro2::TokenStream) -> bool {
-    if EGGLOG_BASIC_TY_LIST.contains(&ty.to_string().as_str()) {
+    is_str_basic_ty(&ty.to_string().as_str())
+}
+pub fn is_str_basic_ty(ty: &str) -> bool {
+    if EGGLOG_BASIC_TY_LIST.contains(&ty) {
+        return true;
+    }
+    if EgglogUserDefined::contain_base_type(&ty) {
         return true;
     }
     false
@@ -303,61 +361,82 @@ pub fn variant2field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
         |ident, _| Some(quote! {#ident}),
     )
 }
-pub fn _variant2field_ident_with_all_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
-        variant,
-        |ident, ty| {
-            Some({
-                let default = match ty.to_string().as_str() {
-                    "String" => &EGGLOG_BASIC_TY_DEFAULT_LIST[0],
-                    "i64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[1],
-                    "f64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[2],
-                    _ => panic!("can't be {}", ident.to_string()),
-                };
-                quote! {#ident: #default}
-                // quote! {#ident}
-            })
-        },
-        |ident, ty| Some(quote! {#ident: #W::Sym::<self::#ty>::default()}),
-    )
-}
-pub fn _variant2field_ident_with_basic_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
-        variant,
-        |ident, ty| {
-            Some({
-                let default = match ty.to_string().as_str() {
-                    "String" => &EGGLOG_BASIC_TY_DEFAULT_LIST[0],
-                    "i64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[1],
-                    "f64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[2],
-                    _ => panic!("can't be {}", ident.to_string()),
-                };
-                quote! {#ident: #default}
-                // quote! {#ident}
-            })
-        },
-        |ident, _| Some(quote! {#ident}),
-    )
-}
-pub fn variant2field_ident_assign_with_basic_default(
-    variant: &Variant,
-) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
-        variant,
-        |ident, ty| {
-            Some({
-                let default = match ty.to_string().as_str() {
-                    "String" => &EGGLOG_BASIC_TY_DEFAULT_LIST[0],
-                    "i64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[1],
-                    "f64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[2],
-                    _ => panic!("can't be {}", ident.to_string()),
-                };
-                quote! {#ident: #default}
-                // quote! {#ident}
-            })
-        },
-        |ident, _| Some(quote! {#ident: #ident.node.sym}),
-    )
+// pub fn _variant2field_ident_with_all_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
+//     variant2mapped_ident_type_list(
+//         variant,
+//         |ident, ty| {
+//             Some({
+//                 let default = match ty.to_string().as_str() {
+//                     "String" => &EGGLOG_BASIC_TY_DEFAULT_LIST[0],
+//                     "i64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[1],
+//                     "f64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[2],
+//                     _ => panic!("can't be {}", ident.to_string()),
+//                 };
+//                 quote! {#ident: #default}
+//                 // quote! {#ident}
+//             })
+//         },
+//         |ident, ty| Some(quote! {#ident: #W::Sym::<self::#ty>::default()}),
+//     )
+// }
+// pub fn _variant2field_ident_with_basic_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
+//     variant2mapped_ident_type_list(
+//         variant,
+//         |ident, ty| {
+//             Some({
+//                 let default = match ty.to_string().as_str() {
+//                     "String" => &EGGLOG_BASIC_TY_DEFAULT_LIST[0],
+//                     "i64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[1],
+//                     "f64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[2],
+//                     _ => panic!("can't be {}", ident.to_string()),
+//                 };
+//                 quote! {#ident: #default}
+//                 // quote! {#ident}
+//             })
+//         },
+//         |ident, _| Some(quote! {#ident}),
+//     )
+// }
+// pub fn variant2field_ident_assign_with_basic_default(
+//     variant: &Variant,
+// ) -> Vec<proc_macro2::TokenStream> {
+//     variant2mapped_ident_type_list(
+//         variant,
+//         |ident, ty| {
+//             Some({
+//                 let default = get_default_by_ty(ty);
+//                 quote! {#ident: #default}
+//             })
+//         },
+//         |ident, _| Some(quote! {#ident: #ident.node.sym}),
+//     )
+// }
+pub fn get_default_by_ty(ty: &TokenStream) -> TokenStream {
+    enum Pos {
+        BasePos(usize),
+        UserDefinedBasePos,
+    }
+    let pos = match (
+        EGGLOG_BASIC_TY_LIST
+            .iter()
+            .position(|x| x == &ty.to_string().as_str()),
+        EgglogUserDefined::contain_base_type(&ty.to_string()),
+    ) {
+        (None, true) => Pos::UserDefinedBasePos,
+        (None, false) => {
+            panic!(
+                "{} might be a user defined base type or a typo of default base type",
+                ty
+            )
+        }
+        (Some(_), true) => panic!("user defined base type name {} conflict", ty),
+        (Some(pos), false) => Pos::BasePos(pos),
+    };
+    match pos {
+        Pos::BasePos(pos) => EGGLOG_BASIC_TY_DEFAULT_LIST[pos].to_token_stream(),
+        Pos::UserDefinedBasePos => quote!(Default::default()),
+    }
+    .to_token_stream()
 }
 pub fn variant2assign_node_field_typed_with_basic_default(
     variant: &Variant,
@@ -366,14 +445,8 @@ pub fn variant2assign_node_field_typed_with_basic_default(
         variant,
         |ident, ty| {
             Some({
-                let default = match ty.to_string().as_str() {
-                    "String" => &EGGLOG_BASIC_TY_DEFAULT_LIST[0],
-                    "i64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[1],
-                    "f64" => &EGGLOG_BASIC_TY_DEFAULT_LIST[2],
-                    _ => panic!("can't be {}", ident.to_string()),
-                };
+                let default = get_default_by_ty(ty);
                 quote! {#ident: #default}
-                // quote! {#ident}
             })
         },
         |ident, _| Some(quote! {#ident: #ident.typed()}),

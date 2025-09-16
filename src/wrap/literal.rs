@@ -10,8 +10,8 @@ use crate::wrap::BoxUnbox;
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;
 }
-pub trait FromBase<T> {
-    fn from_base(base: T) -> Self;
+pub trait FromBase<T: Clone> {
+    fn from_base(base: &T) -> Self;
 }
 impl DeLiteral<i64> for Literal {
     fn deliteral(&self) -> i64 {
@@ -72,6 +72,25 @@ impl DeLiteral<String> for Literal {
         }
     }
 }
+impl DeLiteral<&'static str> for Literal {
+    fn deliteral(&self) -> &'static str {
+        match self {
+            Literal::Int(_) => {
+                panic!("can't deliteral float to {}", type_name::<String>())
+            }
+            Literal::Float(_) => {
+                panic!("can't deliteral float to {}", type_name::<String>())
+            }
+            Literal::String(s) => s.clone().leak(),
+            Literal::Bool(_) => {
+                panic!("can't deliteral bool to {}", type_name::<String>())
+            }
+            Literal::Unit => {
+                panic!("can't deliteral bool to {}", type_name::<String>())
+            }
+        }
+    }
+}
 
 impl DeLiteral<bool> for Literal {
     fn deliteral(&self) -> bool {
@@ -94,25 +113,30 @@ impl DeLiteral<bool> for Literal {
 }
 
 impl FromBase<bool> for Literal {
-    fn from_base(base: bool) -> Self {
-        Literal::Bool(base)
+    fn from_base(base: &bool) -> Self {
+        Literal::Bool(base.clone())
     }
 }
 
 impl FromBase<i64> for Literal {
-    fn from_base(base: i64) -> Self {
-        Literal::Int(base)
+    fn from_base(base: &i64) -> Self {
+        Literal::Int(*base)
     }
 }
 
 impl FromBase<f64> for Literal {
-    fn from_base(base: f64) -> Self {
-        Literal::Float(OrderedFloat(base))
+    fn from_base(base: &f64) -> Self {
+        Literal::Float(OrderedFloat(*base))
     }
 }
 impl FromBase<String> for Literal {
-    fn from_base(base: String) -> Self {
-        Literal::String(base)
+    fn from_base(base: &String) -> Self {
+        Literal::String(base.clone())
+    }
+}
+impl FromBase<&'static str> for Literal {
+    fn from_base(base: &&'static str) -> Self {
+        Literal::String(base.to_string())
     }
 }
 
@@ -127,7 +151,7 @@ impl BoxUnbox for f64 {
     }
 }
 macro_rules! impl_simple_boxunbox_for {
-    ($ty:ident) => {
+    ($ty:ty) => {
         impl BoxUnbox for $ty {
             type Boxed = $ty;
             type UnBoxed = $ty;
@@ -153,4 +177,5 @@ impl BoxUnbox for String {
     }
 }
 impl_simple_boxunbox_for!(i64);
+impl_simple_boxunbox_for!(&'static str);
 impl_simple_boxunbox_for!(bool);

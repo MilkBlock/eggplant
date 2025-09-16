@@ -19,7 +19,7 @@ pub fn func(
 ) -> proc_macro::TokenStream {
     #[derive(Debug, FromMeta)]
     struct FuncMeta {
-        output: Ident,
+        output: syn::Path,
         // sg: Ident,
     }
 
@@ -34,7 +34,6 @@ pub fn func(
         Ok(v) => v,
         Err(e) => return proc_macro::TokenStream::from(e.write_errors()),
     };
-    // let default_tx = args.sg;
 
     let output = args.output.to_token_stream();
     let output_with_generic = if is_basic_ty(&output) {
@@ -182,19 +181,27 @@ pub fn func(
 ///
 ///
 #[proc_macro_attribute]
-pub fn ty(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+pub fn dsl(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     #[derive(Debug, FromMeta)]
     struct TyMeta {
-        // sg: Ident,
+        /// user defined base types
+        #[darling(multiple)]
+        base: Vec<Ident>,
+        #[darling(multiple)]
+        container: Vec<Ident>,
     }
     let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
         Ok(v) => v,
         Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
     };
-    let _args = match TyMeta::from_list(&attr_args) {
+    let args = match TyMeta::from_list(&attr_args) {
         Ok(v) => v,
         Err(e) => return proc_macro::TokenStream::from(e.write_errors()),
     };
+    EgglogUserDefined::set(args.container, args.base);
 
     let input = parse_macro_input!(item as DeriveInput);
     let name = &input.ident;
@@ -1354,4 +1361,78 @@ pub fn pat_vars(
         #expanded
     }
     .into()
+}
+
+#[proc_macro_attribute]
+/// pattern vars
+pub fn base_ty(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+    let ident = &input.ident;
+    let ident_snake_case = &input.ident.to_string().to_snake_case();
+    let sort = format_ident!("{}Sort", ident);
+    quote!(
+        #input
+        inventory::submit! { #W::UserBaseSort{ sort_insert_fn: |e| egglog::prelude::add_leaf_sort(e, #sort, #E::span!()).unwrap() }}
+        impl std::fmt::Display for #ident {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                write!(f, "{}", serde_json::to_string(&self).unwrap())
+            }
+        }
+        impl #W::DeLiteral<#ident> for egglog::ast::Literal {
+            fn deliteral(&self) -> #ident {
+                match self {
+                    egglog::ast::Literal::Int(_) => todo!(),
+                    egglog::ast::Literal::Float(ordered_float) => todo!(),
+                    egglog::ast::Literal::String(s) => serde_json::from_str(&s).unwrap(),
+                    egglog::ast::Literal::Bool(_) => todo!(),
+                    egglog::ast::Literal::Unit => todo!(),
+                    _ => panic!("unknown op {}", self),
+                }
+            }
+        }
+        impl Default for #ident {
+            fn default() -> Self {
+                #ident::Unknown
+            }
+        }
+        #[derive(Debug)]
+        struct #sort;
+        impl #E::prelude::BaseSort for #sort {
+            type Base = #E::sort::Boxed<#ident>;
+            fn name(&self) -> &str {
+                stringify!(#ident)
+            }
+            fn reconstruct_termdag(
+                &self,
+                base_values: &egglog::sort::BaseValues,
+                value: egglog::Value,
+                term_dag: &mut egglog::TermDag,
+            ) -> egglog::Term {
+                use #EP::prelude::FromBase;
+                let op: #E::sort::Boxed<#ident> = base_values.unwrap(value);
+                let term = term_dag.lit(egglog::ast::Literal::from_base(&op.0));
+                term
+            }
+        }
+        impl #W::FromBase<#ident> for egglog::ast::Literal { fn from_base(base: &#ident) -> Self { egglog::ast::Literal::String(serde_json::to_string(&base).unwrap()) } }
+        impl #W::EgglogTy for #ident {
+            const TY_NAME: &'static str = stringify!(#ident);
+            const TY_NAME_LOWER: &'static str = stringify!(#ident_snake_case);
+            type Valued = eggplant::prelude::Value<Self>;
+            type EnumVariantMarker = ();
+        }
+        impl #W::BoxUnbox for #ident {
+            type Boxed = #E::sort::Boxed<#ident>;
+            type UnBoxed = #ident;
+            fn unbox(boxed: Self::Boxed, ctx: &mut eggplant::wrap::RuleCtx) -> Self::UnBoxed {
+                boxed.0
+            }
+            fn box_it(self, ctx: &mut eggplant::wrap::RuleCtx) -> Self::Boxed {
+                #E::sort::Boxed(self)
+            }
+        }
+    ).into()
 }

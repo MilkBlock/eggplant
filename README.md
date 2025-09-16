@@ -25,7 +25,7 @@ Finally, this forms a framework that allows users to implement a pattern rewriti
 ## DSL Define API
 
 ```rust
-#[eggplant::ty]
+#[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
     Mul { l: Expr, r: Expr },

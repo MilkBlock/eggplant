@@ -1,6 +1,6 @@
 use crate::wrap::{
-    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, QueryBuilder, RuleCtx,
-    SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
+    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FromBase, QueryBuilder,
+    RuleCtx, SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
 };
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
@@ -8,7 +8,7 @@ use egglog::{
     ArcSort, BaseValue, EGraph,
     ast::{Command, GenericAction, GenericExpr, RustSpan, Span},
 };
-use egglog::{TermDag, TermId, ast::Literal, sort::OrderedFloat, span};
+use egglog::{TermDag, TermId, ast::Literal, span};
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -703,32 +703,46 @@ impl<T: EgglogNode> From<T> for WorkAreaNode {
 pub trait ToVar {
     fn to_var(&self) -> GenericExpr<&'static str, &'static str>;
 }
-impl ToVar for i64 {
-    fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-        GenericExpr::Lit(span!(), egglog::ast::Literal::Int(*self))
-    }
-}
-impl ToVar for f64 {
-    fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-        GenericExpr::Lit(
-            span!(),
-            egglog::ast::Literal::Float(OrderedFloat::<f64>(*self)),
-        )
-    }
-}
-impl ToVar for String {
-    fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-        GenericExpr::Lit(span!(), Literal::String(self.to_owned()))
-    }
-}
-impl ToVar for bool {
-    fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-        GenericExpr::Lit(span!(), Literal::Bool(*self))
-    }
-}
+// impl ToVar for i64 {
+//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
+//         GenericExpr::Lit(span!(), egglog::ast::Literal::Int(*self))
+//     }
+// }
+// impl ToVar for f64 {
+//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
+//         GenericExpr::Lit(
+//             span!(),
+//             egglog::ast::Literal::Float(OrderedFloat::<f64>(*self)),
+//         )
+//     }
+// }
+// impl ToVar for String {
+//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
+//         GenericExpr::Lit(span!(), Literal::String(self.to_owned()))
+//     }
+// }
+// impl ToVar for &'static str {
+//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
+//         GenericExpr::Lit(span!(), Literal::String(self.to_string()))
+//     }
+// }
+// impl ToVar for bool {
+//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
+//         GenericExpr::Lit(span!(), Literal::Bool(*self))
+//     }
+// }
 impl<T> ToVar for Sym<T> {
     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
         GenericExpr::Var(span!(), self.inner.into())
+    }
+}
+impl<T> ToVar for T
+where
+    Literal: FromBase<T>,
+    T: Clone,
+{
+    fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
+        GenericExpr::Lit(span!(), Literal::from_base(&self))
     }
 }
 

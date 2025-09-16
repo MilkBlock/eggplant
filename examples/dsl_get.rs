@@ -1,17 +1,17 @@
 use eggplant::{basic_tx_no_vt, prelude::*};
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Cons {
     Value { v: i64, con: Cons },
     End {},
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 struct VecCon {
     v: Vec<Cons>,
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Root {
     V { v: VecCon },
 }

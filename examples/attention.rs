@@ -3,7 +3,7 @@ use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_pf;
 use eggplant::wrap::G;
 use eggplant::wrap::Rx;
-#[eggplant::ty]
+#[eggplant::dsl]
 pub enum Math {
     MNum { num: i64 },
     MVar { s: String },
@@ -22,11 +22,11 @@ pub enum Math {
     MReplace { l: Math, r: Math, s: Math },
     MAccum {},
 }
-#[eggplant::ty]
+#[eggplant::dsl]
 pub enum LoopType {
     Loop { s: String, range: Math },
 }
-#[eggplant::ty]
+#[eggplant::dsl]
 pub enum Expr {
     Tensor {
         name: String,

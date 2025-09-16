@@ -1,6 +1,6 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_pf;
-#[eggplant::ty]
+#[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
     Mul { l: Expr, r: Expr },

@@ -1,11 +1,11 @@
 use eggplant::{prelude::*, tx_rx_vt_pr};
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Expr {
     Const { num: i64 },
     Mul { l: Expr, r: Expr },
 }
-#[eggplant::ty]
+#[eggplant::dsl]
 enum GraphRoot {
     Root { node: Expr },
 }

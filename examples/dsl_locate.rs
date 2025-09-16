@@ -1,11 +1,11 @@
 use eggplant::{basic_tx_vt, prelude::*};
 use std::{path::PathBuf, str::FromStr};
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Eq {
     EqItem { v1: Var, v2: Var },
 }
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Var {
     VarItem { num: i64 },
     Expr { eq: Eq },

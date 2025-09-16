@@ -2,34 +2,34 @@ use eggplant::{basic_tx_vt, prelude::*};
 use std::path::PathBuf;
 
 // Type aliases for Vec types
-#[eggplant::ty]
+#[eggplant::dsl]
 struct VecCtl {
     v: Vec<Ctl>,
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 struct VecWF {
     v: Vec<WeightedFn>,
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 struct VecHitBox {
     v: Vec<HitBox>,
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 struct Points {
     v: Vec<Point>,
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Ctl {
     Para { vec_ctl: VecCtl },
     Seq { vec_ctl: VecCtl },
     Await { ctl: Ctl },
     Atom { anim_atom: AnimAtom },
 }
-#[eggplant::ty]
+#[eggplant::dsl]
 enum AnimAtom {
     Anim {
         object: BRabjectInstance,
@@ -52,18 +52,18 @@ enum AnimAtom {
         rate_cfg: RateCfg,
     },
 }
-#[eggplant::ty]
+#[eggplant::dsl]
 enum BRabjectInstance {
     Instance { template: BRabject },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum BRabject {
     ColoredShape { shape: Shape, color: Color },
     Text { position: Point, content: String },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Color {
     Srgba {
         red: f64,
@@ -73,18 +73,18 @@ enum Color {
     },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Shape {
     Polygon { points: Points },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Duration {
     DurationBySecs { seconds: f64 },
     DurationByMili { milliseconds: f64 },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum BezierPathBuilder {
     Quadratic {
         control: Point,
@@ -108,13 +108,13 @@ enum BezierPathBuilder {
     PathEnd {},
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Offset {
     DVec3 { x: f64, y: f64, z: f64 },
     DVec2 { x: f64, y: f64 },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Point {
     FixedPoint { offset: Offset },
     OffsetPoint { offset: Offset, base: Point },
@@ -122,41 +122,41 @@ enum Point {
     PointAtIdx { shape: Shape, index: i64 },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Weight {
     W { value: f64 },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum BuiltinF {
     Lerp {},
     Stay {},
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Fn {
     Builtin { function: BuiltinF },
     WasmGuestExtern { name: String },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum WeightedFn {
     WF { f: Fn, w: Weight }, // 作为元组字段
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum RateCfg {
     RateFn { wfs: VecWF },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Path {
     BezierPath {
         bezier_path_builder: BezierPathBuilder,
     },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum HitBox {
     ShapedBox { shape: Shape },
     HitBoxs { histboxs: VecHitBox },

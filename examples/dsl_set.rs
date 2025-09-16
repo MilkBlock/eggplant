@@ -1,18 +1,18 @@
 use eggplant::basic_tx_no_vt;
 use eggplant::prelude::SingletonGetter;
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Cons {
     Value { v: i64, con: Cons },
     End {},
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 struct VecCon {
     v: Vec<Cons>,
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum Root {
     V { v: VecCon },
 }

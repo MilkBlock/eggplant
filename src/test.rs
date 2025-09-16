@@ -4,11 +4,11 @@ mod tests {
     use eggplant::prelude::*;
     use std::sync::{Arc, Mutex};
 
-    #[eggplant::ty]
+    #[eggplant::dsl]
     enum Expr {
         Const { num: i64 },
     }
-    #[eggplant::ty]
+    #[eggplant::dsl]
     enum GraphRoot {
         Root { node: Expr },
     }

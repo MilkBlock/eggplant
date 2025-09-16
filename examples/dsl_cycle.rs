@@ -2,12 +2,12 @@ use eggplant::basic_tx_no_vt;
 use eggplant::prelude::*;
 use std::path::PathBuf;
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum A {
     ACon { b: B },
 }
 
-#[eggplant::ty]
+#[eggplant::dsl]
 enum B {
     BCon { a: A },
     Empty {},

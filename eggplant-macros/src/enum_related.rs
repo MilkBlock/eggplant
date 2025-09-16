@@ -13,7 +13,7 @@ pub fn to_term_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> Toke
         variant,
         |basic_ident, _| {
             Some(quote! {
-                let #basic_ident = term_dag.lit(#E::ast::Literal::from_base(#basic_ident.clone()));
+                let #basic_ident = term_dag.lit(#E::ast::Literal::from_base(#basic_ident));
             })
         },
         |complex_ident, _| {
@@ -239,7 +239,7 @@ pub fn query_fn_ts(
     // let field_idents_assign = variant2assign_node_field_list(&variant);
     let _query_fn_field_idents_assign =
         variant2assign_node_field_typed_with_basic_default(&variant);
-    let _field_idents_assign = variant2field_ident_assign_with_basic_default(&variant);
+    // let _field_idents_assign = variant2field_ident_assign_with_basic_default(&variant);
     let (variant_marker, variant_name) = variant2marker_name(variant);
     let query_fn_name = format_ident!("query_{}", variant_name.to_string().to_snake_case());
     let _query_fn_name = format_ident!("_query_{}", variant_name.to_string().to_snake_case());

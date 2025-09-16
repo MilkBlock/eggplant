@@ -8,5 +8,7 @@ pub mod derive_more {
 pub use egglog;
 pub use eggplant_macros::*;
 pub use inventory;
+pub use serde;
+pub use serde_json;
 pub use strum;
 pub use strum_macros;
