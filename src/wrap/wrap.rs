@@ -703,34 +703,7 @@ impl<T: EgglogNode> From<T> for WorkAreaNode {
 pub trait ToVar {
     fn to_var(&self) -> GenericExpr<&'static str, &'static str>;
 }
-// impl ToVar for i64 {
-//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-//         GenericExpr::Lit(span!(), egglog::ast::Literal::Int(*self))
-//     }
-// }
-// impl ToVar for f64 {
-//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-//         GenericExpr::Lit(
-//             span!(),
-//             egglog::ast::Literal::Float(OrderedFloat::<f64>(*self)),
-//         )
-//     }
-// }
-// impl ToVar for String {
-//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-//         GenericExpr::Lit(span!(), Literal::String(self.to_owned()))
-//     }
-// }
-// impl ToVar for &'static str {
-//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-//         GenericExpr::Lit(span!(), Literal::String(self.to_string()))
-//     }
-// }
-// impl ToVar for bool {
-//     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
-//         GenericExpr::Lit(span!(), Literal::Bool(*self))
-//     }
-// }
+
 impl<T> ToVar for Sym<T> {
     fn to_var(&self) -> GenericExpr<&'static str, &'static str> {
         GenericExpr::Var(span!(), self.inner.into())
