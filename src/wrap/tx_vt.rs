@@ -39,6 +39,7 @@ impl TxVT {
         let serialized = egraph.serialize(SerializeConfig::default());
         let dot_path = file_name.with_extension("dot");
         serialized
+            .egraph
             .to_dot_file(dot_path.clone())
             .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
     }
