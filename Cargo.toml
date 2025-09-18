@@ -13,6 +13,7 @@ readme.workspace = true
 [dependencies]
 derive_more = { version = "2.0.1", features = [
     "deref_mut",
+    "deref",
     "into_iterator",
     "debug",
 ] }
