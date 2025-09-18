@@ -657,13 +657,18 @@ pub fn dsl(
                             }
                         }
 
-                        impl<T:#W::NodeDropperSgl ,V: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,V>
+                        impl<T:#W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,V>
                         {
                             fn drop(&mut self) {
                                 T::on_drop(self);
                             }
                         }
-
+                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::DeValue for #name_node<T,V> {
+                            type Target = #W::VecContainer<#first_generic>;
+                            fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
+                                #W::Value::new(val)
+                            }
+                        }
                         #to_egglog_impl
                     };
                 };

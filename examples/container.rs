@@ -1,8 +1,5 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_pf;
-use eggplant::wrap::DeValue;
-use eggplant::wrap::NodeDropperSgl;
-use eggplant::wrap::VecContainer;
 #[eggplant::dsl(container =Array)]
 pub enum Expr {
     Const { num: i64 },
@@ -38,7 +35,9 @@ fn main() {
         |ctx, values| {
             println!("{:?}", values);
             let v = ctx.devalue(values.vec_expr.exprs);
-            for _ in v.iter() {}
+            for expr in v.iter() {
+                println!("got expr {:?}", expr)
+            }
         },
     );
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
@@ -50,11 +49,4 @@ fn main() {
     MyTx::wag_to_dot("wag.dot".into());
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot".into());
-}
-
-impl<T: SingletonGetter + NodeDropperSgl> DeValue for Array<T> {
-    type Target = VecContainer<Expr>;
-    fn retype_value(val: egglog::Value) -> Value<Self::Target> {
-        Value::new(val)
-    }
 }
