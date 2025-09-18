@@ -17,6 +17,7 @@ use std::{
     fmt,
     hash::Hash,
     marker::PhantomData,
+    mem,
     panic::Location,
     path::PathBuf,
     sync::{Arc, atomic::AtomicU32},
@@ -617,7 +618,7 @@ impl<S> FromIterator<Sym<S>> for Syms<S> {
         }
     }
 }
-impl Syms {
+impl<T> Syms<T> {
     pub fn new() -> Self {
         Syms {
             inner: SmallVec::new(),
@@ -875,11 +876,30 @@ pub trait FromPlainValues {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self;
 }
 
+/// ToValue and DeValue are quite different, ToValue is used in Union or table insert
+/// while DeValue only used when you want operational structure
 pub trait ToValue<T> {
     fn to_value(&self, ctx: &mut RuleCtx) -> Value<T>;
 }
+pub trait DeValue {
+    type Target;
+    fn retype_value(val: egglog::Value) -> Value<Self::Target>;
+}
 
-impl<T: EgglogTy> Clone for Value<T> {
+impl<D: DeValue> DeValue for Value<D> {
+    type Target = D::Target;
+    fn retype_value(val: egglog::Value) -> Value<Self::Target> {
+        Value::new(val)
+    }
+}
+impl<T: BoxedValue> DeValue for T {
+    type Target = T;
+    fn retype_value(val: egglog::Value) -> Value<Self::Target> {
+        Value::new(val)
+    }
+}
+
+impl<T> Clone for Value<T> {
     fn clone(&self) -> Self {
         Self {
             val: self.val.clone(),
@@ -892,23 +912,67 @@ impl<T: EgglogTy> Copy for Value<T> {}
 /// if one struct BoxUnBox that means it can be converted to a boxed value in database
 /// this is an essential condition to be insert into egglog_backend
 /// any struct implements this trait inferred to be [`ToValue`]
-pub trait BoxedBase {
+pub trait BoxedBase: BoxedValue {
     type Boxed: BaseValue;
-    type UnBoxed;
-    fn unbox(boxed: Self::Boxed, ctx: &mut RuleCtx) -> Self::UnBoxed;
+    fn unbox(boxed: Self::Boxed, ctx: &mut RuleCtx) -> Self;
     fn box_it(self, ctx: &mut RuleCtx) -> Self::Boxed;
 }
-pub trait BoxedContainer {
-    type Container: ContainerValue;
+pub trait BoxedContainer: BoxedValue {
+    type BoxedContainer: ContainerValue;
+    fn unbox(boxed: Self::BoxedContainer, ctx: &mut RuleCtx) -> Self;
+    fn box_it(self, ctx: &mut RuleCtx) -> Self::BoxedContainer;
 }
 
 pub trait SingleFieldVariant {}
 
-impl<T0, T1, B: BoxedBase<Boxed = T0, UnBoxed = T1> + EgglogTy + Clone> ToValue<B> for B {
-    fn to_value(&self, ctx: &mut RuleCtx) -> Value<B> {
+impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> ToValue<B> for B {
+    fn to_value(&self, ctx: &mut RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
     }
 }
+
+pub trait BoxedValue {
+    type Output<'a>;
+    fn devalue<'b>(rule_ctx: &'b mut RuleCtx, value: egglog::Value) -> Self::Output<'b>;
+}
+// impl<T0: ContainerValue, T: BoxedContainer<Container = T0>> BoxedValue for T {
+//     fn get(rule_ctx: &mut RuleCtx, value: egglog::Value) -> Self {
+//         let value = rule_ctx.rule_ctx.value_to_container(value);
+//         value
+//     }
+// }
+// impl<T: BoxedBase> BoxedValue for T {
+//     fn get(rule_ctx: &mut RuleCtx, value: egglog::Value) -> Self {
+//         let value = rule_ctx.rule_ctx.value_to_base(value);
+//         Self::unbox(value, rule_ctx)
+//     }
+// }
+impl<T: EgglogTy> BoxedValue for VecContainer<T> {
+    fn devalue<'b>(rule_ctx: &'b mut RuleCtx, value: egglog::Value) -> Self::Output<'b> {
+        let container = rule_ctx
+            .rule_ctx
+            .value_to_container::<egglog::sort::VecContainer>(value)
+            .unwrap();
+        let c: Box<dyn std::ops::Deref<Target = egglog::sort::VecContainer>> = Box::new(container);
+        // safety : VecContainer<T>'s memory layout is same with VecContainer so this is legal
+        unsafe { mem::transmute(c) }
+    }
+
+    type Output<'a> = Box<dyn std::ops::Deref<Target = Self> + 'a>;
+}
+pub struct VecContainer<T: EgglogTy + 'static> {
+    pub(crate) inner: egglog::sort::VecContainer,
+    pub(crate) _p: PhantomData<T>,
+}
+// impl<T: EgglogTy> ContainerValue for VecContainer<T> {
+//     fn rebuild_contents(&mut self, rebuilder: &dyn egglog::sort::Rebuilder) -> bool {
+//         self.inner.rebuild_contents(rebuilder)
+//     }
+
+//     fn iter(&self) -> impl Iterator<Item = egglog::Value> + '_ {
+//         self.inner.iter()
+//     }
+// }
 
 #[derive(EnumDiscriminants, EnumIs, Debug, Clone)]
 pub enum TyPH<T: strum::IntoDiscriminant>

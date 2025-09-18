@@ -1,5 +1,6 @@
-use std::{fmt, fs::File, io::Write, path::PathBuf};
+use std::{fmt, fs::File, hash::Hash, io::Write, marker::PhantomData, path::PathBuf};
 
+use crate::wrap::{self, EgglogTy, VecContainer};
 use egglog::{Term, TermDag};
 use petgraph::{
     EdgeType,
@@ -93,5 +94,45 @@ impl<'a> fmt::Display for Escape<'a> {
             fmt.write_str(&pile_o_bits[last..])?;
         }
         Ok(())
+    }
+}
+
+impl<T: EgglogTy> Eq for VecContainer<T> {}
+impl<T: EgglogTy> PartialEq for VecContainer<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.inner.eq(&other.inner)
+    }
+}
+impl<T: EgglogTy> Hash for VecContainer<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.inner.hash(state);
+    }
+}
+
+unsafe impl<T: EgglogTy> Send for VecContainer<T> {}
+unsafe impl<T: EgglogTy> Sync for VecContainer<T> {}
+impl<T: EgglogTy> Clone for VecContainer<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _p: self._p.clone(),
+        }
+    }
+}
+
+impl<T: EgglogTy> VecContainer<T> {
+    pub fn new(v: egglog::sort::VecContainer) -> VecContainer<T> {
+        VecContainer {
+            inner: v,
+            _p: PhantomData,
+        }
+    }
+    pub fn iter(&self) -> impl Iterator<Item = wrap::Value<T>> {
+        self.inner
+            .data
+            .as_slice()
+            .iter()
+            .map(|x| wrap::Value::new(*x))
+            .into_iter()
     }
 }

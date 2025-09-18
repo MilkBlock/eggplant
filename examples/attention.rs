@@ -111,7 +111,27 @@ fn main() {
     env_logger::init();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
-    prop!(MAdd,+,AddPat,ruleset);
+    #[eggplant::pat_vars]
+    struct AddPat {
+        l: MNum,
+        r: MNum,
+        p: MAdd,
+    }
+    MyTx::add_rule(
+        stringify!(AddPat),
+        ruleset,
+        || {
+            let l = MNum::query();
+            let r = MNum::query();
+            let p = MAdd::query(&l, &r);
+            AddPat::new(l, r, p)
+        },
+        |ctx, values| {
+            let cal = ctx.devalue(values.l.num) + ctx.devalue(values.r.num);
+            let op_value = ctx.insert_m_num(cal);
+            ctx.union(values.p, op_value);
+        },
+    );
     prop!(MSub,-,SubPat,ruleset);
     prop!(MMul,*,MulPat,ruleset);
     prop!(MDiv,/,DivPat,ruleset);

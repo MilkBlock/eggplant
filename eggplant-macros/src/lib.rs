@@ -36,20 +36,31 @@ pub fn func(
     };
 
     let output = args.output.to_token_stream();
-    let output_with_generic = if is_basic_ty(&output) {
-        quote!( #output )
-    } else {
-        quote!(#output<T,()>)
+    let output_with_generic = match BasicOrComplex::from(&output) {
+        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+            quote!( #output )
+        }
+        BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+            quote!(#output<T,()>)
+        }
     };
-    let output_ref = if is_basic_ty(&output_with_generic) {
-        quote!( &#output_with_generic )
-    } else {
-        quote!(&dyn AsRef<#output_with_generic>)
+
+    let output_ref = match BasicOrComplex::from(&output_with_generic) {
+        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+            quote!( &#output_with_generic )
+        }
+        BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+            quote!(&dyn AsRef<#output_with_generic>)
+        }
     };
-    let output_whether_as_ref = if is_basic_ty(&output_with_generic) {
-        quote!()
-    } else {
-        quote!(.as_ref())
+
+    let output_whether_as_ref = match BasicOrComplex::from(&output_with_generic) {
+        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+            quote!()
+        }
+        BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+            quote!(.as_ref())
+        }
     };
 
     let struct_def_expanded = match &input.data {
@@ -61,10 +72,11 @@ pub fn func(
                 .fields
                 .iter()
                 .map(|x| &x.ty)
-                .map(|x| {
-                    if is_basic_ty(&x.to_token_stream()) {
+                .map(|x| match BasicOrComplex::from(&x.to_token_stream()) {
+                    BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
                         x.to_token_stream()
-                    } else {
+                    }
+                    BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
                         quote!(#x<T,()>)
                     }
                 })
@@ -74,7 +86,7 @@ pub fn func(
                 .iter()
                 .map(|x| &x.ty)
                 .map(|x| {
-                    if is_basic_ty(&x.to_token_stream()) {
+                    if BasicOrComplex::from(&x.to_token_stream()).is_basic() {
                         quote!(&#x)
                     } else {
                         quote!(&dyn AsRef<#x<T,()>>)
@@ -269,7 +281,7 @@ pub fn dsl(
                     impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                         const TY_NAME:&'static str = stringify!(#name);
                         const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
-                        type Valued = V::ValuedWithDefault<#W::Value<Self>>;
+                        type Valued = V::ValuedWithDefault<Self>;
                         type EnumVariantMarker = V;
                     }
                     impl #W::EgglogContainerTy for #name_egglogty_impl {
@@ -283,6 +295,7 @@ pub fn dsl(
                             term_to_node: #name::<(),()>::new_from_term_dyn
                         }
                     }
+                    // #INVE::submit! { #W::UserContainerSort{ sort_insert_fn: |e| egglog::prelude::add_leaf_sort(e, #sort, #E::span!()).unwrap() }}
                 };
                 vec_expanded
             } else {
@@ -311,7 +324,7 @@ pub fn dsl(
                     x if PANIC_TY_LIST.contains(&x) => {
                         panic!("{} not supported", x)
                     }
-                    x if EGGLOG_BASIC_TY_LIST.contains(&x) => {
+                    x if EGGLOG_BASE_TY_LIST.contains(&x) => {
                         (first_generic.to_token_stream(), true)
                     }
                     _ => {
@@ -340,7 +353,12 @@ pub fn dsl(
                     impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V>
                     {
                         fn to_egglog_string(&self) -> Option<String>{
-                            Some(format!("(let {} (vec-of {}))",self.node.sym,self.node.ty.unwrap_mut().iter_mut().fold("".to_owned(), |s,item| s+ item.as_str()+" " )))
+                            Some(format!("(let {} (vec-of {}))",self.node.sym,
+                            if let #W::TyPH::Ty(ty) = &self.node.ty{
+                                ty.iter_mut().fold("".to_owned(), |s,item| s+ item.as_str()+" " )
+                            }else {
+                                "".to_string()
+                            }))
                         }
                         fn to_egglog(&self) -> #W::EgglogAction{
                             #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
@@ -353,7 +371,11 @@ pub fn dsl(
                             }else {
                                 panic!()
                             };
-                            ctx.intern_container::<Self, #E::sort::VecContainer>(#E::sort::VecContainer{do_rebuild:false, data:vec}).val
+                            ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
+                                #W::VecContainer::new(
+                                    #E::sort::VecContainer{do_rebuild:false, data:vec}
+                                )
+                            ).val
                         }
                     }
                 }
@@ -361,7 +383,10 @@ pub fn dsl(
                 quote! {
                     impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
                         fn to_egglog_string(&self) -> Option<String>{
-                            Some(format!("(let {} (vec-of {}))",self.cur_sym(),self.node.ty.unwrap_ref().iter().fold("".to_owned(), |s,item| s+ item.as_str()+" " )))
+                            Some(format!("(let {} (vec-of {}))",self.cur_sym(),
+                            if let #W::TyPH::Ty(ty) = &self.node.ty{
+                                ty.iter().fold("".to_owned(), |s,item| s+ item.as_str()+" " )
+                            }else {"".to_string()}))
                         }
                         fn to_egglog(&self) -> #W::EgglogAction{
                             #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
@@ -380,7 +405,11 @@ pub fn dsl(
                             }else {
                                 panic!()
                             };
-                            ctx.intern_container::<Self, #E::sort::VecContainer>(#E::sort::VecContainer{do_rebuild:false, data:vec}).val
+                            ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
+                                #W::VecContainer::new(
+                                    #E::sort::VecContainer{do_rebuild:false, data:vec}
+                                )
+                            ).val
                         }
                     }
                     impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
@@ -416,7 +445,7 @@ pub fn dsl(
                 x if PANIC_TY_LIST.contains(&x) => {
                     panic!("{} not supported", x)
                 }
-                x if EGGLOG_BASIC_TY_LIST.contains(&x) => first_generic.to_token_stream(),
+                x if EGGLOG_BASE_TY_LIST.contains(&x) => first_generic.to_token_stream(),
                 _ => {
                     let first_generic = match &first_generic {
                         Type::Path(type_path) => {
@@ -468,6 +497,19 @@ pub fn dsl(
                         use std::marker::PhantomData;
                         static #name_counter: #W::TyCounter<#name_egglogty_impl> = #W::TyCounter::new();
                         impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                            #[track_caller]
+                            pub fn query_leaf() -> self::#name_node<T,()>{
+                                let node = #W::Node{
+                                    ty: #W::TyPH::PH,
+                                    span:Some(std::panic::Location::caller()),
+                                    sym: #name_counter.next_sym(),
+                                    _p: PhantomData, _s: PhantomData,
+                                    sgl_specific: T::OwnerSpecDataInNode::default()
+                                };
+                                let node = self::#name_node {node};
+                                T::on_new(&node);
+                                node
+                            }
                             #[track_caller]
                             pub fn query(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
                                 let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
@@ -565,10 +607,26 @@ pub fn dsl(
                             }
                         }
                         impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
-                            #[track_caller] fn collect_vars( &self, query_builder:&mut Vec<(#W::VarName, #W::SortName)>
+                            #[track_caller] fn collect_vars( &self, vars:&mut Vec<(#W::VarName, #W::SortName)>
                             ) {
                                 use #W::EgglogTy;
-                                todo!()
+                                match &self.node.ty{
+                                    #W::TyPH::Ty(_) => {
+                                        panic!("can't call collect_var on non-pattern-def EgglogNode")
+                                    },
+                                    // with basic fields
+                                    #W::TyPH::VarPH(dis, succs) => {
+                                        // vars.push((self.cur_sym().to_string(), Self::TY_NAME.to_string()));
+                                        // match dis{
+                                        //     #(#collect_var_match_arms),*
+                                        // }
+                                        panic!("vec should not be VarPH")
+                                    },
+                                    // only itself as complex field
+                                    #W::TyPH::PH => {
+                                        vars.push((self.cur_sym().to_string(), <Self as #W::EgglogTy>::TY_NAME.to_string()));
+                                    }
+                                };
                             }
                         }
                         impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
@@ -714,7 +772,7 @@ pub fn dsl(
                     format_ident!("insert_{}", variant_name.to_string().to_snake_case());
 
                 // 使用 variant2mapped_ident_type_list 来处理字段映射
-                let recursive_calls = variant2mapped_ident_type_list(
+                let get_value_calls = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
                     |ident, _| {
                         // for basic type use source value
@@ -739,7 +797,7 @@ pub fn dsl(
 
                 quote! {
                     #name_inner::#variant_name { #(#variant_idents),* } => {
-                        #(#recursive_calls)*
+                        #(#get_value_calls)*
                         let value = ctx.#insert_fn_name(#(#field_args),*);
                         sym_to_value_map.insert(sym, value.erase());
                         value.erase()
@@ -1064,13 +1122,13 @@ pub fn dsl(
                                 // 否则，使用 ctx.insert 插入新节点
                                 // 根据节点类型调用相应的 insert 方法
                                 match &*self.node.ty.unwrap_ref() {
-                                    inner => {
+                                    inner =>
                                         // 动态调用相应的 insert 方法
                                         match inner {
                                             #(#native_egglog_match_arms),*
-                                        }
                                     }
                                 }
+
                             }
                         }
                     }
@@ -1377,7 +1435,7 @@ pub fn base_ty(
     let sort = format_ident!("{}Sort", ident);
     quote!(
         #input
-        inventory::submit! { #W::UserBaseSort{ sort_insert_fn: |e| egglog::prelude::add_leaf_sort(e, #sort, #E::span!()).unwrap() }}
+        #INVE::submit! { #W::UserBaseSort{ sort_insert_fn: |e| egglog::prelude::add_leaf_sort(e, #sort, #E::span!()).unwrap() }}
         impl std::fmt::Display for #ident {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", serde_json::to_string(&self).unwrap())
@@ -1428,13 +1486,28 @@ pub fn base_ty(
         }
         impl #W::BoxedBase for #ident {
             type Boxed = #E::sort::Boxed<#ident>;
-            type UnBoxed = #ident;
-            fn unbox(boxed: Self::Boxed, ctx: &mut eggplant::wrap::RuleCtx) -> Self::UnBoxed {
+            fn unbox(boxed: Self::Boxed, ctx: &mut eggplant::wrap::RuleCtx) -> Self {
                 boxed.0
             }
             fn box_it(self, ctx: &mut eggplant::wrap::RuleCtx) -> Self::Boxed {
                 #E::sort::Boxed(self)
             }
         }
+        impl #W::BoxedValue for #ident {
+            type Output<'a> = Self;
+            fn devalue<'b>(rule_ctx: &'b mut eggplant::wrap::RuleCtx, value: egglog::Value) -> Self::Output<'b>{
+                use #W::BoxedBase;
+                let value = rule_ctx.rule_ctx.value_to_base(value);
+                Self::unbox(value, rule_ctx)
+            }
+        }
     ).into()
+}
+
+#[proc_macro_attribute]
+pub fn container(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    dsl(attr, item)
 }

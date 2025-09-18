@@ -84,14 +84,17 @@ pub struct TyConstructor {
     pub unextractable: bool,
     pub term_to_node: TermToNode,
 }
-/// newtype for ArcSort
 pub struct UserBaseSort {
+    pub sort_insert_fn: fn(&mut EGraph),
+}
+pub struct UserContainerSort {
     pub sort_insert_fn: fn(&mut EGraph),
 }
 
 // collect all sorts into inventory, so that we could send the definitions of types.
 inventory::collect!(Decl);
 inventory::collect!(UserBaseSort);
+inventory::collect!(UserContainerSort);
 
 pub enum Decl {
     EgglogMultiConTy {

@@ -7,7 +7,13 @@ pub enum Expr {
     Sub { l: Expr, r: Expr },
     Add { l: Expr, r: Expr },
     Div { l: Expr, r: Expr },
+    VecSum { exprs: VecExpr },
 }
+#[eggplant::dsl]
+struct VecExpr {
+    exprs: Vec<Expr>,
+}
+
 tx_rx_vt_pr_pf!(MyTx, MyPatRec);
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {

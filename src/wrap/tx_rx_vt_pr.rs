@@ -461,20 +461,21 @@ impl Tx for TxRxVTPR {
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
-        input: <F::Input as EgglogFuncInputs>::Ref<'a>,
-        output: <F::Output as EgglogFuncOutput>::Ref<'a>,
+        _input: <F::Input as EgglogFuncInputs>::Ref<'a>,
+        _output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
-        let input_nodes = input.as_evalues();
-        let input_syms = input_nodes.iter().map(|x| x.get_symlit());
-        let output = output.as_evalue().get_symlit();
-        self.send(TxCommand::StringCommand {
-            command: format!(
-                "(set ({} {}) {} )",
-                F::FUNC_NAME,
-                input_syms.map(|x| format!("{}", x)).collect::<String>(),
-                output
-            ),
-        });
+        // let input_nodes = input.as_evalues();
+        // let input_syms = input_nodes.iter().map(|x| x.get_symlit());
+        // let output = output.as_evalue().get_symlit();
+        // self.send(TxCommand::StringCommand {
+        //     command: format!(
+        //         "(set ({} {}) {} )",
+        //         F::FUNC_NAME,
+        //         input_syms.map(|x| format!("{}", x)).collect::<String>(),
+        //         output
+        //     ),
+        // });
+        todo!("proof not yet implemented")
     }
 
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {

@@ -1,4 +1,4 @@
-use crate::wrap::{self, BoxedContainer, EgglogNode, PatRecSgl, ToValue};
+use crate::wrap::{self, BoxedContainer, BoxedValue, DeValue, EgglogNode, PatRecSgl, ToValue};
 use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::ast::ResolvedVar;
 use egglog::prelude::{
@@ -26,8 +26,12 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
             rule_ctx: egglog_ctx,
         }
     }
-    pub fn devalue<B: BoxedBase + EgglogTy>(&mut self, val: Value<B>) -> B::UnBoxed {
-        B::unbox(self.rule_ctx.value_to_base(val.val), self)
+    pub fn devalue<'d, B: BoxedValue, D: DeValue<Target = B>>(
+        &'d mut self,
+        val: Value<D>,
+    ) -> B::Output<'d> {
+        let val = D::retype_value(val.val);
+        B::devalue(self, val.val)
     }
     pub fn intern_base<T: EgglogTy, B: BoxedBase>(&mut self, base: B) -> wrap::Value<T> {
         let boxed = base.box_it(self);
@@ -35,9 +39,10 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     }
     pub fn intern_container<T: EgglogTy, C: BoxedContainer>(
         &mut self,
-        container: C::Container,
+        container: C,
     ) -> wrap::Value<T> {
-        wrap::Value::new(self._intern_container::<T, C::Container>(container))
+        let boxed_container = BoxedContainer::box_it(container, self);
+        wrap::Value::new(self._intern_container::<T, C::BoxedContainer>(boxed_container))
     }
     pub fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
         self.rule_ctx.base_to_value(base)

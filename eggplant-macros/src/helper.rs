@@ -12,7 +12,7 @@ use syn::{
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
-pub const EGGLOG_BASIC_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "& 'static str"];
+pub const EGGLOG_BASE_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "& 'static str"];
 pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 4] = [
     LazyTokenStream::new(|| "String::new()".to_owned()),
     LazyTokenStream::new(|| "0".to_owned()),
@@ -44,7 +44,7 @@ impl EgglogUserDefined {
         Self::sgl().containers = containers;
         Self::sgl().base_types = base_types;
     }
-    pub fn _contain_container(ty: &str) -> bool {
+    pub fn contain_container(ty: &str) -> bool {
         Self::sgl()
             .containers
             .iter()
@@ -177,8 +177,46 @@ pub fn variant2mapped_ident_type_list(
             x if PANIC_TY_LIST.contains(&x) => {
                 panic!("{} not supported", x)
             }
-            x if is_str_basic_ty(x) => map_basic_ident(&f2, &f1),
+            x if BasicOrComplex::from(x).is_basic() => map_basic_ident(&f2, &f1),
             _ => map_complex_ident(&f2, &f1),
+        }
+        .map(|x| quote! {  #x})
+    })
+    .flatten()
+    .collect();
+    types_and_idents
+}
+pub fn variant2mapped_ident_type_list_detailed(
+    variant: &Variant,
+    mut map_ident: impl FnMut(&Ident, &TokenStream, BasicOrComplex) -> Option<TokenStream>,
+) -> Vec<proc_macro2::TokenStream> {
+    let types_and_idents = match &variant.fields {
+        Fields::Named(fields_named) => fields_named.named.iter(),
+        Fields::Unit => {
+            panic!("add `{{}}` to the unit variant")
+        }
+        _ => panic!("only support named fields"),
+    }
+    .map(|f| {
+        let f_ident = f
+            .ident
+            .as_ref()
+            .expect("don't support unnamed field")
+            .clone();
+        // if it's a box type we should read the first generic
+        if is_box_type(&f.ty) {
+            (get_first_generic(&f.ty).clone(), f_ident)
+        } else {
+            (f.ty.clone(), f_ident)
+        }
+    })
+    .map(|(f1, f2)| {
+        let f1 = &f1.to_token_stream();
+        match f1.to_string().as_str() {
+            x if PANIC_TY_LIST.contains(&x) => {
+                panic!("{} not supported", x)
+            }
+            _ => map_ident(&f2, &f1, BasicOrComplex::from(&f1.to_token_stream())),
         }
         .map(|x| quote! {  #x})
     })
@@ -217,20 +255,45 @@ pub fn is_box_type(ty: &Type) -> bool {
     }
     false
 }
-/// two source of basic ty.
-/// 1. User defined basic type, you can specify them in eggplant's attribute like `#[eggplant(base= X)]`
-/// 2. fixed basic type list in egglog, see `EGGLOG_BASIC_TY_LIST`
-pub fn is_basic_ty(ty: &proc_macro2::TokenStream) -> bool {
-    is_str_basic_ty(&ty.to_string().as_str())
+/// mention there is no UserDefinedContainerTy
+/// since egglog's default container is not typed and is not recommended
+#[derive(strum_macros::EnumDiscriminants)]
+pub enum BasicOrComplex {
+    BaseType,
+    /// User defined basic type, you can specify them in eggplant's attribute like `#[eggplant(base= X)]`
+    UserDefinedBaseType,
+    /// User defined container type, you can specify them in eggplant's attribute like `#[eggplant(container= X)]`
+    UserDefinedContainerType,
+    ComplexType,
 }
-pub fn is_str_basic_ty(ty: &str) -> bool {
-    if EGGLOG_BASIC_TY_LIST.contains(&ty) {
-        return true;
+impl BasicOrComplex {
+    pub fn is_basic(&self) -> bool {
+        match self {
+            BasicOrComplex::BaseType => true,
+            BasicOrComplex::UserDefinedBaseType => true,
+            BasicOrComplex::UserDefinedContainerType => true,
+            BasicOrComplex::ComplexType => false,
+        }
     }
-    if EgglogUserDefined::contain_base_type(&ty) {
-        return true;
+}
+impl From<&proc_macro2::TokenStream> for BasicOrComplex {
+    fn from(ty: &proc_macro2::TokenStream) -> Self {
+        Self::from(ty.to_string().as_str())
     }
-    false
+}
+impl From<&str> for BasicOrComplex {
+    fn from(ty: &str) -> Self {
+        if EGGLOG_BASE_TY_LIST.contains(&ty) {
+            return BasicOrComplex::BaseType;
+        }
+        if EgglogUserDefined::contain_base_type(&ty) {
+            return BasicOrComplex::UserDefinedBaseType;
+        }
+        if EgglogUserDefined::contain_container(&ty) {
+            return BasicOrComplex::UserDefinedContainerType;
+        }
+        BasicOrComplex::ComplexType
+    }
 }
 pub fn get_first_generic(ty: &Type) -> &Type {
     if let Type::Path(type_path) = ty
@@ -253,77 +316,77 @@ pub fn get_first_generic(ty: &Type) -> &Type {
 /// given variant a{ x:X, y:Y}
 /// return vec![ x:XSym, y:YSym ]
 pub fn variant2sym_typed_ident_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
-        |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
-        |complex, complex_ty| Some(quote! {#complex:#W::Sym<#complex_ty>}),
+        |ident, ty| Some(quote! {#ident:#ty}),
+        |ident, ty| Some(quote! {#ident:#W::Sym<#ty>}),
     )
 }
 pub fn variants2sym_type_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
-        |_, basic_ty| Some(quote! {#basic_ty}),
-        |_, complex_ty| Some(quote! {#W::Sym<#complex_ty>}),
+        |_ident, ty| Some(quote! {#ty}),
+        |_ident, ty| Some(quote! {#W::Sym<#ty>}),
     )
 }
 pub fn variant2ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
-        |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
-        |complex, complex_ty| Some(quote! {#complex: &#complex_ty<T>}),
+        |ident, ty| Some(quote! {#ident:#ty}),
+        |ident, ty| Some(quote! {#ident: &#ty<T>}),
     )
 }
 pub fn variant2ref_node_list_except_basic(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
-        |_, _| None,
-        |complex, complex_ty| Some(quote! {#complex: &#complex_ty<T>}),
+        |_ident, _ty| None,
+        |ident, ty| Some(quote! {#ident: &#ty<T>}),
     )
 }
 pub fn variant2valued_ref_node_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
-        |basic, basic_ty| Some(quote! {#basic:#basic_ty}),
-        |complex, complex_ty| Some(quote! {#complex: impl #W::ToValue<#complex_ty<(), ()>>}),
+        |ident, ty| Some(quote! {#ident:#ty}),
+        |ident, ty| Some(quote! {#ident: impl #W::ToValue<#ty<(), ()>>}),
     )
 }
 pub fn variant2ref_node_list_without_type(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _basic_ty| Some(quote! {#basic}),
         |complex, _complex_ty| Some(quote! {#complex}),
     )
 }
 pub fn variant2ident_list_except_basic(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_, _| None,
         |complex, _complex_ty| Some(quote! {#complex}),
     )
 }
 pub fn variant2sym_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, basic_ty| Some(quote!(#basic:#basic_ty)),
         |complex, _| Some(quote!(#complex:#W::Sym)),
     )
 }
 pub fn variant2sym_list_except_basic(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_, _| None,
         |complex, _| Some(quote!(#complex:#W::Sym)),
     )
 }
 pub fn variant2assign_node_field_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _| Some(quote! {#basic}),
         |complex, _| Some(quote!(#complex:#complex.node.sym)),
     )
 }
 pub fn variant2assign_node_field_typed(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _| Some(quote! {#basic}),
         |complex, _| Some(quote!(#complex:#complex.typed())),
@@ -332,7 +395,7 @@ pub fn variant2assign_node_field_typed(variant: &Variant) -> Vec<proc_macro2::To
 pub fn variant2assign_node_field_list_without_prefixed_ident(
     variant: &Variant,
 ) -> Vec<proc_macro2::TokenStream> {
-    variant2mapped_ident_type_list(
+    variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _| Some(quote! {#basic}),
         |complex, _| Some(quote! {#complex.node.sym}),
@@ -414,15 +477,16 @@ pub fn variant2field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
 pub fn get_default_by_ty(ty: &TokenStream) -> TokenStream {
     enum Pos {
         BasePos(usize),
-        UserDefinedBasePos,
+        UserDefined,
     }
     let pos = match (
-        EGGLOG_BASIC_TY_LIST
+        EGGLOG_BASE_TY_LIST
             .iter()
             .position(|x| x == &ty.to_string().as_str()),
-        EgglogUserDefined::contain_base_type(&ty.to_string()),
+        EgglogUserDefined::contain_base_type(&ty.to_string())
+            || EgglogUserDefined::contain_container(&ty.to_string()),
     ) {
-        (None, true) => Pos::UserDefinedBasePos,
+        (None, true) => Pos::UserDefined,
         (None, false) => {
             panic!(
                 "{} might be a user defined base type or a typo of default base type",
@@ -434,7 +498,7 @@ pub fn get_default_by_ty(ty: &TokenStream) -> TokenStream {
     };
     match pos {
         Pos::BasePos(pos) => EGGLOG_BASIC_TY_DEFAULT_LIST[pos].to_token_stream(),
-        Pos::UserDefinedBasePos => quote!(Default::default()),
+        Pos::UserDefined => quote!(Default::default()),
     }
     .to_token_stream()
 }
@@ -468,9 +532,33 @@ pub fn variant_marker_names(data_enum: &DataEnum) -> (Vec<Ident>, Vec<Ident>) {
 }
 
 pub fn variant2valued_struct_fields(variant: &Variant) -> Vec<TokenStream> {
-    variant2mapped_ident_type_list(
-        variant,
-        |basic, ty| Some(quote! {#basic: #W::Value<#ty>}),
-        |_, _| None,
-    )
+    variant2mapped_ident_type_list_detailed(variant, |ident, ty, b_or_c| {
+        println!(
+            "{} {} is recognized as basic",
+            ident.to_string(),
+            ty.to_string()
+        );
+        match b_or_c {
+            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                Some(quote! {#ident: #W::Value<#ty>})
+            }
+            BasicOrComplex::UserDefinedContainerType => Some(quote! {#ident: #W::Value<#ty>}),
+            BasicOrComplex::ComplexType => None,
+        }
+    })
+}
+
+pub fn variant2mapped_ident_type_list_view_container_as_complex(
+    variant: &Variant,
+    mut map_basic_ident_except_container: impl FnMut(&Ident, &TokenStream) -> Option<TokenStream>,
+    mut map_complex_ident_include_container: impl FnMut(&Ident, &TokenStream) -> Option<TokenStream>,
+) -> Vec<proc_macro2::TokenStream> {
+    variant2mapped_ident_type_list_detailed(variant, |ident, ty, b_or_c| match b_or_c {
+        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+            map_basic_ident_except_container(ident, ty)
+        }
+        BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+            map_complex_ident_include_container(ident, ty)
+        }
+    })
 }

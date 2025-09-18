@@ -9,7 +9,7 @@ use crate::*;
 pub fn to_term_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
     let variant_idents = variant2field_ident(variant);
     let variant_name = &variant.ident;
-    let body = variant2mapped_ident_type_list(
+    let body = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic_ident, _| {
             Some(quote! {
@@ -140,8 +140,8 @@ pub fn new_fn_ts(
         .into_iter()
         .zip(field_ty.iter())
         .enumerate()
-        .map(|(i, (ident, ty))| {
-            if is_basic_ty(ty) {
+        .map(|(i, (ident, ty))| match BasicOrComplex::from(ty) {
+            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
                 quote! {
                     #ident: match term_dag.get(children[#i]) {
                         #E::Term::Lit(lit) => lit.deliteral(),
@@ -149,7 +149,8 @@ pub fn new_fn_ts(
                         #E::Term::App(app,v) => panic!(),
                     }
                 }
-            } else {
+            }
+            BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
                 quote! {
                     #ident: term2sym[&children[#i]].typed()
                 }
@@ -293,34 +294,34 @@ pub fn query_leaf_fns_tt(
     let ref_node_list = variant2ref_node_list(&variant);
     let ref_node_list_leave_idents = variant2ref_node_list_without_type(&variant);
 
-    let field_idents = variant2field_ident(&variant);
+    let _field_idents = variant2field_ident(&variant);
     let (variant_marker, variant_name) = variant2marker_name(variant);
     let query_leaf_fn_name =
         format_ident!("query_{}_leaf", variant_name.to_string().to_snake_case());
     let _query_fn_name = format_ident!("_query_{}", variant_name.to_string().to_snake_case());
     // let new_from_term_fn_name = format_ident!("new_{}_from_term",variant_name.to_string().to_snake_case());
     // let new_from_term_dyn_fn_name = format_ident!("new_{}_from_term_dyn",variant_name.to_string().to_snake_case());
-    let field_ty = variant2tys(&variant);
-    let _field_assignments: Vec<_> = field_idents
-        .into_iter()
-        .zip(field_ty.iter())
-        .enumerate()
-        .map(|(i, (ident, ty))| {
-            if is_basic_ty(ty) {
-                quote! {
-                    #ident: match term_dag.get(children[#i]) {
-                        #E::Term::Lit(lit) => lit.deliteral(),
-                        #E::Term::Var(v) => panic!(),
-                        #E::Term::App(app,v) => panic!(),
-                    }
-                }
-            } else {
-                quote! {
-                    #ident: term2sym[&children[#i]].typed()
-                }
-            }
-        })
-        .collect();
+    let _field_ty = variant2tys(&variant);
+    // let _field_assignments: Vec<_> = field_idents
+    //     .into_iter()
+    //     .zip(field_ty.iter())
+    //     .enumerate()
+    //     .map(|(i, (ident, ty))| {
+    //         if BasicOrComplex::from(ty).is_basic() {
+    //             quote! {
+    //                 #ident: match term_dag.get(children[#i]) {
+    //                     #E::Term::Lit(lit) => lit.deliteral(),
+    //                     #E::Term::Var(v) => panic!(),
+    //                     #E::Term::App(app,v) => panic!(),
+    //                 }
+    //             }
+    //         } else {
+    //             quote! {
+    //                 #ident: term2sym[&children[#i]].typed()
+    //             }
+    //         }
+    //     })
+    //     .collect();
 
     // MARK: Enum New Fns
     (
