@@ -54,24 +54,7 @@ fn main() {
         p: Add,
     }
 
-    MyTx::add_rule(
-        stringify!(AddPat),
-        ruleset,
-        || {
-            let l = Const::query();
-            let r = Const::query();
-            let p = Add::query(&l, &r);
-            AddPat::new(l, r, p)
-        },
-        |ctx, values| {
-            let cal = ctx.devalue(values.l.num) + ctx.devalue(values.r.num);
-            let op_value = ctx.insert_const(cal);
-            let val = ctx.insert_vec_expr(VecContainer::new());
-            ctx.insert_vec_sum(val);
-            ctx.union(values.p, op_value);
-        },
-    );
-
+    prop!(Add,+,AddPat,ruleset);
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);
