@@ -27,10 +27,10 @@ macro_rules! prop {
                 let p = $ty::query(&l, &r);
                 $pat_name::new(l, r, p)
             },
-            |ctx, values| {
-                let cal = ctx.devalue(values.l.num) $op ctx.devalue(values.r.num);
+            |ctx, pat| {
+                let cal = ctx.devalue(pat.l.num) $op ctx.devalue(pat.r.num);
                 let op_value = ctx.insert_const(cal);
-                ctx.union(values.p, op_value);
+                ctx.union(pat.p, op_value);
             },
         );
     };

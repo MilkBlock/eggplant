@@ -1,4 +1,6 @@
-use std::{fmt, fs::File, hash::Hash, io::Write, marker::PhantomData, path::PathBuf};
+use std::{
+    fmt, fs::File, hash::Hash, io::Write, marker::PhantomData, mem::transmute, path::PathBuf,
+};
 
 use crate::wrap::{self, EgglogTy, VecContainer};
 use egglog::{Term, TermDag};
@@ -130,15 +132,6 @@ impl<T: EgglogTy> VecContainer<T> {
             _p: PhantomData,
         }
     }
-    pub fn from_raw_vec(v: Vec<egglog::Value>) -> VecContainer<T> {
-        VecContainer {
-            inner: egglog::sort::VecContainer {
-                do_rebuild: false,
-                data: v,
-            },
-            _p: PhantomData,
-        }
-    }
     pub fn iter(&self) -> impl Iterator<Item = wrap::Value<T>> {
         self.inner
             .data
@@ -146,5 +139,28 @@ impl<T: EgglogTy> VecContainer<T> {
             .iter()
             .map(|x| wrap::Value::new(*x))
             .into_iter()
+    }
+}
+impl<T: EgglogTy> From<Vec<egglog::Value>> for VecContainer<T> {
+    fn from(value: Vec<egglog::Value>) -> Self {
+        VecContainer {
+            inner: egglog::sort::VecContainer {
+                do_rebuild: false,
+                data: value,
+            },
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<T: EgglogTy> From<Vec<wrap::Value<T>>> for VecContainer<T> {
+    fn from(value: Vec<wrap::Value<T>>) -> Self {
+        VecContainer {
+            inner: egglog::sort::VecContainer {
+                do_rebuild: false,
+                data: unsafe { transmute(value) },
+            },
+            _p: PhantomData,
+        }
     }
 }

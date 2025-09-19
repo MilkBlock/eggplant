@@ -65,6 +65,8 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     }
 }
 pub trait RuleRunner {
+    type EqProof;
+    type TermProof;
     fn add_rule<T: PatRecSgl, P: PatVars<T>>(
         &self,
         rule_name: &str,
@@ -83,6 +85,8 @@ pub trait RuleRunner {
     fn value<T: EgglogNode>(&self, node: &T) -> Value<T>;
 }
 pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
+    type EqProof;
+    type TermProof;
     fn add_rule<P: PatVars<Self::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,
@@ -97,10 +101,12 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     fn explain_eq_raw(v1: u32, v2: u32) -> EqProofId;
     fn value<T: EgglogNode>(node: &T) -> Value<T>;
 }
-impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
+impl<T: WithPatRecSgl + NodeDropperSgl, EP, TP> RuleRunnerSgl for T
 where
-    T::RetTy: RuleRunner,
+    T::RetTy: RuleRunner<EqProof = EP, TermProof = TP>,
 {
+    type EqProof = <T::RetTy as RuleRunner>::EqProof;
+    type TermProof = <T::RetTy as RuleRunner>::TermProof;
     fn add_rule<P: PatVars<T::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,

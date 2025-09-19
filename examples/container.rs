@@ -10,7 +10,7 @@ struct Array {
     inner: Vec<Expr>,
 }
 #[eggplant::pat_vars]
-struct SumVec {
+struct VecPat {
     vec_expr: VecSum,
 }
 
@@ -30,11 +30,11 @@ fn main() {
         ruleset,
         || {
             let vec_expr = Array::query_leaf();
-            SumVec::new(VecSum::query(&vec_expr))
+            VecPat::new(VecSum::query(&vec_expr))
         },
-        |ctx, values| {
-            println!("{:?}", values);
-            let v = ctx.devalue(values.vec_expr.exprs);
+        |ctx, pat| {
+            println!("{:?}", pat);
+            let v = ctx.devalue(pat.vec_expr.exprs);
             for expr in v.iter() {
                 println!("got expr {:?}", expr)
             }

@@ -372,9 +372,7 @@ pub fn dsl(
                                 panic!()
                             };
                             ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
-                                #W::VecContainer::from_raw_vec(
-                                    #E::sort::VecContainer{do_rebuild:false, data:vec}
-                                )
+                                    vec.into()
                             ).val
                         }
                     }
@@ -395,7 +393,7 @@ pub fn dsl(
                         }
                         fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // use ctx.insert to insert
-                            let vec = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
+                            let vec:Vec<#E::Value> = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
                                 inner.into_iter().map(|sym|
                                     if let Some(value) = sym_to_value_map.get(&sym.erase()) {
                                         value.clone()
@@ -406,9 +404,7 @@ pub fn dsl(
                                 panic!()
                             };
                             ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
-                                #W::VecContainer::from_raw_vec(
-                                    vec
-                                )
+                                vec.into()
                             ).val
                         }
                     }

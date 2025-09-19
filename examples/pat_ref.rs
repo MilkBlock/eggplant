@@ -24,29 +24,29 @@ enum Expr {
 }
 tx_rx_vt_pr!(MyTx, MyPatRec);
 #[pat_vars]
-struct FnamaddVars {
-    neg_product: NegProduct,
+struct FnamaddPat {
+    neg_product: NegProdPat,
     added: Var,
     root: Add,
 }
-fn fnamadd_pat<PR: PatRecSgl>() -> FnamaddVars<PR> {
+fn fnamadd_pat<PR: PatRecSgl>() -> FnamaddPat<PR> {
     let neg_product = neg_product_pat();
     let r = Var::query();
     let root = Add::query(&neg_product.neg, &r);
-    FnamaddVars::new(neg_product, r, root)
+    FnamaddPat::new(neg_product, r, root)
 }
 #[pat_vars]
-struct NegProduct {
+struct NegProdPat {
     neg: Neg,
     l: Var,
     r: Var,
 }
-fn neg_product_pat<PR: PatRecSgl>() -> NegProduct<PR> {
+fn neg_product_pat<PR: PatRecSgl>() -> NegProdPat<PR> {
     let l = Var::query();
     let r = Var::query();
     let product = Mul::query(&l, &r);
     let neg = Neg::query(&product);
-    NegProduct::new(neg, l, r)
+    NegProdPat::new(neg, l, r)
 }
 
 fn main() {
@@ -56,10 +56,10 @@ fn main() {
         &Var::new(5.0),
     );
     let ruleset = MyTx::new_ruleset("intrinsic_recognize");
-    MyTx::add_rule("fnamadd rule", ruleset, fnamadd_pat, |ctx, values| {
-        println!("Fnamadd values detected {:#?}", values);
-        let fnamadd = ctx.insert_fnamadd(values.neg_product.l, values.neg_product.r, values.added);
-        ctx.union(fnamadd, values.root);
+    MyTx::add_rule("fnamadd rule", ruleset, fnamadd_pat, |ctx, pat| {
+        println!("Fnamadd values detected {:#?}", pat);
+        let fnamadd = ctx.insert_fnamadd(pat.neg_product.l, pat.neg_product.r, pat.added);
+        ctx.union(fnamadd, pat.root);
     });
     expr.commit();
     MyTx::run_ruleset(ruleset, RunConfig::Sat);

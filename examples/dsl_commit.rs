@@ -2,7 +2,7 @@ use eggplant::basic_tx_vt;
 use eggplant::prelude::*;
 use std::{path::PathBuf, str::FromStr};
 
-#[eggplant::dsl(base=M,base=Op)]
+#[eggplant::dsl]
 enum Compare {
     Less { v1: Var, v2: Var },
 }

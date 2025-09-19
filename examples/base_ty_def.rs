@@ -44,14 +44,14 @@ fn main() {
             let b = Binary::query(&l, &r);
             SubPat::new(l, r, b)
         },
-        |ctx, values| {
-            let s = ctx.devalue(values.p.op);
+        |ctx, pat| {
+            let s = ctx.devalue(pat.p.op);
             match s {
                 Op::Add => todo!(),
                 Op::Sub => todo!(),
                 Op::Mul => {
-                    let mul = ctx.insert_mul(values.l, values.r);
-                    ctx.union(mul, values.p);
+                    let mul = ctx.insert_mul(pat.l, pat.r);
+                    ctx.union(mul, pat.p);
                 }
                 Op::Div => todo!(),
                 Op::Unknown => todo!(),

@@ -25,10 +25,10 @@ macro_rules! prop {
                 let p = $ty::query(&l, &r);
                 $pat_name::new(l, r, p)
             },
-            |ctx, values| {
-                let cal = ctx.devalue(values.l.num) $op ctx.devalue(values.r.num);
+            |ctx, pat| {
+                let cal = ctx.devalue(pat.l.num) $op ctx.devalue(pat.r.num);
                 let op_value = ctx.insert_m_num(cal);
-                ctx.union(values.p, op_value);
+                ctx.union(pat.p, op_value);
             },
         );
     };
@@ -50,10 +50,10 @@ fn main() {
             let p = MAdd::query(&l, &r);
             AddPat::new(l, r, p)
         },
-        |ctx, values| {
-            let val = ctx.insert_m_add(values.r, values.l);
+        |ctx, pat| {
+            let val = ctx.insert_m_add(pat.r, pat.l);
             println!("value of commun_add is {:?}", &val);
-            ctx.union(values.p, val);
+            ctx.union(pat.p, val);
         },
     );
     let num_3: Math<MyTx, _> = MNum::new(3);

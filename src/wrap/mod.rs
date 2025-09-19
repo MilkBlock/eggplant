@@ -207,6 +207,17 @@ macro_rules! tx_rx_vt_pr_fp {
 }
 
 #[macro_export]
+macro_rules! tx_rx_vt_pr_ap {
+    ($tx_name:ident, $pat_rec_name:ident) => {
+        eggplant::basic_tx_rx_vt_pr_ap!($tx_name);
+        eggplant::basic_patttern_recorder!($pat_rec_name);
+        impl eggplant::wrap::WithPatRecSgl for $tx_name {
+            type PatRecSgl = $pat_rec_name;
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! basic_patttern_recorder {
     ($name:ident) => {
         #[derive(Debug)]

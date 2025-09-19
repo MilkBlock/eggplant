@@ -12,7 +12,7 @@ enum GraphRoot {
 tx_rx_vt_pr!(MyTx, MyPatRec);
 // bind pattern recorder for MyTx
 #[eggplant::pat_vars]
-struct MulCommuVars {
+struct MulCommuPat {
     l_expr: Expr,
     r_expr: Expr,
     p_expr: Mul,
@@ -31,12 +31,12 @@ fn main() {
             let l = Expr::query_leaf();
             let r = Expr::query_leaf();
             let a = Mul::query(&l, &r);
-            MulCommuVars::new(l, r, a)
+            MulCommuPat::new(l, r, a)
         },
-        |ctx, values| {
-            println!("Commun values detected {:?}", values);
-            let mul = ctx.insert_mul(values.l_expr, values.r_expr);
-            ctx.union(mul, values.p_expr);
+        |ctx, pat| {
+            println!("Commun values detected {:?}", pat);
+            let mul = ctx.insert_mul(pat.l_expr, pat.r_expr);
+            ctx.union(mul, pat.p_expr);
         },
     );
 

@@ -24,19 +24,19 @@ pub enum Math {
 }
 #[eggplant::dsl]
 pub enum LoopType {
-    Loop { s: String, range: Math },
+    Loop { layer_name: String, z_range: Math },
 }
 #[eggplant::dsl]
 pub enum Expr {
     Tensor {
         name: String,
     },
-    LoopIn {
+    LIn {
         expr: Expr,
         arr_and_range: LoopType,
         stride: Math,
     },
-    LoopOut {
+    LOut {
         expr: Expr,
         arr_and_range: LoopType,
         stride: Math,
@@ -99,10 +99,10 @@ macro_rules! prop {
                 let p = $ty::query(&l, &r);
                 $pat_name::new(l, r, p)
             },
-            |ctx, values| {
-                let cal = ctx.devalue(values.l.num) $op ctx.devalue(values.r.num);
+            |ctx, pat| {
+                let cal = ctx.devalue(pat.l.num) $op ctx.devalue(pat.r.num);
                 let op_value = ctx.insert_m_num(cal);
-                ctx.union(values.p, op_value);
+                ctx.union(pat.p, op_value);
             },
         );
     };
@@ -111,27 +111,7 @@ fn main() {
     env_logger::init();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
-    #[eggplant::pat_vars]
-    struct AddPat {
-        l: MNum,
-        r: MNum,
-        p: MAdd,
-    }
-    MyTx::add_rule(
-        stringify!(AddPat),
-        ruleset,
-        || {
-            let l = MNum::query();
-            let r = MNum::query();
-            let p = MAdd::query(&l, &r);
-            AddPat::new(l, r, p)
-        },
-        |ctx, values| {
-            let cal = ctx.devalue(values.l.num) + ctx.devalue(values.r.num);
-            let op_value = ctx.insert_m_num(cal);
-            ctx.union(values.p, op_value);
-        },
-    );
+    prop!(MAdd,+,AddPat,ruleset);
     prop!(MSub,-,SubPat,ruleset);
     prop!(MMul,*,MulPat,ruleset);
     prop!(MDiv,/,DivPat,ruleset);
@@ -141,10 +121,10 @@ fn main() {
     let acc_init: Expr<MyTx, NewAccTy> = NewAcc::new(0);
     let arr_loop = LoopType::new("i".to_string(), &MNum::new(4));
     let col1 = MVar::new("z".to_string());
-    let arr_loop_in = LoopIn::new(&tensor_arr, &arr_loop, &col1);
-    let acc_loop_in = LoopIn::new(&acc_init, &arr_loop, &MAccum::new());
+    let arr_loop_in = LIn::new(&tensor_arr, &arr_loop, &col1);
+    let acc_loop_in = LIn::new(&acc_init, &arr_loop, &MAccum::new());
     let max = Max::new(&arr_loop_in, &acc_loop_in);
-    let max_arr: Expr<MyTx, LoopOutTy> = LoopOut::new(
+    let max_arr: Expr<MyTx, LOutTy> = LOut::new(
         &max,
         &Loop::new("fold".to_string(), &MNum::new(4)),
         &MAccum::new(),

@@ -9,7 +9,7 @@ use dashmap::DashMap;
 use egglog::{
     EGraph, PrettyPrintConfig, RunReport, SerializeConfig,
     core::Query,
-    prelude::{ProofStore, TermProofId, add_ruleset, run_ruleset},
+    prelude::{EqProofId, ProofStore, TermProofId, add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
 };
@@ -32,15 +32,15 @@ use std::{
 /// 5. generate proof (opt.)
 pub struct TxRxVTPR {
     pub egraph: Mutex<EGraph>,
-    pub map: DashMap<Sym, WorkAreaNode>,
+    map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
-    pub staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
-    pub staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
+    staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
+    staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
     checkpoints: Mutex<Vec<CommitCheckPoint>>,
     registry: EgglogTypeRegistry,
     /// mapping from sym to value, used to query [`Value`] in EGraph of specified [`Sym`]
-    pub sym2value_map: Arc<DashMap<Sym, egglog::Value>>,
-    pub proof_store: Mutex<ProofStore>,
+    sym2value_map: Arc<DashMap<Sym, egglog::Value>>,
+    proof_store: Mutex<ProofStore>,
     commit_counter: Mutex<u32>,
 }
 
@@ -750,6 +750,9 @@ impl NodeSetter for TxRxVTPR {
 }
 
 impl RuleRunner for TxRxVTPR {
+    type EqProof = EqProofId;
+    type TermProof = TermProofId;
+
     fn add_rule<PR: PatRecSgl, P: PatVars<PR>>(
         &self,
         rule_name: &str,
@@ -1088,18 +1091,6 @@ impl ToDot for TxRxVTPR {
                 stmts.push(stmt!(edge));
             }
         }
-
-        // // 5. Add version chain edges (dashed, different color)
-        // for (from_sym, to_sym) in &version_chains {
-        //     let from_id = quote(from_sym.as_str());
-        //     let to_id = quote(to_sym.as_str());
-        //     let edge = edge!(from_id => to_id;
-        //         EdgeAttributes::color(quote("blue")),
-        //         EdgeAttributes::style(quote("dashed")),
-        //         EdgeAttributes::label(quote("next"))
-        //     );
-        //     stmts.push(stmt!(edge));
-        // }
 
         // 7. Create the final graph
         let graph = graph!(di id!(), stmts);
