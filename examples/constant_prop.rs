@@ -1,6 +1,5 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_fp;
-use eggplant::wrap::VecContainer;
 #[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
@@ -8,11 +7,6 @@ pub enum Expr {
     Sub { l: Expr, r: Expr },
     Add { l: Expr, r: Expr },
     Div { l: Expr, r: Expr },
-    VecSum { exprs: VecExpr },
-}
-#[eggplant::dsl]
-struct VecExpr {
-    exprs: Vec<Expr>,
 }
 
 tx_rx_vt_pr_fp!(MyTx, MyPatRec);
@@ -47,13 +41,6 @@ fn main() {
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
-    #[eggplant::pat_vars]
-    struct AddPat {
-        l: Const,
-        r: Const,
-        p: Add,
-    }
-
     prop!(Add,+,AddPat,ruleset);
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
