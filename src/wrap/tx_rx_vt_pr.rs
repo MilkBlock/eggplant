@@ -190,7 +190,32 @@ impl TxRxVTPR {
             (sort_fn.sort_insert_fn)(e)
         }
     }
-    pub fn new_with_tracing() -> Self {
+    /// this tracing is implemented by Proof Table writing, which is quick but without full proof
+    pub fn new_with_fast_proof() -> Self {
+        let tx = Self {
+            egraph: Mutex::new({
+                let mut e = EGraph::with_tracing();
+                Self::add_eggplant_sorts(&mut e);
+                e
+            }),
+            registry: EgglogTypeRegistry::new_with_inventory(),
+            map: DashMap::new(),
+            staged_set_map: DashMap::new(),
+            staged_new_map: Mutex::new(IndexMap::default()),
+            checkpoints: Mutex::new(vec![]),
+            sym2value_map: Arc::new(DashMap::new()),
+            proof_store: Mutex::new(ProofStore::default()),
+            commit_counter: Mutex::new(0),
+        };
+        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        for def in type_defs {
+            tx.send(TxCommand::NativeCommand { command: def });
+        }
+        tx
+    }
+    /// this tracing is implemented by TableAction tracing without proof table writing, might be slow
+    /// but with full feature
+    pub fn new_with_accurate_proof() -> Self {
         let tx = Self {
             egraph: Mutex::new({
                 let mut e = EGraph::with_tracing();

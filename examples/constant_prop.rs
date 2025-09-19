@@ -1,5 +1,6 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr_pf;
+use eggplant::tx_rx_vt_pr_fp;
+use eggplant::wrap::VecContainer;
 #[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
@@ -14,7 +15,7 @@ struct VecExpr {
     exprs: Vec<Expr>,
 }
 
-tx_rx_vt_pr_pf!(MyTx, MyPatRec);
+tx_rx_vt_pr_fp!(MyTx, MyPatRec);
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
         #[eggplant::pat_vars]
@@ -46,7 +47,31 @@ fn main() {
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
-    prop!(Add,+,AddPat,ruleset);
+    #[eggplant::pat_vars]
+    struct AddPat {
+        l: Const,
+        r: Const,
+        p: Add,
+    }
+
+    MyTx::add_rule(
+        stringify!(AddPat),
+        ruleset,
+        || {
+            let l = Const::query();
+            let r = Const::query();
+            let p = Add::query(&l, &r);
+            AddPat::new(l, r, p)
+        },
+        |ctx, values| {
+            let cal = ctx.devalue(values.l.num) + ctx.devalue(values.r.num);
+            let op_value = ctx.insert_const(cal);
+            let val = ctx.insert_vec_expr(VecContainer::new());
+            ctx.insert_vec_sum(val);
+            ctx.union(values.p, op_value);
+        },
+    );
+
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);

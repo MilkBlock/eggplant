@@ -1,5 +1,5 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr_pf;
+use eggplant::tx_rx_vt_pr_fp;
 use serde::{Deserialize, Serialize};
 
 #[eggplant::dsl(base=Op)]
@@ -22,7 +22,7 @@ pub enum Op {
     Unknown,
 }
 
-tx_rx_vt_pr_pf!(MyTx, MyPatRec);
+tx_rx_vt_pr_fp!(MyTx, MyPatRec);
 fn main() {
     env_logger::init();
     let expr: Expr<MyTx, _> = Binary::new(Op::Mul, &Const::new(3), &Const::new(2));

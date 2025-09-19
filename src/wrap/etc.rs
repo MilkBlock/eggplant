@@ -121,9 +121,21 @@ impl<T: EgglogTy> Clone for VecContainer<T> {
 }
 
 impl<T: EgglogTy> VecContainer<T> {
-    pub fn new(v: egglog::sort::VecContainer) -> VecContainer<T> {
+    pub fn new() -> VecContainer<T> {
         VecContainer {
-            inner: v,
+            inner: egglog::sort::VecContainer {
+                do_rebuild: false,
+                data: vec![],
+            },
+            _p: PhantomData,
+        }
+    }
+    pub fn from_raw_vec(v: Vec<egglog::Value>) -> VecContainer<T> {
+        VecContainer {
+            inner: egglog::sort::VecContainer {
+                do_rebuild: false,
+                data: v,
+            },
             _p: PhantomData,
         }
     }

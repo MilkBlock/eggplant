@@ -1,6 +1,6 @@
 use eggplant::prelude::*;
 // use eggplant::tx_rx_vt_pr;
-use eggplant::tx_rx_vt_pr_pf;
+use eggplant::tx_rx_vt_pr_fp;
 use eggplant::wrap::G;
 use eggplant::wrap::Rx;
 #[eggplant::dsl]
@@ -81,7 +81,7 @@ pub enum Expr {
         b: String,
     },
 }
-tx_rx_vt_pr_pf!(MyTx, MyPatRec);
+tx_rx_vt_pr_fp!(MyTx, MyPatRec);
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
         #[eggplant::pat_vars]

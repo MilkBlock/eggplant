@@ -200,13 +200,13 @@ impl BoxedValue for String {
     }
 }
 impl<T: EgglogTy> BoxedContainer for VecContainer<T> {
-    type BoxedContainer = egglog::sort::VecContainer;
+    type Boxed = egglog::sort::VecContainer;
 
-    fn unbox(boxed: Self::BoxedContainer, _ctx: &mut RuleCtx) -> Self {
+    fn unbox(boxed: Self::Boxed, _ctx: &mut RuleCtx) -> Self {
         unsafe { mem::transmute(boxed) }
     }
 
-    fn box_it(self, _ctx: &mut RuleCtx) -> Self::BoxedContainer {
+    fn box_it(self, _ctx: &mut RuleCtx) -> Self::Boxed {
         unsafe { mem::transmute(self) }
     }
 }

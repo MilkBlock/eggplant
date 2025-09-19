@@ -7,7 +7,7 @@ enum Math {
     MNum { num: i64 },
     MAdd { l: Math, r: Math },
 }
-eggplant::tx_rx_vt_pr_pf!(MyTx, MyPatRec);
+eggplant::tx_rx_vt_pr_fp!(MyTx, MyPatRec);
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
         #[eggplant::pat_vars]

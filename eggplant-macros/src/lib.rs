@@ -284,7 +284,7 @@ pub fn dsl(
                         type Valued = V::ValuedWithDefault<Self>;
                         type EnumVariantMarker = V;
                     }
-                    impl #W::EgglogContainerTy for #name_egglogty_impl {
+                    impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogContainerTy for #name_egglogty_impl<T,V> {
                         type EleTy = #first_generic_ty;
                     }
                     #INVE::submit!{
@@ -372,7 +372,7 @@ pub fn dsl(
                                 panic!()
                             };
                             ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
-                                #W::VecContainer::new(
+                                #W::VecContainer::from_raw_vec(
                                     #E::sort::VecContainer{do_rebuild:false, data:vec}
                                 )
                             ).val
@@ -406,8 +406,8 @@ pub fn dsl(
                                 panic!()
                             };
                             ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
-                                #W::VecContainer::new(
-                                    #E::sort::VecContainer{do_rebuild:false, data:vec}
+                                #W::VecContainer::from_raw_vec(
+                                    vec
                                 )
                             ).val
                         }
@@ -441,6 +441,26 @@ pub fn dsl(
                     children.iter().map(|x| term2sym.get(x).unwrap().typed()).collect()
                 }
             };
+            let rule_ctx_trait_and_impl = {
+                let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
+                let insert_fn_name =
+                    format_ident!("insert_{}", name_node.to_string().to_snake_case());
+                quote! {
+                    pub trait #ctx_trait_name {
+                        #[track_caller]
+                        fn #insert_fn_name(&mut self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
+                    }
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
+                        #[track_caller]
+                        fn #insert_fn_name(&mut self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
+                            use #W::Value;
+                            use #W::ToValue;
+                            self.intern_container(#field_name)
+                        }
+                    }
+                }
+            };
+
             let field_ty = match first_generic.to_token_stream().to_string().as_str() {
                 x if PANIC_TY_LIST.contains(&x) => {
                     panic!("{} not supported", x)
@@ -671,6 +691,7 @@ pub fn dsl(
                         }
                         #to_egglog_impl
                     };
+                    #rule_ctx_trait_and_impl
                 };
                 vec_expanded
             } else {

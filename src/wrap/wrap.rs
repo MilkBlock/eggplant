@@ -918,9 +918,9 @@ pub trait BoxedBase: BoxedValue {
     fn box_it(self, ctx: &mut RuleCtx) -> Self::Boxed;
 }
 pub trait BoxedContainer: BoxedValue {
-    type BoxedContainer: ContainerValue;
-    fn unbox(boxed: Self::BoxedContainer, ctx: &mut RuleCtx) -> Self;
-    fn box_it(self, ctx: &mut RuleCtx) -> Self::BoxedContainer;
+    type Boxed: ContainerValue;
+    fn unbox(boxed: Self::Boxed, ctx: &mut RuleCtx) -> Self;
+    fn box_it(self, ctx: &mut RuleCtx) -> Self::Boxed;
 }
 
 pub trait SingleFieldVariant {}
@@ -947,13 +947,14 @@ pub trait BoxedValue {
 //         Self::unbox(value, rule_ctx)
 //     }
 // }
+type Ref<'a, T> = Box<dyn std::ops::Deref<Target = T> + 'a>;
 impl<T: EgglogTy> BoxedValue for VecContainer<T> {
     fn devalue<'b>(rule_ctx: &'b mut RuleCtx, value: egglog::Value) -> Self::Output<'b> {
         let container = rule_ctx
             .rule_ctx
             .value_to_container::<egglog::sort::VecContainer>(value)
             .unwrap();
-        let c: Box<dyn std::ops::Deref<Target = egglog::sort::VecContainer>> = Box::new(container);
+        let c: Ref<'b, egglog::sort::VecContainer> = Box::new(container);
         // safety : VecContainer<T>'s memory layout is same with VecContainer so this is legal
         unsafe { mem::transmute(c) }
     }
