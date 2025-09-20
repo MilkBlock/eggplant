@@ -164,6 +164,9 @@ macro_rules! basic_tx_rx_vt_pr_fp {
             fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
                 Self::sgl().egraph()
             }
+            fn view() -> Result<(), eggplant::eggplant_viewer::Error> {
+                eggplant::eggplant_viewer::view::<Self>()
+            }
         }
     };
 }
@@ -188,12 +191,13 @@ macro_rules! basic_tx_rx_vt_pr_ap {
             }
         }
         impl eggplant::wrap::NonPatRecSgl for $name {}
-        impl EGraphViewerSgl for $name
-        where
-            S::RetTy: EGraphViewer + 'static,
-        {
-            fn egraph() -> Arc<Mutex<EGraph>> {
+        use eggplant::eggplant_viewer::EGraphViewer;
+        impl eggplant::eggplant_viewer::EGraphViewerSgl for $name {
+            fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
                 Self::sgl().egraph()
+            }
+            fn view() -> Result<(), eggplant::eggplant_viewer::Error> {
+                eggplant::eggplant_viewer::view::<Self>()
             }
         }
     };

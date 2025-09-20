@@ -1,7 +1,7 @@
 use egglog::EGraph;
 use std::sync::{Arc, Mutex};
 
-pub fn start<T: EGraphViewerSgl>() -> Result<(), eframe::Error> {
+pub fn view<T: EGraphViewerSgl>() -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions::default();
     eframe::run_native(
         "egui_graphs demo",
@@ -12,6 +12,7 @@ pub fn start<T: EGraphViewerSgl>() -> Result<(), eframe::Error> {
 
 pub trait EGraphViewerSgl {
     fn egraph() -> Arc<Mutex<EGraph>>;
+    fn view() -> Result<(), eframe::Error>;
 }
 
 pub trait EGraphViewer {

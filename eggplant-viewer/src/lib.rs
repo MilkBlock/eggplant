@@ -1,4 +1,5 @@
 use core::cmp::Ordering;
+pub use eframe::Error;
 use eframe::{App, CreationContext};
 use egui::{self, Align2, CollapsingHeader, Color32, Pos2, Rect, ScrollArea, Ui};
 use egui_graphs::{
