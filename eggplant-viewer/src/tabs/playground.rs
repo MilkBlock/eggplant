@@ -1,7 +1,7 @@
-use crate::{DemoGraph, EGraphApp};
+use crate::{DemoGraph, EGraphApp, start::EGraphViewerSgl};
 use egui::{CollapsingHeader, Modal, ScrollArea, Ui};
 
-impl EGraphApp {
+impl<T: EGraphViewerSgl> EGraphApp<T> {
     pub fn ui_playground_tab(&mut self, ui: &mut Ui) {
         // Current content from the right side panel
         ScrollArea::vertical().show(ui, |ui| {

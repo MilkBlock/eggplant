@@ -6,7 +6,6 @@ pub use dashmap;
 pub use derive_more;
 pub use egglog;
 pub use eggplant_macros::*;
-pub use egraph_viewer;
 pub use inventory;
 pub use serde;
 pub use serde_json;

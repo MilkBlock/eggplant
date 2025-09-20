@@ -1,4 +1,4 @@
-use crate::{DemoGraph, EGraphApp};
+use crate::{EGraphApp, start::EGraphViewerSgl};
 use egui::Ui;
 
 const SCHEMA_NODES: &str = r#"[
@@ -35,7 +35,7 @@ pub struct UserUpload {
     pub data: String,
 }
 
-impl EGraphApp {
+impl<T: EGraphViewerSgl> EGraphApp<T> {
     pub fn ui_import_tab(&mut self, ui: &mut Ui) {
         // Include the generated assets manifest (build.rs)
         #[allow(non_upper_case_globals)]
@@ -210,7 +210,7 @@ impl EGraphApp {
         // (Web debug section removed)
     }
 
-    pub fn load_graph_from_str(&mut self, name: &str, data: &str) {
+    pub fn load_graph_from_str(&mut self, _name: &str, _data: &str) {
         todo!()
     }
 }

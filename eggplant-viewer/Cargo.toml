@@ -1,5 +1,5 @@
 [package]
-name = "egraph-viewer"
+name = "eggplant-viewer"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -33,7 +33,7 @@ chrono = { version = "0.4", default-features = false, features = [
   "clock",
   "std",
 ] }
-
+egglog.workspace = true
 
 [target.wasm32-unknown-unknown.dependencies]
 wasm-bindgen-futures = "0.4"

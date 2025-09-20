@@ -4,7 +4,7 @@ use egui::{self, Align2, CollapsingHeader, Color32, Pos2, Rect, ScrollArea, Ui};
 use egui_graphs::{
     FruchtermanReingoldWithCenterGravity, FruchtermanReingoldWithCenterGravityState, Graph,
     LayoutForceDirected, LayoutHierarchical, LayoutHierarchicalOrientation,
-    LayoutStateHierarchical, generate_random_graph, to_graph,
+    LayoutStateHierarchical, to_graph,
 };
 #[cfg(not(feature = "events"))]
 use instant::Instant;
@@ -12,6 +12,7 @@ use petgraph::prelude::StableGraph;
 use petgraph::stable_graph::{DefaultIx, EdgeIndex, NodeIndex};
 use petgraph::{Directed, Undirected};
 use rand::Rng;
+use std::marker::PhantomData;
 #[cfg(all(feature = "events", target_arch = "wasm32"))]
 use std::{cell::RefCell, rc::Rc};
 
@@ -29,6 +30,7 @@ use std::{cell::RefCell, rc::Rc};
 use tabs::import_load::UserUpload;
 mod flex_node;
 pub mod start;
+pub use start::*;
 mod ui_consts;
 mod util;
 
@@ -88,8 +90,9 @@ fn pick_metrics_route(g: &DemoGraph, layout: DemoLayout) -> MetricsRoute {
 }
 
 // Main demo application state
-pub struct EGraphApp {
+pub struct EGraphApp<T: EGraphViewerSgl> {
     pub g: DemoGraph,
+    _p: PhantomData<T>,
     pub settings_graph: settings::SettingsGraph,
     pub settings_interaction: settings::SettingsInteraction,
     pub settings_navigation: settings::SettingsNavigation,
@@ -165,7 +168,7 @@ pub enum RightTab {
     Import,
 }
 
-impl EGraphApp {
+impl<T: EGraphViewerSgl> EGraphApp<T> {
     pub fn generate_random_graph(num_nodes: usize, num_edges: usize) -> PetEGraph {
         let mut rng = rand::rng();
         let mut graph = StableGraph::new();
@@ -246,6 +249,7 @@ impl EGraphApp {
             web_upload_buf: Rc::new(RefCell::new(Vec::new())),
             fit_to_screen_once_pending: false,
             pan_to_graph_pending: false,
+            _p: PhantomData,
         };
 
         // Web: if URL hash contains g=<example_name>, load that example graph automatically
@@ -1240,7 +1244,7 @@ impl EGraphApp {
     // (moved) ui_import_tab in tabs::import_load
 }
 
-impl App for EGraphApp {
+impl<T: EGraphViewerSgl> App for EGraphApp<T> {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Reset typing flag each frame; UI code will set it when a text field has focus
         self.typing_in_input = false;
@@ -1267,9 +1271,7 @@ impl App for EGraphApp {
                     });
                     ui.separator();
                     match self.right_tab {
-                        RightTab::Playground => {
-                            // self.ui_playground_tab(ui)
-                        }
+                        RightTab::Playground => self.ui_playground_tab(ui),
                         RightTab::Import => {
                             // egui::ScrollArea::vertical().show(ui, |ui| self.ui_import_tab(ui));
                         }
@@ -1281,7 +1283,7 @@ impl App for EGraphApp {
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.reset_requested {
                 todo!();
-                self.reset_requested = false;
+                // self.reset_requested = false;
             }
             // Graph rect (CentralPanel). Kept for overlay drawing below.
             let _max_rect = ui.max_rect();
@@ -1648,7 +1650,7 @@ impl App for EGraphApp {
 }
 
 // Small helper methods for consistent status notifications across actions
-impl EGraphApp {
+impl<T: EGraphViewerSgl> EGraphApp<T> {
     fn notify_info(&mut self, msg: impl Into<String>) {
         self.status.push_info(msg);
     }
@@ -1681,7 +1683,7 @@ impl EGraphApp {
     }
 }
 
-impl EGraphApp {
+impl<T: EGraphViewerSgl> EGraphApp<T> {
     // Minimal schema to load JSON graphs: {"nodes":[id...],"edges":[[source,target],...]}
     // ids are integers; node payload and edge payload are ignored (())
     // On web, file bytes are provided by egui; no filesystem access needed.

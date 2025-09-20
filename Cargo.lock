@@ -2851,7 +2851,7 @@ dependencies = [
  "derive_more 2.0.1",
  "egglog",
  "eggplant-macros",
- "egraph-viewer",
+ "eggplant-viewer",
  "env_logger",
  "graphviz-rust 0.9.5",
  "inventory",
@@ -2881,21 +2881,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "egraph-serialize"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c31c5c0d7f760f9c1c84e21d73dcd3b3ce7a4770c27689f56a0db26e0f3e79ca"
-dependencies = [
- "graphviz-rust 0.6.6",
- "indexmap",
- "once_cell",
- "ordered-float",
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "egraph-viewer"
+name = "eggplant-viewer"
 version = "0.1.0"
 dependencies = [
  "bevy",
@@ -2904,6 +2890,7 @@ dependencies = [
  "criterion",
  "crossbeam",
  "eframe",
+ "egglog",
  "egui",
  "egui_extras",
  "egui_graphs",
@@ -2919,6 +2906,20 @@ dependencies = [
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
+]
+
+[[package]]
+name = "egraph-serialize"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c31c5c0d7f760f9c1c84e21d73dcd3b3ce7a4770c27689f56a0db26e0f3e79ca"
+dependencies = [
+ "graphviz-rust 0.6.6",
+ "indexmap",
+ "once_cell",
+ "ordered-float",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

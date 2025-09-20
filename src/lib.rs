@@ -7,8 +7,7 @@ pub mod derive_more {
 }
 pub use egglog;
 pub use eggplant_macros::*;
-
-pub use egraph_viewer;
+pub use eggplant_viewer;
 
 pub use inventory;
 pub use serde;

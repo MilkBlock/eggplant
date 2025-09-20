@@ -1,5 +1,5 @@
 use egui_graphs::Graph;
-use petgraph::{stable_graph::DefaultIx, Directed, Undirected};
+use petgraph::{Directed, Undirected, stable_graph::DefaultIx};
 
 /// Abstraction for importing a graph from text.
 pub trait GraphImport {

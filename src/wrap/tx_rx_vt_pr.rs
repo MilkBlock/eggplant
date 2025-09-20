@@ -13,6 +13,7 @@ use egglog::{
     span,
     util::{IndexMap, IndexSet},
 };
+use eggplant_viewer::EGraphViewer;
 use graphviz_rust::dot_structures::Attribute;
 use log::info;
 use petgraph::{EdgeType, prelude::StableDiGraph};
@@ -31,7 +32,7 @@ use std::{
 /// 4. PR: Pattern recorder
 /// 5. generate proof (opt.)
 pub struct TxRxVTPR {
-    pub egraph: Mutex<EGraph>,
+    pub egraph: Arc<Mutex<EGraph>>,
     map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
     staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
@@ -164,11 +165,11 @@ impl TxRxVTPR {
     }
     pub fn new() -> Self {
         let tx = Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 Self::add_eggplant_sorts(&mut e);
                 e
-            }),
+            })),
             registry: EgglogTypeRegistry::new_with_inventory(),
             map: DashMap::new(),
             staged_set_map: DashMap::new(),
@@ -193,11 +194,11 @@ impl TxRxVTPR {
     /// this tracing is implemented by Proof Table writing, which is quick but without full proof
     pub fn new_with_fast_proof() -> Self {
         let tx = Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::with_tracing();
                 Self::add_eggplant_sorts(&mut e);
                 e
-            }),
+            })),
             registry: EgglogTypeRegistry::new_with_inventory(),
             map: DashMap::new(),
             staged_set_map: DashMap::new(),
@@ -217,11 +218,11 @@ impl TxRxVTPR {
     /// but with full feature
     pub fn new_with_accurate_proof() -> Self {
         let tx = Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::with_tracing();
                 Self::add_eggplant_sorts(&mut e);
                 e
-            }),
+            })),
             registry: EgglogTypeRegistry::new_with_inventory(),
             map: DashMap::new(),
             staged_set_map: DashMap::new(),
@@ -1123,5 +1124,11 @@ impl ToDot for TxRxVTPR {
 
     fn wag_to_petgraph(&self) -> SerializedPetGraph {
         todo!()
+    }
+}
+
+impl EGraphViewer for TxRxVTPR {
+    fn egraph(&self) -> Arc<Mutex<EGraph>> {
+        self.egraph.clone()
     }
 }

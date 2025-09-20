@@ -9,6 +9,8 @@ use egglog::{
     ast::{Command, GenericAction, GenericExpr, RustSpan, Span},
 };
 use egglog::{TermDag, TermId, ast::Literal, span};
+use eggplant_viewer::EGraphViewer;
+use eggplant_viewer::EGraphViewer;
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -20,7 +22,7 @@ use std::{
     mem,
     panic::Location,
     path::PathBuf,
-    sync::{Arc, atomic::AtomicU32},
+    sync::{Arc, Mutex, atomic::AtomicU32},
     usize,
 };
 use strum::IntoDiscriminant;
