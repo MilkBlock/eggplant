@@ -691,4 +691,8 @@ impl ToDot for TxRxVT {
         let egraph = self.egraph.lock().unwrap();
         egraph.backend.dump_debug_info();
     }
+
+    fn wag_to_petgraph(&self) -> SerializedPetGraph {
+        todo!()
+    }
 }

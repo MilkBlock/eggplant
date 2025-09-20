@@ -1,0 +1,61 @@
+[package]
+name = "egraph-viewer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+publish = false
+build = "build.rs"
+
+[dependencies]
+egui = { version = "0.32", default-features = false }
+eframe = "0.32"
+egui_graphs = "0.28.0"
+egui_extras = { version = "0.32", default-features = false }
+serde.workspace = true
+serde_json.workspace = true
+rand = "0.9"
+instant = "0.1"
+crossbeam = { version = "0.8", optional = true }
+bevy = "0.16"
+bevy_egui = "0.36"
+ureq = { version = "2.9", default-features = true }
+criterion = { version = "0.5", features = ["html_reports"] }
+petgraph = { version = "0.8", default-features = false, features = [
+  "graphmap",
+  "stable_graph",
+  "matrix_graph",
+] }
+rfd = "0.14"
+chrono = { version = "0.4", default-features = false, features = [
+  "clock",
+  "std",
+] }
+
+
+[target.wasm32-unknown-unknown.dependencies]
+wasm-bindgen-futures = "0.4"
+getrandom = { version = "0.3", features = ["wasm_js"] }
+wasm-bindgen = "0.2"
+js-sys = "0.3"
+web-sys = { version = "0.3", features = [
+  "Window",
+  "Document",
+  "HtmlInputElement",
+  "FileList",
+  "File",
+  "FileReader",
+  "EventTarget",
+  "ProgressEvent",
+  "HtmlElement",
+  "Blob",
+  "Url",
+  "HtmlAnchorElement",
+] }
+
+[features]
+# Enable events in this demo and pull in crossbeam for native channels
+default = ["events"]
+events = ["egui_graphs/events", "dep:crossbeam"]

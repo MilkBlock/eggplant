@@ -1046,15 +1046,18 @@ where
     }
 }
 
+pub type SerializedPetGraph = petgraph::Graph<String, String>;
 pub trait ToDotSgl {
     fn egraph_to_dot(path: PathBuf);
     fn wag_to_dot(path: PathBuf);
+    fn wag_to_petgraph() -> SerializedPetGraph;
     fn proof_to_dot(path: PathBuf);
     fn table_view();
 }
 pub trait ToDot {
     fn egraph_to_dot(&self, path: PathBuf);
     fn wag_to_dot(&self, path: PathBuf);
+    fn wag_to_petgraph(&self) -> SerializedPetGraph;
     fn proof_to_dot(&self, path: PathBuf);
     fn table_view(&self);
 }
@@ -1069,7 +1072,9 @@ where
     fn wag_to_dot(path: PathBuf) {
         Self::sgl().wag_to_dot(path);
     }
-
+    fn wag_to_petgraph() -> SerializedPetGraph {
+        Self::sgl().wag_to_petgraph()
+    }
     fn proof_to_dot(path: PathBuf) {
         Self::sgl().proof_to_dot(path);
     }
