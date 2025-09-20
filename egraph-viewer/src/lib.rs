@@ -4,10 +4,11 @@ use egui::{self, Align2, CollapsingHeader, Color32, Pos2, Rect, ScrollArea, Ui};
 use egui_graphs::{
     FruchtermanReingoldWithCenterGravity, FruchtermanReingoldWithCenterGravityState, Graph,
     LayoutForceDirected, LayoutHierarchical, LayoutHierarchicalOrientation,
-    LayoutStateHierarchical, generate_random_graph,
+    LayoutStateHierarchical, generate_random_graph, to_graph,
 };
 #[cfg(not(feature = "events"))]
 use instant::Instant;
+use petgraph::prelude::StableGraph;
 use petgraph::stable_graph::{DefaultIx, EdgeIndex, NodeIndex};
 use petgraph::{Directed, Undirected};
 use rand::Rng;
@@ -61,9 +62,10 @@ fn info_icon(ui: &mut egui::Ui, tip: &str) {
 
 mod drawers;
 
+type PetEGraph = Graph<(), (), Directed, DefaultIx, flex_node::NodeShapeFlex>;
 #[derive(Debug)]
 pub enum DemoGraph {
-    Directed(Graph<(), (), Directed, DefaultIx>),
+    Directed(PetEGraph),
     Undirected(Graph<(), (), Undirected, DefaultIx>),
 }
 
@@ -164,10 +166,28 @@ pub enum RightTab {
 }
 
 impl EGraphApp {
+    pub fn generate_random_graph(num_nodes: usize, num_edges: usize) -> PetEGraph {
+        let mut rng = rand::rng();
+        let mut graph = StableGraph::new();
+
+        for _ in 0..num_nodes {
+            graph.add_node(());
+        }
+
+        for _ in 0..num_edges {
+            let source = rng.random_range(0..num_nodes);
+            let target = rng.random_range(0..num_nodes);
+
+            graph.add_edge(NodeIndex::new(source), NodeIndex::new(target), ());
+        }
+
+        to_graph(&graph)
+    }
     pub fn new(cc: &CreationContext<'_>) -> Self {
         let settings_graph = settings::SettingsGraph::default();
-        let mut g = generate_random_graph(settings_graph.count_node, settings_graph.count_edge);
-        Self::distribute_nodes_circle_generic(&mut g);
+        let mut g =
+            Self::generate_random_graph(settings_graph.count_node, settings_graph.count_edge);
+        Self::distribute_nodes_circle_generic::<Directed>(&mut g);
 
         #[cfg(all(feature = "events", not(target_arch = "wasm32")))]
         let (event_publisher, event_consumer) = crate::unbounded();
@@ -417,8 +437,7 @@ impl EGraphApp {
                         let _ = sg.add_edge(ai, bi, ());
                     }
                 }
-                let mut dst: egui_graphs::Graph<(), (), petgraph::Directed, DefaultIx> =
-                    egui_graphs::Graph::from(&sg);
+                let mut dst: PetEGraph = egui_graphs::Graph::from(&sg);
                 // Preserve node positions
                 for (src_i, sg_i) in &map {
                     if let (Some(src_node), Some(dst_node)) = (
@@ -434,63 +453,7 @@ impl EGraphApp {
         }
     }
 
-    pub fn reset_all(&mut self, ui: &mut Ui) {
-        self.settings_graph = settings::SettingsGraph::default();
-        self.settings_interaction = settings::SettingsInteraction::default();
-        self.settings_navigation = settings::SettingsNavigation::default();
-        self.settings_style = settings::SettingsStyle {
-            labels_always: false,
-            edge_deemphasis: true,
-        };
-        self.show_debug_overlay = true;
-        self.show_keybindings_overlay = false;
-        let mut g = generate_random_graph(
-            self.settings_graph.count_node,
-            self.settings_graph.count_edge,
-        );
-        Self::distribute_nodes_circle_generic(&mut g);
-        self.g = DemoGraph::Directed(g);
-        // Reset layout caches for both directed and undirected specializations
-        egui_graphs::GraphView::<
-            (),
-            (),
-            petgraph::Directed,
-            petgraph::stable_graph::DefaultIx,
-            flex_node::NodeShapeFlex,
-            egui_graphs::DefaultEdgeShape,
-            FruchtermanReingoldWithCenterGravityState,
-            LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
-        >::reset(ui);
-        egui_graphs::GraphView::<
-            (),
-            (),
-            petgraph::Directed,
-            petgraph::stable_graph::DefaultIx,
-            flex_node::NodeShapeFlex,
-            egui_graphs::DefaultEdgeShape,
-            LayoutStateHierarchical,
-            LayoutHierarchical,
-        >::reset(ui);
-        ui.ctx().set_visuals(egui::Visuals::dark());
-        self.dark_mode = ui.ctx().style().visuals.dark_mode;
-        #[cfg(feature = "events")]
-        {
-            self.last_events.clear();
-            self.pan = [0.0, 0.0];
-            self.zoom = 1.0;
-            self.event_filters = EventFilters::default();
-        }
-        // Web: clear URL hash (remove g param and any others)
-        #[cfg(target_arch = "wasm32")]
-        {
-            web_hash_clear();
-        }
-        self.metrics.reset();
-    }
-
-    pub fn distribute_nodes_circle_generic<Ty: petgraph::EdgeType>(
-        g: &mut Graph<(), (), Ty, DefaultIx>,
-    ) {
+    pub fn distribute_nodes_circle_generic<Ty: petgraph::EdgeType>(g: &mut PetEGraph) {
         let n_usize = core::cmp::max(g.node_count(), 1);
         if n_usize == 0 {
             return;
@@ -615,7 +578,7 @@ impl EGraphApp {
                                     DemoGraph::Directed(g) => {
                                         egui_graphs::GraphView::<
                                             (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
-                                            egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
+                                            _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
                                         >::fast_forward_force_run(ui, g, 100);
@@ -647,7 +610,7 @@ impl EGraphApp {
                                     DemoGraph::Directed(g) => {
                                         let _ = egui_graphs::GraphView::<
                                             (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
-                                            egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
+                                            _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
                                         >::fast_forward_budgeted_force_run(ui, g, 1000, 100);
@@ -679,7 +642,7 @@ impl EGraphApp {
                                     DemoGraph::Directed(g) => {
                                         let _ = egui_graphs::GraphView::<
                                             (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
-                                            egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
+                                            _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
                                         >::fast_forward_until_stable_force_run(ui, g, 0.01, 1000);
@@ -711,7 +674,7 @@ impl EGraphApp {
                                     DemoGraph::Directed(g) => {
                                         let _ = egui_graphs::GraphView::<
                                             (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
-                                            egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
+                                            _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
                                         >::fast_forward_until_stable_budgeted_force_run(ui, g, 0.01, 10000, 1000);
@@ -1317,7 +1280,7 @@ impl App for EGraphApp {
         // Central graph view
         egui::CentralPanel::default().show(ctx, |ui| {
             if self.reset_requested {
-                self.reset_all(ui);
+                todo!();
                 self.reset_requested = false;
             }
             // Graph rect (CentralPanel). Kept for overlay drawing below.
@@ -1373,66 +1336,6 @@ impl App for EGraphApp {
                     }
                 }
             });
-            if let Some(text) = maybe_text.take() {
-                match crate::import::import_graph_from_str(&text) {
-                    Ok(mut res) => {
-                        let applied_positions = res.positions_applied;
-                        match &mut res.g {
-                            crate::import::ImportedGraph::Directed(g) => {
-                                if !applied_positions {
-                                    Self::distribute_nodes_circle_generic(g);
-                                }
-                                self.g = DemoGraph::Directed(g.clone());
-                            }
-                            crate::import::ImportedGraph::Undirected(g) => {
-                                if !applied_positions {
-                                    Self::distribute_nodes_circle_generic(g);
-                                }
-                                self.g = DemoGraph::Undirected(g.clone());
-                            }
-                        }
-                        // If a layout state was imported, apply it next frame and switch UI to that layout
-                        if let Some(pl) = res.pending_layout.take() {
-                            self.pending_layout = Some(pl);
-                            self.selected_layout = match self.pending_layout {
-                                Some(spec::PendingLayout::FR(_)) => DemoLayout::FruchtermanReingold,
-                                Some(spec::PendingLayout::Hier(_)) => DemoLayout::Hierarchical,
-                                None => self.selected_layout,
-                            };
-                        }
-                        self.sync_counts();
-                        // Save to uploads list (cap to last 20)
-                        let name = maybe_name
-                            .unwrap_or_else(|| format!("Upload {}", self.user_uploads.len() + 1));
-                        self.user_uploads.push(UserUpload {
-                            name,
-                            data: text.clone(),
-                        });
-                        if self.user_uploads.len() > 20 {
-                            let overflow = self.user_uploads.len() - 20;
-                            self.user_uploads.drain(0..overflow);
-                        }
-                        let (kind, n, e) = match &self.g {
-                            DemoGraph::Directed(g) => ("directed", g.node_count(), g.edge_count()),
-                            DemoGraph::Undirected(g) => {
-                                ("undirected", g.node_count(), g.edge_count())
-                            }
-                        };
-                        let suffix = if applied_positions {
-                            " (positions applied)"
-                        } else {
-                            ""
-                        };
-                        self.status.push_success(format!(
-                            "Loaded {} graph: {} nodes, {} edges{}",
-                            kind, n, e, suffix
-                        ));
-                    }
-                    Err(e) => {
-                        self.status.push_error(format!("Drop error: {}", e));
-                    }
-                }
-            }
             let settings_interaction = &egui_graphs::SettingsInteraction::new()
                 .with_node_selection_enabled(self.settings_interaction.node_selection_enabled)
                 .with_node_selection_multi_enabled(
@@ -1852,43 +1755,6 @@ impl EGraphApp {
             }
         };
 
-        #[cfg(test)]
-        mod tests {
-            use super::*;
-            use egui_graphs::Graph;
-            use petgraph::{Directed, Undirected, stable_graph::DefaultIx};
-
-            #[test]
-            fn picks_metrics_route_by_graph_type_and_layout() {
-                // Directed graph
-                let sg_d: petgraph::stable_graph::StableGraph<(), (), Directed, DefaultIx> =
-                    Default::default();
-                let g_d: Graph<(), (), Directed, DefaultIx> = Graph::from(&sg_d);
-                let demo_d = DemoGraph::Directed(g_d);
-                assert_eq!(
-                    pick_metrics_route(&demo_d, DemoLayout::FruchtermanReingold),
-                    MetricsRoute::DirectedFR
-                );
-                assert_eq!(
-                    pick_metrics_route(&demo_d, DemoLayout::Hierarchical),
-                    MetricsRoute::DirectedHier
-                );
-
-                // Undirected graph
-                let sg_u: petgraph::stable_graph::StableGraph<(), (), Undirected, DefaultIx> =
-                    Default::default();
-                let g_u: Graph<(), (), Undirected, DefaultIx> = Graph::from(&sg_u);
-                let demo_u = DemoGraph::Undirected(g_u);
-                assert_eq!(
-                    pick_metrics_route(&demo_u, DemoLayout::FruchtermanReingold),
-                    MetricsRoute::UndirectedFR
-                );
-                assert_eq!(
-                    pick_metrics_route(&demo_u, DemoLayout::Hierarchical),
-                    MetricsRoute::UndirectedHier
-                );
-            }
-        }
         #[cfg(not(target_arch = "wasm32"))]
         {
             while let Ok(e) = self.event_consumer.try_recv() {

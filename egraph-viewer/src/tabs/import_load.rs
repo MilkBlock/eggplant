@@ -211,67 +211,7 @@ impl EGraphApp {
     }
 
     pub fn load_graph_from_str(&mut self, name: &str, data: &str) {
-        match crate::import::import_graph_from_str(data) {
-            Ok(mut res) => {
-                let applied_positions = res.positions_applied;
-                match &mut res.g {
-                    crate::import::ImportedGraph::Directed(g) => {
-                        if !applied_positions {
-                            Self::distribute_nodes_circle_generic(g);
-                        }
-                        self.g = DemoGraph::Directed(g.clone());
-                        if let Some(pl) = res.pending_layout.take() {
-                            self.pending_layout = Some(pl);
-                            self.selected_layout = match self.pending_layout {
-                                Some(crate::spec::PendingLayout::FR(_)) => {
-                                    crate::DemoLayout::FruchtermanReingold
-                                }
-                                Some(crate::spec::PendingLayout::Hier(_)) => {
-                                    crate::DemoLayout::Hierarchical
-                                }
-                                None => self.selected_layout,
-                            };
-                        }
-                    }
-                    crate::import::ImportedGraph::Undirected(g) => {
-                        if !applied_positions {
-                            Self::distribute_nodes_circle_generic(g);
-                        }
-                        self.g = DemoGraph::Undirected(g.clone());
-                        if let Some(pl) = res.pending_layout.take() {
-                            self.pending_layout = Some(pl);
-                            self.selected_layout = match self.pending_layout {
-                                Some(crate::spec::PendingLayout::FR(_)) => {
-                                    crate::DemoLayout::FruchtermanReingold
-                                }
-                                Some(crate::spec::PendingLayout::Hier(_)) => {
-                                    crate::DemoLayout::Hierarchical
-                                }
-                                None => self.selected_layout,
-                            };
-                        }
-                    }
-                }
-                self.sync_counts();
-                let (kind, n, e) = match &self.g {
-                    DemoGraph::Directed(g) => ("directed", g.node_count(), g.edge_count()),
-                    DemoGraph::Undirected(g) => ("undirected", g.node_count(), g.edge_count()),
-                };
-                let suffix = if applied_positions {
-                    " (positions applied)"
-                } else {
-                    ""
-                };
-                self.status.push_success(format!(
-                    "Loaded {} graph: {} nodes, {} edges{}",
-                    kind, n, e, suffix
-                ));
-            }
-            Err(err) => {
-                self.status
-                    .push_error(format!("Import error ({}): {}", name, err));
-            }
-        }
+        todo!()
     }
 }
 

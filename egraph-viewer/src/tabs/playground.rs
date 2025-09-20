@@ -29,7 +29,7 @@ impl EGraphApp {
                 .on_hover_text("Reset ALL settings, graph, layout & view state (Space)")
                     .clicked()
                 {
-                    self.reset_all(ui);
+                    todo!()
                 }
             });
 

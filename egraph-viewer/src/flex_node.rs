@@ -2,7 +2,7 @@ use egui::{Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, Vec2, epaint:
 use egui_graphs::{DisplayNode, NodeProps};
 use petgraph::{EdgeType, stable_graph::IndexType};
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct NodeShapeFlex {
     label: String,
     loc: Pos2,
