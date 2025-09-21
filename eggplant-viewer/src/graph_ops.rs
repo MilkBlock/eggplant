@@ -8,85 +8,12 @@ pub struct GraphActions<'a> {
 }
 
 impl GraphActions<'_> {
-    pub fn add_nodes(&mut self, n: u32) {
-        for _ in 0..n {
-            self.add_random_node();
-        }
-    }
-    pub fn remove_nodes(&mut self, n: u32) {
-        for _ in 0..n {
-            self.remove_random_node();
-        }
-    }
-    pub fn swap_nodes(&mut self, n: u32) {
-        for _ in 0..n {
-            self.remove_random_node();
-            self.add_random_node();
-        }
-    }
-    pub fn add_edges(&mut self, n: u32) {
-        for _ in 0..n {
-            self.add_random_edge();
-        }
-    }
     pub fn remove_edges(&mut self, n: u32) {
         for _ in 0..n {
             self.remove_random_edge();
         }
     }
-    pub fn swap_edges(&mut self, n: u32) {
-        for _ in 0..n {
-            self.remove_random_edge();
-            self.add_random_edge();
-        }
-    }
 
-    pub fn add_random_node(&mut self) {
-        let node_cnt = match self.g {
-            DemoGraph::Directed(g) => g.node_count(),
-            DemoGraph::Undirected(g) => g.node_count(),
-        };
-        if node_cnt >= MAX_NODE_COUNT {
-            return;
-        }
-        let base = match self.random_node_idx() {
-            Some(r) => match self.g {
-                DemoGraph::Directed(g) => g.node(r).unwrap().location(),
-                DemoGraph::Undirected(g) => g.node(r).unwrap().location(),
-            },
-            None => Pos2::new(0.0, 0.0),
-        };
-        let mut rng = rand::rng();
-        let loc = Pos2::new(
-            base.x + rng.random_range(-150.0..150.0),
-            base.y + rng.random_range(-150.0..150.0),
-        );
-        match self.g {
-            DemoGraph::Directed(g) => {
-                g.add_node_with_location((), loc);
-            }
-            DemoGraph::Undirected(g) => {
-                g.add_node_with_location((), loc);
-            }
-        }
-    }
-    pub fn remove_random_node(&mut self) {
-        if let Some(i) = self.random_node_idx() {
-            match self.g {
-                DemoGraph::Directed(g) => {
-                    g.remove_node(i);
-                }
-                DemoGraph::Undirected(g) => {
-                    g.remove_node(i);
-                }
-            }
-        }
-    }
-    pub fn add_random_edge(&mut self) {
-        if let (Some(a), Some(b)) = (self.random_node_idx(), self.random_node_idx()) {
-            self.add_edge(a, b);
-        }
-    }
     pub fn add_edge(&mut self, a: NodeIndex, b: NodeIndex) {
         let edge_cnt = match self.g {
             DemoGraph::Directed(g) => g.edge_count(),
@@ -97,7 +24,7 @@ impl GraphActions<'_> {
         }
         match self.g {
             DemoGraph::Directed(g) => {
-                g.add_edge(a, b, ());
+                g.add_edge(a, b, crate::EEdge {});
             }
             DemoGraph::Undirected(g) => {
                 g.add_edge(a, b, ());

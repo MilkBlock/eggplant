@@ -1,6 +1,6 @@
-use core::cmp::Ordering;
 pub use eframe::Error;
 use eframe::{App, CreationContext};
+use egglog::{SerializeConfig, Value};
 use egui::{self, Align2, CollapsingHeader, Color32, Pos2, Rect, ScrollArea, Ui};
 use egui_graphs::{
     FruchtermanReingoldWithCenterGravity, FruchtermanReingoldWithCenterGravityState, Graph,
@@ -9,10 +9,10 @@ use egui_graphs::{
 };
 #[cfg(not(feature = "events"))]
 use instant::Instant;
-use petgraph::prelude::StableGraph;
-use petgraph::stable_graph::{DefaultIx, EdgeIndex, NodeIndex};
+use petgraph::stable_graph::{self, DefaultIx, NodeIndex};
 use petgraph::{Directed, Undirected};
 use rand::Rng;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 #[cfg(all(feature = "events", target_arch = "wasm32"))]
 use std::{cell::RefCell, rc::Rc};
@@ -65,7 +65,12 @@ fn info_icon(ui: &mut egui::Ui, tip: &str) {
 
 mod drawers;
 
-type PetEGraph = Graph<(), (), Directed, DefaultIx, flex_node::NodeShapeFlex>;
+#[derive(Clone, Debug)]
+pub struct ENode {}
+#[derive(Clone, Debug)]
+pub struct EEdge {}
+
+type PetEGraph = Graph<ENode, EEdge, Directed, DefaultIx, flex_node::NodeShapeFlex>;
 #[derive(Debug)]
 pub enum DemoGraph {
     Directed(PetEGraph),
@@ -89,6 +94,7 @@ fn pick_metrics_route(g: &DemoGraph, layout: DemoLayout) -> MetricsRoute {
         (DemoLayout::Hierarchical, DemoGraph::Undirected(_)) => MetricsRoute::UndirectedHier,
     }
 }
+type TblOffset = usize;
 
 // Main demo application state
 pub struct EGraphApp<T: EGraphViewerSgl> {
@@ -170,28 +176,27 @@ pub enum RightTab {
 }
 
 impl<T: EGraphViewerSgl> EGraphApp<T> {
-    pub fn generate_random_graph(num_nodes: usize, num_edges: usize) -> PetEGraph {
-        let mut rng = rand::rng();
-        let mut graph = StableGraph::new();
-
-        for _ in 0..num_nodes {
-            graph.add_node(());
-        }
-
-        for _ in 0..num_edges {
-            let source = rng.random_range(0..num_nodes);
-            let target = rng.random_range(0..num_nodes);
-
-            graph.add_edge(NodeIndex::new(source), NodeIndex::new(target), ());
-        }
-
-        to_graph(&graph)
-    }
     pub fn new(cc: &CreationContext<'_>) -> Self {
         let settings_graph = settings::SettingsGraph::default();
-        let mut g =
-            Self::generate_random_graph(settings_graph.count_node, settings_graph.count_edge);
-        Self::distribute_nodes_circle_generic::<Directed>(&mut g);
+        let tables = T::egraph()
+            .lock()
+            .unwrap()
+            .serialize_tracing_raw(SerializeConfig::default());
+        let mut class2nodes: HashMap<Value, Vec<TblOffset>> =
+            tables
+                .iter()
+                .fold(HashMap::default(), |mut acc, (func, rows)| {
+                    rows.iter().enumerate().for_each(|(tbl_offset, row)| {
+                        acc.entry(row.output).or_default().push(tbl_offset)
+                    });
+                    acc
+                });
+        let mut g = stable_graph::StableGraph::default();
+        let n1 = g.add_node(ENode {});
+        let n2 = g.add_node(ENode {});
+        let e1 = g.add_edge(n1, n2, EEdge {});
+        // egui_graphs::Node::
+        let g = to_graph(&g);
 
         #[cfg(all(feature = "events", not(target_arch = "wasm32")))]
         let (event_publisher, event_consumer) = crate::unbounded();
@@ -281,32 +286,8 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             DemoGraph::Undirected(g) => g.g().node_indices().nth(idx),
         }
     }
-    pub fn random_edge_idx(&self) -> Option<EdgeIndex> {
-        // Moved into GraphActions; keep thin wrapper if still referenced elsewhere.
-        let cnt = match &self.g {
-            DemoGraph::Directed(g) => g.edge_count(),
-            DemoGraph::Undirected(g) => g.edge_count(),
-        };
-        if cnt == 0 {
-            return None;
-        }
-        let idx = rand::rng().random_range(0..cnt);
-        match &self.g {
-            DemoGraph::Directed(g) => g.g().edge_indices().nth(idx),
-            DemoGraph::Undirected(g) => g.g().edge_indices().nth(idx),
-        }
-    }
-    pub fn add_random_node(&mut self) {
-        GraphActions { g: &mut self.g }.add_random_node();
-    }
-    pub fn remove_random_node(&mut self) {
-        GraphActions { g: &mut self.g }.remove_random_node();
-    }
     pub fn remove_node(&mut self, idx: NodeIndex) {
         GraphActions { g: &mut self.g }.remove_node_by_idx(idx);
-    }
-    pub fn add_random_edge(&mut self) {
-        GraphActions { g: &mut self.g }.add_random_edge();
     }
     pub fn add_edge(&mut self, a: NodeIndex, b: NodeIndex) {
         GraphActions { g: &mut self.g }.add_edge(a, b);
@@ -322,141 +303,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
         self.metrics.update_fps();
     }
 
-    pub fn ui_graph_section(&mut self, ui: &mut Ui) {
-        crate::drawers::graph_count_sliders(
-            ui,
-            crate::drawers::GraphCountSliders {
-                nodes: self.settings_graph.count_node,
-                edges: self.settings_graph.count_edge,
-            },
-            |dn, de| {
-                let mut ga = GraphActions { g: &mut self.g };
-                match dn.cmp(&0) {
-                    Ordering::Greater => {
-                        ga.add_nodes(dn as u32);
-                    }
-                    Ordering::Less => {
-                        ga.remove_nodes((-dn) as u32);
-                    }
-                    Ordering::Equal => {}
-                }
-                match de.cmp(&0) {
-                    Ordering::Greater => {
-                        ga.add_edges(de as u32);
-                    }
-                    Ordering::Less => {
-                        ga.remove_edges((-de) as u32);
-                    }
-                    Ordering::Equal => {}
-                }
-                let (n, e) = match &self.g {
-                    DemoGraph::Directed(g) => (g.node_count(), g.edge_count()),
-                    DemoGraph::Undirected(g) => (g.node_count(), g.edge_count()),
-                };
-                self.settings_graph.count_node = n;
-                self.settings_graph.count_edge = e;
-            },
-        );
-
-        ui.separator();
-        // Toggle graph directedness
-        let mut directed = matches!(self.g, DemoGraph::Directed(_));
-        ui.horizontal(|ui| {
-            if ui.checkbox(&mut directed, "Directed").clicked() {
-                self.set_directedness(directed);
-            }
-            info_icon(ui, "Toggle directed edges (arrowheads, ordering, layouts/metrics). Positions are preserved when switching.");
-        });
-    }
-
-    fn set_directedness(&mut self, directed: bool) {
-        use std::collections::{HashMap, HashSet};
-        match (&self.g, directed) {
-            (DemoGraph::Directed(_), true) | (DemoGraph::Undirected(_), false) => {}
-            (DemoGraph::Directed(gd), false) => {
-                // Directed -> Undirected (dedupe unordered pairs)
-                let src = gd.clone();
-                let mut sg: petgraph::stable_graph::StableGraph<
-                    (),
-                    (),
-                    petgraph::Undirected,
-                    DefaultIx,
-                > = Default::default();
-                let mut map: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-                for ni in src.g().node_indices() {
-                    let new_ni = sg.add_node(());
-                    map.insert(ni, new_ni);
-                }
-                let mut seen: HashSet<(usize, usize)> = HashSet::new();
-                for ei in src.g().edge_indices() {
-                    if let Some((a, b)) = src.g().edge_endpoints(ei) {
-                        let (u, v) = if a.index() <= b.index() {
-                            (a, b)
-                        } else {
-                            (b, a)
-                        };
-                        if seen.insert((u.index(), v.index())) {
-                            let ai = map[&u];
-                            let bi = map[&v];
-                            let _ = sg.add_edge(ai, bi, ());
-                        }
-                    }
-                }
-                let mut dst: egui_graphs::Graph<(), (), petgraph::Undirected, DefaultIx> =
-                    egui_graphs::Graph::from(&sg);
-                // Preserve node positions
-                for (src_i, sg_i) in &map {
-                    if let (Some(src_node), Some(dst_node)) = (
-                        src.g().node_weight(*src_i),
-                        dst.g_mut().node_weight_mut(*sg_i),
-                    ) {
-                        dst_node.set_location(src_node.location());
-                    }
-                }
-                self.g = DemoGraph::Undirected(dst);
-                self.sync_counts();
-            }
-            (DemoGraph::Undirected(gu), true) => {
-                // Undirected -> Directed (min->max)
-                let src = gu.clone();
-                let mut sg: petgraph::stable_graph::StableGraph<
-                    (),
-                    (),
-                    petgraph::Directed,
-                    DefaultIx,
-                > = Default::default();
-                let mut map: HashMap<NodeIndex, NodeIndex> = HashMap::new();
-                for ni in src.g().node_indices() {
-                    let new_ni = sg.add_node(());
-                    map.insert(ni, new_ni);
-                }
-                for ei in src.g().edge_indices() {
-                    if let Some((a, b)) = src.g().edge_endpoints(ei) {
-                        let (u, v) = if a.index() <= b.index() {
-                            (a, b)
-                        } else {
-                            (b, a)
-                        };
-                        let ai = map[&u];
-                        let bi = map[&v];
-                        let _ = sg.add_edge(ai, bi, ());
-                    }
-                }
-                let mut dst: PetEGraph = egui_graphs::Graph::from(&sg);
-                // Preserve node positions
-                for (src_i, sg_i) in &map {
-                    if let (Some(src_node), Some(dst_node)) = (
-                        src.g().node_weight(*src_i),
-                        dst.g_mut().node_weight_mut(*sg_i),
-                    ) {
-                        dst_node.set_location(src_node.location());
-                    }
-                }
-                self.g = DemoGraph::Directed(dst);
-                self.sync_counts();
-            }
-        }
-    }
+    pub fn ui_graph_section(&mut self, _ui: &mut Ui) {}
 
     pub fn distribute_nodes_circle_generic<Ty: petgraph::EdgeType>(g: &mut PetEGraph) {
         let n_usize = core::cmp::max(g.node_count(), 1);
@@ -582,7 +429,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                                 match &mut self.g {
                                     DemoGraph::Directed(g) => {
                                         egui_graphs::GraphView::<
-                                            (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
+                                            _, _, petgraph::Directed, petgraph::stable_graph::DefaultIx,
                                             _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
@@ -614,7 +461,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                                 match &mut self.g {
                                     DemoGraph::Directed(g) => {
                                         let _ = egui_graphs::GraphView::<
-                                            (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
+                                            _, _, petgraph::Directed, petgraph::stable_graph::DefaultIx,
                                             _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
@@ -646,7 +493,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                                 match &mut self.g {
                                     DemoGraph::Directed(g) => {
                                         let _ = egui_graphs::GraphView::<
-                                            (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
+                                            _, _, petgraph::Directed, petgraph::stable_graph::DefaultIx,
                                             _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
@@ -678,7 +525,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                                 match &mut self.g {
                                     DemoGraph::Directed(g) => {
                                         let _ = egui_graphs::GraphView::<
-                                            (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
+                                            _, _, petgraph::Directed, petgraph::stable_graph::DefaultIx,
                                             _, _,
                                             FruchtermanReingoldWithCenterGravityState,
                                             LayoutForceDirected<FruchtermanReingoldWithCenterGravity>,
@@ -1978,30 +1825,15 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                     // Request a one-off pan to graph center; will be applied after draw this frame.
                     self.pan_to_graph_pending = true;
                 }
-                Command::AddNodes(n) => {
-                    GraphActions { g: &mut self.g }.add_nodes(n);
-                    self.notify_added("node", "nodes", n);
+                Command::AddNodes(_n) => {
+                    // GraphActions { g: &mut self.g }.add_nodes(n);
+                    // self.notify_added("node", "nodes", n);
                 }
-                Command::RemoveNodes(n) => {
-                    GraphActions { g: &mut self.g }.remove_nodes(n);
-                    self.notify_removed("node", "nodes", n);
-                }
-                Command::SwapNodes(n) => {
-                    GraphActions { g: &mut self.g }.swap_nodes(n);
-                    self.notify_swapped("node", "nodes", n);
-                }
-                Command::AddEdges(n) => {
-                    GraphActions { g: &mut self.g }.add_edges(n);
-                    self.notify_added("edge", "edges", n);
-                }
-                Command::RemoveEdges(n) => {
-                    GraphActions { g: &mut self.g }.remove_edges(n);
-                    self.notify_removed("edge", "edges", n);
-                }
-                Command::SwapEdges(n) => {
-                    GraphActions { g: &mut self.g }.swap_edges(n);
-                    self.notify_swapped("edge", "edges", n);
-                }
+                Command::RemoveNodes(_n) => {}
+                Command::SwapNodes(_n) => {}
+                Command::AddEdges(_n) => {}
+                Command::RemoveEdges(_n) => {}
+                Command::SwapEdges(_n) => {}
             }
         }
 

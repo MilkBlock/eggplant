@@ -6,7 +6,6 @@ use petgraph::{EdgeType, stable_graph::IndexType};
 pub struct NodeShapeFlex {
     label: String,
     loc: Pos2,
-
     size_x: f32,
     size_y: f32,
 }

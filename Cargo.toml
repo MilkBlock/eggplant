@@ -51,7 +51,7 @@ authors = ["MilkBlock"]
 [workspace.dependencies]
 eggplant-macros = { path = "./eggplant-macros", version = "0.1.0" }
 eggplant-viewer = { path = "./eggplant-viewer" }
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "0afc74e" }
+egglog = { git = "https://github.com/MilkBlock/egglog", rev = "2d9bb73" }
 # egglog = { path = "../egglog" }
 # egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}
 
