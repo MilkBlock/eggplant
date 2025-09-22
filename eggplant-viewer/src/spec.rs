@@ -1,6 +1,7 @@
 //! Demo-only import specs for layout and extras.
 //! This keeps serde DTOs out of the public egui_graphs crate.
 
+use crate::DagvizLayoutState;
 use serde::{Deserialize, Serialize};
 
 // Graph schema (reuse minimal form)
@@ -90,7 +91,7 @@ impl DemoImportSpec {
 #[derive(Debug, Clone)]
 pub enum PendingLayout {
     FR(egui_graphs::FruchtermanReingoldWithCenterGravityState),
-    Hier(egui_graphs::LayoutStateHierarchical),
+    Hier(DagvizLayoutState),
 }
 
 impl LayoutSpec {
@@ -156,7 +157,7 @@ impl LayoutSpec {
                 center_parent,
                 orientation,
             } => {
-                let mut st = egui_graphs::LayoutStateHierarchical::default();
+                let mut st = DagvizLayoutState::default();
                 if let Some(v) = row_dist {
                     st.row_dist = *v;
                 }
@@ -221,8 +222,8 @@ impl PendingLayout {
             petgraph::stable_graph::DefaultIx,
             egui_graphs::DefaultNodeShape,
             egui_graphs::DefaultEdgeShape,
-            egui_graphs::LayoutStateHierarchical,
-            egui_graphs::LayoutHierarchical,
+            DagvizLayoutState,
+            crate::DagvizLayoutHierarchy,
         >::get_layout_state(ui);
         LayoutSpec::Hierarchical {
             row_dist: Some(st.row_dist),

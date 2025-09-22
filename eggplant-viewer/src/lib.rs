@@ -1,17 +1,21 @@
+use dagviz::{GraphConfig, GraphEdge, GraphNode, layout::layout};
 pub use eframe::Error;
 use eframe::{App, CreationContext};
 use egglog::{SerializeConfig, Value};
 use egui::{self, Align2, CollapsingHeader, Color32, Pos2, Rect, ScrollArea, Ui};
 use egui_graphs::{
-    FruchtermanReingoldWithCenterGravity, FruchtermanReingoldWithCenterGravityState, Graph,
-    LayoutForceDirected, LayoutHierarchical, LayoutHierarchicalOrientation,
-    LayoutStateHierarchical, to_graph,
+    FruchtermanReingoldWithCenterGravity, FruchtermanReingoldWithCenterGravityState, Graph, Layout,
+    LayoutForceDirected, LayoutHierarchicalOrientation, LayoutState,
 };
+use graphlib_rust::graph::Graph as DagvizGraph;
 #[cfg(not(feature = "events"))]
 use instant::Instant;
-use petgraph::stable_graph::{self, DefaultIx, NodeIndex};
+use petgraph::EdgeType;
+use petgraph::prelude::StableGraph;
+use petgraph::stable_graph::{DefaultIx, NodeIndex};
 use petgraph::{Directed, Undirected};
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::marker::PhantomData;
 #[cfg(all(feature = "events", target_arch = "wasm32"))]
@@ -66,11 +70,15 @@ fn info_icon(ui: &mut egui::Ui, tip: &str) {
 mod drawers;
 
 #[derive(Clone, Debug)]
-pub struct ENode {}
+pub struct ENode {
+    term_id: egglog::Value,
+}
+
 #[derive(Clone, Debug)]
 pub struct EEdge {}
 
-type PetEGraph = Graph<ENode, EEdge, Directed, DefaultIx, flex_node::NodeShapeFlex>;
+type PetEGraph =
+    Graph<ENode, EEdge, Directed, DefaultIx, flex_node::NodeShapeFlex, flex_node::RainbowEdgeShape>;
 #[derive(Debug)]
 pub enum DemoGraph {
     Directed(PetEGraph),
@@ -163,6 +171,171 @@ pub enum DemoLayout {
     Hierarchical,
 }
 
+// DagvizLayoutHierarchy implementation
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DagvizLayoutState {
+    /// Run only once unless reset via GraphView::reset_layout or by setting `triggered = false`.
+    pub triggered: bool,
+    /// Distance between levels (rows). Interpreted as Y step for TopDown and X step for LeftRight.
+    pub row_dist: f32,
+    /// Distance between siblings/columns. Interpreted as X step for TopDown and Y step for LeftRight.
+    pub col_dist: f32,
+    /// Center a parent above/beside the span of its children.
+    pub center_parent: bool,
+    /// Layout orientation.
+    pub orientation: LayoutHierarchicalOrientation,
+}
+
+impl Default for DagvizLayoutState {
+    fn default() -> Self {
+        Self {
+            triggered: false,
+            row_dist: 50.0,
+            col_dist: 50.0,
+            center_parent: false,
+            orientation: LayoutHierarchicalOrientation::TopDown,
+        }
+    }
+}
+
+impl LayoutState for DagvizLayoutState {}
+
+#[derive(Debug, Default)]
+pub struct DagvizLayoutHierarchy {
+    state: DagvizLayoutState,
+}
+
+impl Layout<DagvizLayoutState> for DagvizLayoutHierarchy {
+    fn next<N, E, Ty, Ix, Dn, De>(&mut self, g: &mut Graph<N, E, Ty, Ix, Dn, De>, _: &egui::Ui)
+    where
+        N: Clone,
+        E: Clone,
+        Ty: EdgeType,
+        Ix: petgraph::csr::IndexType,
+        Dn: egui_graphs::DisplayNode<N, E, Ty, Ix>,
+        De: egui_graphs::DisplayEdge<N, E, Ty, Ix, Dn>,
+    {
+        if self.state.triggered {
+            return;
+        }
+
+        // Convert the egui_graphs Graph to dagviz Graph
+        let mut dagviz_graph = self.convert_to_dagviz_graph(g);
+
+        // Apply dagviz layout algorithm
+        println!("dagviz layout");
+        layout(&mut dagviz_graph);
+        println!("after dagviz layout");
+
+        // Convert positions back to egui_graphs Graph
+        self.convert_from_dagviz_graph(g, &dagviz_graph);
+
+        self.state.triggered = true;
+    }
+
+    fn state(&self) -> DagvizLayoutState {
+        self.state.clone()
+    }
+
+    fn from_state(state: DagvizLayoutState) -> impl Layout<DagvizLayoutState> {
+        DagvizLayoutHierarchy { state }
+    }
+}
+
+impl DagvizLayoutHierarchy {
+    fn convert_to_dagviz_graph<N, E, Ty, Ix, Dn, De>(
+        &self,
+        g: &Graph<N, E, Ty, Ix, Dn, De>,
+    ) -> DagvizGraph<GraphConfig, GraphNode, GraphEdge>
+    where
+        N: Clone,
+        E: Clone,
+        Ty: EdgeType,
+        Ix: petgraph::csr::IndexType,
+        Dn: egui_graphs::DisplayNode<N, E, Ty, Ix>,
+        De: egui_graphs::DisplayEdge<N, E, Ty, Ix, Dn>,
+    {
+        let mut dagviz_graph: DagvizGraph<GraphConfig, GraphNode, GraphEdge> =
+            DagvizGraph::default();
+
+        // Set graph configuration based on state
+        let mut config = GraphConfig::default();
+        config.ranksep = Some(self.state.row_dist);
+        config.nodesep = Some(self.state.col_dist);
+        config.rankdir = Some(match self.state.orientation {
+            LayoutHierarchicalOrientation::TopDown => "tb".to_string(),
+            LayoutHierarchicalOrientation::LeftRight => "lr".to_string(),
+        });
+        dagviz_graph.set_graph(config);
+
+        // Add all nodes
+        for node_idx in g.g().node_indices() {
+            let node_id = node_idx.index().to_string();
+            let _node_weight = &g.g()[node_idx];
+
+            let dagviz_node = GraphNode {
+                width: 120.0,
+                height: 40.0,
+                ..Default::default()
+            };
+
+            dagviz_graph.set_node(node_id, Some(dagviz_node));
+        }
+
+        // Add all edges
+        for edge_idx in g.g().edge_indices() {
+            let (source, target) = g.g().edge_endpoints(edge_idx).unwrap();
+            let source_id = source.index().to_string();
+            let target_id = target.index().to_string();
+
+            let _ = dagviz_graph.set_edge(&source_id, &target_id, Some(GraphEdge::default()), None);
+        }
+
+        dagviz_graph
+    }
+
+    fn convert_from_dagviz_graph<N, E, Ty, Ix, Dn, De>(
+        &self,
+        g: &mut Graph<N, E, Ty, Ix, Dn, De>,
+        dagviz_graph: &DagvizGraph<GraphConfig, GraphNode, GraphEdge>,
+    ) where
+        N: Clone,
+        E: Clone,
+        Ty: EdgeType,
+        Ix: petgraph::csr::IndexType,
+        Dn: egui_graphs::DisplayNode<N, E, Ty, Ix>,
+        De: egui_graphs::DisplayEdge<N, E, Ty, Ix, Dn>,
+    {
+        // Update node positions
+        let node_indices: Vec<_> = g.g().node_indices().collect();
+        for node_idx in node_indices {
+            let node_id = node_idx.index().to_string();
+            if let Some(dagviz_node) = dagviz_graph.node(&node_id) {
+                let pos = Pos2::new(dagviz_node.x, dagviz_node.y);
+                g.g_mut()[node_idx].set_location(pos);
+            }
+        }
+
+        // Update edge positions (if needed)
+        for edge_idx in g.g().edge_indices() {
+            let (source, target) = g.g().edge_endpoints(edge_idx).unwrap();
+            let source_id = source.index().to_string();
+            let target_id = target.index().to_string();
+
+            // Create edge key for dagviz lookup
+            let _edge_key = format!("{}->{}", source_id, target_id);
+
+            if let Some(dagviz_edge) = dagviz_graph.edge(&source_id, &target_id, None) {
+                // Update edge with dagviz points if available
+                if let Some(_points) = &dagviz_edge.points {
+                    // Convert dagviz points to egui positions if needed
+                    // This is a simplified implementation - you might need to adjust based on your edge representation
+                }
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExportDestination {
     File,
@@ -182,21 +355,54 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             .lock()
             .unwrap()
             .serialize_tracing_raw(SerializeConfig::default());
-        let mut class2nodes: HashMap<Value, Vec<TblOffset>> =
+        let _class2nodes: HashMap<Value, Vec<TblOffset>> =
             tables
                 .iter()
-                .fold(HashMap::default(), |mut acc, (func, rows)| {
+                .fold(HashMap::default(), |mut acc, (_func, rows)| {
                     rows.iter().enumerate().for_each(|(tbl_offset, row)| {
                         acc.entry(row.output).or_default().push(tbl_offset)
                     });
                     acc
                 });
-        let mut g = stable_graph::StableGraph::default();
-        let n1 = g.add_node(ENode {});
-        let n2 = g.add_node(ENode {});
-        let e1 = g.add_edge(n1, n2, EEdge {});
-        // egui_graphs::Node::
-        let g = to_graph(&g);
+
+        let mut g = Graph::new(StableGraph::default());
+
+        // 创建10个节点
+        let nodes: Vec<_> = (0..10)
+            .map(|i| {
+                g.add_node(ENode {
+                    term_id: Value::new_const(i),
+                })
+            })
+            .collect();
+
+        // 创建20条边，构建一个复杂的连接模式
+        let edges = vec![
+            (0, 1),
+            (0, 2),
+            // (1, 3),
+            (2, 4),
+            (3, 5),
+            (4, 6),
+            (5, 7),
+            (6, 8),
+            (7, 9),
+            (8, 9),
+            (0, 5),
+            (1, 6),
+            (2, 7),
+            (3, 8),
+            (4, 9),
+            (0, 8),
+            (1, 9),
+            (2, 5),
+            (3, 6),
+            (7, 8),
+        ];
+
+        for (from_idx, to_idx) in edges {
+            g.add_edge(nodes[from_idx], nodes[to_idx], EEdge {});
+        }
 
         #[cfg(all(feature = "events", not(target_arch = "wasm32")))]
         let (event_publisher, event_consumer) = crate::unbounded();
@@ -292,9 +498,6 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
     pub fn add_edge(&mut self, a: NodeIndex, b: NodeIndex) {
         GraphActions { g: &mut self.g }.add_edge(a, b);
     }
-    pub fn remove_random_edge(&mut self) {
-        GraphActions { g: &mut self.g }.remove_random_edge();
-    }
     pub fn remove_edge(&mut self, a: NodeIndex, b: NodeIndex) {
         GraphActions { g: &mut self.g }.remove_edge(a, b);
     }
@@ -373,13 +576,13 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                     let mut st = egui_graphs::GraphView::<
                         (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
                         egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
-                        LayoutStateHierarchical, LayoutHierarchical,
+                        DagvizLayoutState, DagvizLayoutHierarchy,
                     >::get_layout_state(ui);
                     st.triggered = false;
                     egui_graphs::GraphView::<
                         (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
                         egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
-                        LayoutStateHierarchical, LayoutHierarchical,
+                        DagvizLayoutState, DagvizLayoutHierarchy,
                     >::set_layout_state(ui, st);
                 }
             });
@@ -599,7 +802,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                     let mut state = egui_graphs::GraphView::<
                         (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
                         egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
-                        LayoutStateHierarchical, LayoutHierarchical,
+                        DagvizLayoutState, DagvizLayoutHierarchy,
                     >::get_layout_state(ui);
 
                     ui.horizontal(|ui| {
@@ -628,7 +831,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                     egui_graphs::GraphView::<
                         (), (), petgraph::Directed, petgraph::stable_graph::DefaultIx,
                         egui_graphs::DefaultNodeShape, egui_graphs::DefaultEdgeShape,
-                        LayoutStateHierarchical, LayoutHierarchical,
+                        DagvizLayoutState, DagvizLayoutHierarchy,
                     >::set_layout_state(ui, state);
                 }
             }
@@ -667,8 +870,8 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             petgraph::stable_graph::DefaultIx,
             egui_graphs::DefaultNodeShape,
             egui_graphs::DefaultEdgeShape,
-            LayoutStateHierarchical,
-            LayoutHierarchical,
+            DagvizLayoutState,
+            DagvizLayoutHierarchy,
         >::get_layout_state(ui);
 
         CollapsingHeader::new("Hierarchical Layout")
@@ -729,8 +932,8 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             petgraph::stable_graph::DefaultIx,
             egui_graphs::DefaultNodeShape,
             egui_graphs::DefaultEdgeShape,
-            LayoutStateHierarchical,
-            LayoutHierarchical,
+            DagvizLayoutState,
+            DagvizLayoutHierarchy,
         >::set_layout_state(ui, state);
     }
 
@@ -1313,8 +1516,8 @@ impl<T: EGraphViewerSgl> App for EGraphApp<T> {
                             petgraph::stable_graph::DefaultIx,
                             egui_graphs::DefaultNodeShape,
                             egui_graphs::DefaultEdgeShape,
-                            egui_graphs::LayoutStateHierarchical,
-                            egui_graphs::LayoutHierarchical,
+                            DagvizLayoutState,
+                            DagvizLayoutHierarchy,
                         >::set_layout_state(ui, st);
                     }
                     let mut view = egui_graphs::GraphView::<
@@ -1324,8 +1527,8 @@ impl<T: EGraphViewerSgl> App for EGraphApp<T> {
                         _,
                         _,
                         _,
-                        LayoutStateHierarchical,
-                        LayoutHierarchical,
+                        DagvizLayoutState,
+                        DagvizLayoutHierarchy,
                     >::new(g)
                     .with_interactions(settings_interaction)
                     .with_navigations(settings_navigation)
@@ -1352,8 +1555,8 @@ impl<T: EGraphViewerSgl> App for EGraphApp<T> {
                             petgraph::stable_graph::DefaultIx,
                             egui_graphs::DefaultNodeShape,
                             egui_graphs::DefaultEdgeShape,
-                            egui_graphs::LayoutStateHierarchical,
-                            egui_graphs::LayoutHierarchical,
+                            DagvizLayoutState,
+                            DagvizLayoutHierarchy,
                         >::set_layout_state(ui, st);
                     }
                     let mut view = egui_graphs::GraphView::<
@@ -1363,8 +1566,8 @@ impl<T: EGraphViewerSgl> App for EGraphApp<T> {
                         _,
                         _,
                         _,
-                        LayoutStateHierarchical,
-                        LayoutHierarchical,
+                        DagvizLayoutState,
+                        DagvizLayoutHierarchy,
                     >::new(g)
                     .with_interactions(settings_interaction)
                     .with_navigations(settings_navigation)
@@ -1568,8 +1771,8 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 petgraph::stable_graph::DefaultIx,
                 egui_graphs::DefaultNodeShape,
                 egui_graphs::DefaultEdgeShape,
-                LayoutStateHierarchical,
-                LayoutHierarchical,
+                DagvizLayoutState,
+                DagvizLayoutHierarchy,
             >::get_metrics(ui),
             MetricsRoute::UndirectedHier => egui_graphs::GraphView::<
                 (),
@@ -1578,8 +1781,8 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 petgraph::stable_graph::DefaultIx,
                 egui_graphs::DefaultNodeShape,
                 egui_graphs::DefaultEdgeShape,
-                LayoutStateHierarchical,
-                LayoutHierarchical,
+                DagvizLayoutState,
+                DagvizLayoutHierarchy,
             >::get_metrics(ui),
         };
 

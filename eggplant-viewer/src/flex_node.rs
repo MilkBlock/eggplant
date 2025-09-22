@@ -10,19 +10,18 @@ pub struct NodeShapeFlex {
     size_y: f32,
 }
 
-impl<N: Clone> From<NodeProps<N>> for NodeShapeFlex {
-    fn from(node_props: NodeProps<N>) -> Self {
+impl From<NodeProps<ENode>> for NodeShapeFlex {
+    fn from(node_props: NodeProps<ENode>) -> Self {
         Self {
-            label: node_props.label.clone(),
+            label: format!("{:?}", node_props.payload),
             loc: node_props.location(),
-
             size_x: 0.,
             size_y: 0.,
         }
     }
 }
 
-impl<N: Clone, E: Clone, Ty: EdgeType, Ix: IndexType> DisplayNode<N, E, Ty, Ix> for NodeShapeFlex {
+impl<Ty: EdgeType, Ix: IndexType> DisplayNode<ENode, EEdge, Ty, Ix> for NodeShapeFlex {
     fn is_inside(&self, pos: Pos2) -> bool {
         let rect = Rect::from_center_size(self.loc, Vec2::new(self.size_x, self.size_y));
 
@@ -41,6 +40,7 @@ impl<N: Clone, E: Clone, Ty: EdgeType, Ix: IndexType> DisplayNode<N, E, Ty, Ix> 
         // create label
         let galley = ctx.ctx.fonts(|f| {
             f.layout_no_wrap(
+                // self.label.clone(),
                 self.label.clone(),
                 FontId::new(ctx.meta.canvas_to_screen_size(10.), FontFamily::Monospace),
                 color,
@@ -64,8 +64,8 @@ impl<N: Clone, E: Clone, Ty: EdgeType, Ix: IndexType> DisplayNode<N, E, Ty, Ix> 
         vec![shape_rect, shape_label.into()]
     }
 
-    fn update(&mut self, state: &NodeProps<N>) {
-        self.label.clone_from(&state.label);
+    fn update(&mut self, state: &NodeProps<ENode>) {
+        // self.label.clone_from(&state.label);
         self.loc = state.location();
     }
 }
@@ -99,4 +99,114 @@ fn rect_to_points(rect: Rect) -> Vec<Pos2> {
     let bottom_left = Pos2::new(top_left.x, bottom_right.y);
 
     vec![top_left, top_right, bottom_right, bottom_left]
+}
+
+// use egui_graphs::egui::{Color32, Pos2, Shape, Stroke, Vec2};
+use egui_graphs::{DefaultEdgeShape, DisplayEdge, DrawContext, EdgeProps, Node};
+
+use crate::{EEdge, ENode};
+// use petgraph::{EdgeType, stable_graph::IndexType};
+
+const TIP_ANGLE: f32 = std::f32::consts::TAU / 30.;
+const TIP_SIZE: f32 = 15.;
+const COLORS: [Color32; 7] = [
+    Color32::RED,
+    Color32::from_rgb(255, 102, 0),
+    Color32::YELLOW,
+    Color32::GREEN,
+    Color32::from_rgb(2, 216, 233),
+    Color32::BLUE,
+    Color32::from_rgb(91, 10, 145),
+];
+
+#[derive(Clone, Debug)]
+pub struct RainbowEdgeShape {
+    default_impl: DefaultEdgeShape,
+}
+
+impl<E: Clone> From<EdgeProps<E>> for RainbowEdgeShape {
+    fn from(props: EdgeProps<E>) -> Self {
+        Self {
+            default_impl: DefaultEdgeShape::from(props),
+        }
+    }
+}
+
+impl<N: Clone, E: Clone, Ty: EdgeType, Ix: IndexType, D: DisplayNode<N, E, Ty, Ix>>
+    DisplayEdge<N, E, Ty, Ix, D> for RainbowEdgeShape
+{
+    fn shapes(
+        &mut self,
+        start: &Node<N, E, Ty, Ix, D>,
+        end: &Node<N, E, Ty, Ix, D>,
+        ctx: &DrawContext,
+    ) -> Vec<egui::Shape> {
+        let mut res = vec![];
+        let (start, end) = (start.location(), end.location());
+        let (x_dist, y_dist) = (end.x - start.x, end.y - start.y);
+        let (dx, dy) = (x_dist / COLORS.len() as f32, y_dist / COLORS.len() as f32);
+        let d_vec = Vec2::new(dx, dy);
+
+        let mut stroke = Stroke::default();
+        let mut points_line;
+
+        for (i, color) in COLORS.iter().enumerate() {
+            stroke = Stroke::new(self.default_impl.width, *color);
+            points_line = vec![
+                start + i as f32 * d_vec,
+                end - (COLORS.len() - i - 1) as f32 * d_vec,
+            ];
+
+            stroke.width = ctx.meta.canvas_to_screen_size(stroke.width);
+            points_line = points_line
+                .iter()
+                .map(|p| ctx.meta.canvas_to_screen_pos(*p))
+                .collect();
+            res.push(Shape::line_segment(
+                [points_line[0], points_line[1]],
+                stroke,
+            ));
+        }
+
+        let tip_dir = (end - start).normalized();
+
+        let arrow_tip_dir_1 = rotate_vector(tip_dir, TIP_ANGLE) * TIP_SIZE;
+        let arrow_tip_dir_2 = rotate_vector(tip_dir, -TIP_ANGLE) * TIP_SIZE;
+
+        let tip_start_1 = end - arrow_tip_dir_1;
+        let tip_start_2 = end - arrow_tip_dir_2;
+
+        let mut points_tip = vec![end, tip_start_1, tip_start_2];
+
+        points_tip = points_tip
+            .iter()
+            .map(|p| ctx.meta.canvas_to_screen_pos(*p))
+            .collect();
+
+        res.push(Shape::convex_polygon(
+            points_tip,
+            stroke.color,
+            Stroke::default(),
+        ));
+
+        res
+    }
+
+    fn update(&mut self, _: &egui_graphs::EdgeProps<E>) {}
+
+    fn is_inside(
+        &self,
+        start: &Node<N, E, Ty, Ix, D>,
+        end: &Node<N, E, Ty, Ix, D>,
+        pos: Pos2,
+    ) -> bool {
+        self.default_impl.is_inside(start, end, pos)
+    }
+}
+
+/// rotates vector by angle
+fn rotate_vector(vec: Vec2, angle: f32) -> Vec2 {
+    let cos = angle.cos();
+    let sin = angle.sin();
+    Vec2::new(cos * vec.x - sin * vec.y, sin * vec.x + cos * vec.y)
 }

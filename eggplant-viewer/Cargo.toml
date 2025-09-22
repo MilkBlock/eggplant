@@ -19,10 +19,6 @@ serde_json.workspace = true
 rand = "0.9"
 instant = "0.1"
 crossbeam = { version = "0.8", optional = true }
-bevy = "0.16"
-bevy_egui = "0.36"
-ureq = { version = "2.9", default-features = true }
-criterion = { version = "0.5", features = ["html_reports"] }
 petgraph = { version = "0.8", default-features = false, features = [
   "graphmap",
   "stable_graph",
@@ -34,6 +30,8 @@ chrono = { version = "0.4", default-features = false, features = [
   "std",
 ] }
 egglog.workspace = true
+dagviz = { path = "../../dagviz" }
+graphlib_rust = "0.0.2"
 
 [target.wasm32-unknown-unknown.dependencies]
 wasm-bindgen-futures = "0.4"
