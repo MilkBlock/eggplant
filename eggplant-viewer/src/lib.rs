@@ -70,15 +70,23 @@ fn info_icon(ui: &mut egui::Ui, tip: &str) {
 mod drawers;
 
 #[derive(Clone, Debug)]
-pub struct ENode {
-    term_id: egglog::Value,
+pub enum ENode {
+    Class {
+        cannon_value: egglog::Value,
+    },
+    Node {
+        subgraph: NodeIndex,
+        term_id: egglog::Value,
+    },
 }
 
 #[derive(Clone, Debug)]
-pub struct EEdge {}
+pub struct EEdge {
+    points: Vec<Pos2>,
+}
 
 type PetEGraph =
-    Graph<ENode, EEdge, Directed, DefaultIx, flex_node::NodeShapeFlex, flex_node::RainbowEdgeShape>;
+    Graph<ENode, EEdge, Directed, DefaultIx, flex_node::NodeShapeFlex, flex_node::EEdgeShape>;
 #[derive(Debug)]
 pub enum DemoGraph {
     Directed(PetEGraph),
@@ -294,6 +302,115 @@ impl DagvizLayoutHierarchy {
         dagviz_graph
     }
 
+    // fn rua_convert_to<Ty, Ix, Dn, De>(
+    //     &self,
+    //     g: &Graph<ENode, EEdge, Ty, Ix, Dn, De>,
+    // ) -> (
+    //     ruadag::Graph,
+    //     HashMap<NodeIndex<Ix>, ruadag::graph::NodeIndex>,
+    //     HashMap<EdgeIndex<Ix>, ruadag::graph::EdgeIndex>,
+    // )
+    // where
+    //     ENode: Clone,
+    //     EEdge: Clone,
+    //     Ty: EdgeType,
+    //     Ix: petgraph::csr::IndexType,
+    //     Dn: egui_graphs::DisplayNode<ENode, EEdge, Ty, Ix>,
+    //     De: egui_graphs::DisplayEdge<ENode, EEdge, Ty, Ix, Dn>,
+    // {
+    //     // Set graph configuration based on state
+    //     let mut config = ruadag::GraphConfig {
+    //         node_sep: 100.0,
+    //         rank_sep: 100.0,
+    //         edge_sep: 20.0,
+    //         ranker: ruadag::Ranker::LongestPath,
+    //         ..Default::default()
+    //     };
+    //     config.rank_sep = self.state.row_dist ;
+    //     config.node_sep = self.state.col_dist ;
+    //     config.rankdir = ruadag::RankDirection::TopBottom;
+    //     let mut layout = ruadag::Graph::with_config(config);
+
+    //     let mut node_map = HashMap::new();
+    //     // Add all nodes
+    //     for node_idx in g.g().node_indices() {
+    //         let node_id = node_idx.index().to_string();
+    //         let _node_weight = &g.g()[node_idx];
+
+    //         let rua_node = layout.add_node(NodeLabel {
+    //             label: Some(node_id),
+    //             width: 120.,
+    //             height: 40.,
+    //             ..Default::default()
+    //         });
+    //         node_map.insert(node_idx, rua_node);
+    //     }
+
+    //     // Add all edges
+    //     let mut edge_map = HashMap::new();
+    //     for edge_idx in g.g().edge_indices() {
+    //         let (source, target) = g.g().edge_endpoints(edge_idx).unwrap();
+
+    //         let layout_edge_idx = layout.add_edge(
+    //             Edge::new(
+    //                 *node_map.get(&source).unwrap(),
+    //                 *node_map.get(&target).unwrap(),
+    //             ),
+    //             EdgeLabel::default(),
+    //         );
+    //         edge_map.insert(edge_idx, layout_edge_idx);
+    //     }
+
+    //     (layout, node_map, edge_map)
+    // }
+    // fn rua_convert_from<N, E, Ty, Ix, Dn, De>(
+    //     &self,
+    //     egui_graph: &mut Graph<N, EEdge, Ty, Ix, Dn, De>,
+    //     layout: &(
+    //         ruadag::Graph,
+    //         HashMap<NodeIndex<Ix>, ruadag::graph::NodeIndex>,
+    //         HashMap<EdgeIndex<Ix>, ruadag::graph::EdgeIndex>,
+    //     ),
+    // ) where
+    //     N: Clone,
+    //     E: Clone,
+    //     Ty: EdgeType,
+    //     Ix: petgraph::csr::IndexType,
+    //     Dn: egui_graphs::DisplayNode<N, EEdge, Ty, Ix>,
+    //     De: egui_graphs::DisplayEdge<N, EEdge, Ty, Ix, Dn>,
+    // {
+    //     // Update node positions
+    //     let node_indices: Vec<_> = egui_graph.g().node_indices().collect();
+    //     for node_idx in node_indices {
+    //         let label = layout
+    //             .0
+    //             .node_label(*layout.1.get(&node_idx).unwrap())
+    //             .unwrap();
+    //         let pos = Pos2::new(label.x.unwrap() as f32, label.y.unwrap() as f32);
+    //         egui_graph.g_mut()[node_idx].set_location(pos);
+    //     }
+    //     println!("finished");
+
+    //     // Update edge positions (if needed)
+    //     for edge_idx in egui_graph.g().edge_indices() {
+    //         let (source, target) = egui_graph.g().edge_endpoints(edge_idx).unwrap();
+    //         let source_id = source.index().to_string();
+    //         let target_id = target.index().to_string();
+    //         // Create edge key for dagviz lookup
+    //         let _edge_key = format!("{}->{}", source_id, target_id);
+
+    //         if let Some(edge) = layout.2.get(&edge_idx) {
+    //             let label = layout.0.edge_label(*edge).unwrap();
+    //             // Update edge with dagviz points if available
+
+    //             // Convert ruadag points to egui positions if needed
+    //             // This is a simplified implementation - you might need to adjust based on your edge representation
+    //             let edge = egui_graph.g().edge_weight_mut(edge_idx).unwrap();
+    //             edge.payload_mut().points = label.points.iter().map(|point| Pos2::new(point.x));
+    //         }
+    //     }
+    // }
+
     fn convert_from_dagviz_graph<N, E, Ty, Ix, Dn, De>(
         &self,
         g: &mut Graph<N, E, Ty, Ix, Dn, De>,
@@ -370,8 +487,9 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
         // 创建10个节点
         let nodes: Vec<_> = (0..10)
             .map(|i| {
-                g.add_node(ENode {
+                g.add_node(ENode::Node {
                     term_id: Value::new_const(i),
+                    subgraph: NodeIndex::new(1),
                 })
             })
             .collect();
@@ -380,7 +498,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
         let edges = vec![
             (0, 1),
             (0, 2),
-            // (1, 3),
+            (1, 3),
             (2, 4),
             (3, 5),
             (4, 6),
@@ -401,7 +519,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
         ];
 
         for (from_idx, to_idx) in edges {
-            g.add_edge(nodes[from_idx], nodes[to_idx], EEdge {});
+            g.add_edge(nodes[from_idx], nodes[to_idx], EEdge { points: vec![] });
         }
 
         #[cfg(all(feature = "events", not(target_arch = "wasm32")))]
@@ -495,8 +613,8 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
     pub fn remove_node(&mut self, idx: NodeIndex) {
         GraphActions { g: &mut self.g }.remove_node_by_idx(idx);
     }
-    pub fn add_edge(&mut self, a: NodeIndex, b: NodeIndex) {
-        GraphActions { g: &mut self.g }.add_edge(a, b);
+    pub fn add_edge(&mut self, a: NodeIndex, b: NodeIndex, v: Vec<Pos2>) {
+        GraphActions { g: &mut self.g }.add_edge(a, b, v);
     }
     pub fn remove_edge(&mut self, a: NodeIndex, b: NodeIndex) {
         GraphActions { g: &mut self.g }.remove_edge(a, b);

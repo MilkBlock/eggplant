@@ -1,6 +1,8 @@
 use egui::{Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, Vec2, epaint::TextShape};
 use egui_graphs::{DisplayNode, NodeProps};
+use itertools::Itertools;
 use petgraph::{EdgeType, stable_graph::IndexType};
+use std::iter;
 
 #[derive(Clone, Debug)]
 pub struct NodeShapeFlex {
@@ -120,25 +122,27 @@ const COLORS: [Color32; 7] = [
 ];
 
 #[derive(Clone, Debug)]
-pub struct RainbowEdgeShape {
+pub struct EEdgeShape {
     default_impl: DefaultEdgeShape,
+    points: Vec<Pos2>,
 }
 
-impl<E: Clone> From<EdgeProps<E>> for RainbowEdgeShape {
-    fn from(props: EdgeProps<E>) -> Self {
+impl From<EdgeProps<EEdge>> for EEdgeShape {
+    fn from(props: EdgeProps<EEdge>) -> Self {
         Self {
             default_impl: DefaultEdgeShape::from(props),
+            points: vec![],
         }
     }
 }
 
-impl<N: Clone, E: Clone, Ty: EdgeType, Ix: IndexType, D: DisplayNode<N, E, Ty, Ix>>
-    DisplayEdge<N, E, Ty, Ix, D> for RainbowEdgeShape
+impl<N: Clone, Ty: EdgeType, Ix: IndexType, D: DisplayNode<N, EEdge, Ty, Ix>>
+    DisplayEdge<N, EEdge, Ty, Ix, D> for EEdgeShape
 {
     fn shapes(
         &mut self,
-        start: &Node<N, E, Ty, Ix, D>,
-        end: &Node<N, E, Ty, Ix, D>,
+        start: &Node<N, EEdge, Ty, Ix, D>,
+        end: &Node<N, EEdge, Ty, Ix, D>,
         ctx: &DrawContext,
     ) -> Vec<egui::Shape> {
         let mut res = vec![];
@@ -148,27 +152,27 @@ impl<N: Clone, E: Clone, Ty: EdgeType, Ix: IndexType, D: DisplayNode<N, E, Ty, I
         let d_vec = Vec2::new(dx, dy);
 
         let mut stroke = Stroke::default();
-        let mut points_line;
+        // let mut points_line;
 
-        for (i, color) in COLORS.iter().enumerate() {
-            stroke = Stroke::new(self.default_impl.width, *color);
-            points_line = vec![
-                start + i as f32 * d_vec,
-                end - (COLORS.len() - i - 1) as f32 * d_vec,
-            ];
-
+        let start = Pos2::new(start.x, start.y);
+        let start_iter = iter::once(&start);
+        let end = Pos2::new(start.x, start.y);
+        let end_iter = iter::once(&end);
+        let start_inners_end = itertools::chain!(start_iter, self.points.iter(), end_iter);
+        for line_chunk in start_inners_end.chunks(2).into_iter() {
+            stroke = Stroke::new(self.default_impl.width, COLORS[6]);
+            // points_line = vec![
+            //     start + i as f32 * d_vec,
+            //     end - (COLORS.len() - i - 1) as f32 * d_vec,
+            // ];
             stroke.width = ctx.meta.canvas_to_screen_size(stroke.width);
-            points_line = points_line
-                .iter()
-                .map(|p| ctx.meta.canvas_to_screen_pos(*p))
-                .collect();
+            let mut line_chunk = line_chunk.map(|p| ctx.meta.canvas_to_screen_pos(*p));
             res.push(Shape::line_segment(
-                [points_line[0], points_line[1]],
+                [line_chunk.next().unwrap(), line_chunk.next().unwrap()],
                 stroke,
             ));
         }
-
-        let tip_dir = (end - start).normalized();
+        let tip_dir = (end - *self.points.last().unwrap_or(&start)).normalized();
 
         let arrow_tip_dir_1 = rotate_vector(tip_dir, TIP_ANGLE) * TIP_SIZE;
         let arrow_tip_dir_2 = rotate_vector(tip_dir, -TIP_ANGLE) * TIP_SIZE;
@@ -192,12 +196,12 @@ impl<N: Clone, E: Clone, Ty: EdgeType, Ix: IndexType, D: DisplayNode<N, E, Ty, I
         res
     }
 
-    fn update(&mut self, _: &egui_graphs::EdgeProps<E>) {}
+    fn update(&mut self, _: &egui_graphs::EdgeProps<EEdge>) {}
 
     fn is_inside(
         &self,
-        start: &Node<N, E, Ty, Ix, D>,
-        end: &Node<N, E, Ty, Ix, D>,
+        start: &Node<N, EEdge, Ty, Ix, D>,
+        end: &Node<N, EEdge, Ty, Ix, D>,
         pos: Pos2,
     ) -> bool {
         self.default_impl.is_inside(start, end, pos)

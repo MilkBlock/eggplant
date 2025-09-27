@@ -1,12 +1,13 @@
 use crate::{DemoGraph, MAX_EDGE_COUNT};
-use petgraph::stable_graph::NodeIndex;
+use egui::Pos2;
+use petgraph::{adj::EdgeIndex, stable_graph::NodeIndex};
 
 pub struct GraphActions<'a> {
     pub g: &'a mut DemoGraph,
 }
 
 impl GraphActions<'_> {
-    pub fn add_edge(&mut self, a: NodeIndex, b: NodeIndex) {
+    pub fn add_edge(&mut self, a: NodeIndex, b: NodeIndex, points: Vec<Pos2>) {
         let edge_cnt = match self.g {
             DemoGraph::Directed(g) => g.edge_count(),
             DemoGraph::Undirected(g) => g.edge_count(),
@@ -16,7 +17,7 @@ impl GraphActions<'_> {
         }
         match self.g {
             DemoGraph::Directed(g) => {
-                g.add_edge(a, b, crate::EEdge {});
+                g.add_edge(a, b, crate::EEdge { points });
             }
             DemoGraph::Undirected(g) => {
                 g.add_edge(a, b, ());

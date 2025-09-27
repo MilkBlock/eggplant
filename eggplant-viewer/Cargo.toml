@@ -30,8 +30,12 @@ chrono = { version = "0.4", default-features = false, features = [
   "std",
 ] }
 egglog.workspace = true
+itertools.workspace = true
+
 dagviz = { path = "../../dagviz" }
 graphlib_rust = "0.0.2"
+
+ruadag = { path = "../../ruadag" }
 
 [target.wasm32-unknown-unknown.dependencies]
 wasm-bindgen-futures = "0.4"
