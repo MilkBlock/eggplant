@@ -50,7 +50,9 @@ struct AddPat {
 }
 
 let pat = || {
-    let l = Const::query();
+    // mention here we use query() since it's a variant type, if we want to query an expression
+    // we should use query_leaf()
+    let l = Const::query(); 
     let r = Const::query();
     let p = Add::query(&l, &r);
     AddPat::new(l, r, p)
