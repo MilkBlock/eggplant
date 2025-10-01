@@ -1,4 +1,4 @@
-use core::panic;
+// use core::panic;
 use darling::{Error, FromMeta, ast::NestedMeta};
 
 use heck::ToSnakeCase;
@@ -218,7 +218,7 @@ pub fn dsl(
     let input = parse_macro_input!(item as DeriveInput);
     let name = &input.ident;
 
-    let name_lowercase = format_ident!("{}", name.to_string().to_lowercase());
+    let name_snake_case = format_ident!("{}", name.to_string().to_snake_case());
     let name_egglogty_impl = format_ident!("{}", name);
 
     let type_def_expanded = match &input.data {
@@ -246,7 +246,7 @@ pub fn dsl(
             let expanded = quote! {
                 impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                     const TY_NAME:&'static str = stringify!(#name);
-                    const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
+                    const TY_NAME_LOWER:&'static str = stringify!(#name_snake_case);
                     type Valued = V::ValuedWithDefault<Self>;
                     type EnumVariantMarker = V;
                 }
@@ -280,7 +280,7 @@ pub fn dsl(
                 let vec_expanded = quote! {
                     impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                         const TY_NAME:&'static str = stringify!(#name);
-                        const TY_NAME_LOWER:&'static str = stringify!(#name_lowercase);
+                        const TY_NAME_LOWER:&'static str = stringify!(#name_snake_case);
                         type Valued = V::ValuedWithDefault<Self>;
                         type EnumVariantMarker = V;
                     }
@@ -1133,7 +1133,7 @@ pub fn dsl(
                                 #(#to_egglog_match_arms),*
                             }
                         }
-                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // 使用 ctx.insert 将节点插入到 egraph 中
                             // 这里可以根据 sym_to_value_map 查询已有的值
                             let sym = self.cur_sym();
