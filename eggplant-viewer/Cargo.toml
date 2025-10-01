@@ -12,7 +12,7 @@ build = "build.rs"
 [dependencies]
 egui = { version = "0.32", default-features = false }
 eframe = "0.32"
-egui_graphs = "0.28.0"
+egui_graphs = { path = "../../egui_graphs/crates/egui_graphs" }
 egui_extras = { version = "0.32", default-features = false }
 serde.workspace = true
 serde_json.workspace = true

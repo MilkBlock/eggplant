@@ -1491,8 +1491,6 @@ dependencies = [
 [[package]]
 name = "egui_graphs"
 version = "0.28.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3f1a4f357adce91fb5fa51edb89d7ea81dd18a2e9a66f01ece7298b1b13eea8d"
 dependencies = [
  "crossbeam",
  "egui",

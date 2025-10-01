@@ -1,7 +1,7 @@
 use egui::{Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, Vec2, epaint::TextShape};
 use egui_graphs::{DisplayNode, NodeProps};
 use itertools::Itertools;
-use petgraph::{EdgeType, stable_graph::IndexType};
+use petgraph::{Directed, EdgeType, stable_graph::IndexType};
 use std::iter;
 
 #[derive(Clone, Debug)]
@@ -12,8 +12,8 @@ pub struct NodeShapeFlex {
     size_y: f32,
 }
 
-impl From<NodeProps<ENode>> for NodeShapeFlex {
-    fn from(node_props: NodeProps<ENode>) -> Self {
+impl From<NodeProps> for NodeShapeFlex {
+    fn from(node_props: NodeProps) -> Self {
         Self {
             label: format!("{:?}", node_props.payload),
             loc: node_props.location(),
@@ -23,7 +23,7 @@ impl From<NodeProps<ENode>> for NodeShapeFlex {
     }
 }
 
-impl<Ty: EdgeType, Ix: IndexType> DisplayNode<ENode, EEdge, Ty, Ix> for NodeShapeFlex {
+impl DisplayNode<Directed> for NodeShapeFlex {
     fn is_inside(&self, pos: Pos2) -> bool {
         let rect = Rect::from_center_size(self.loc, Vec2::new(self.size_x, self.size_y));
 
@@ -66,7 +66,7 @@ impl<Ty: EdgeType, Ix: IndexType> DisplayNode<ENode, EEdge, Ty, Ix> for NodeShap
         vec![shape_rect, shape_label.into()]
     }
 
-    fn update(&mut self, state: &NodeProps<ENode>) {
+    fn update(&mut self, state: &NodeProps) {
         // self.label.clone_from(&state.label);
         self.loc = state.location();
     }
@@ -106,7 +106,7 @@ fn rect_to_points(rect: Rect) -> Vec<Pos2> {
 // use egui_graphs::egui::{Color32, Pos2, Shape, Stroke, Vec2};
 use egui_graphs::{DefaultEdgeShape, DisplayEdge, DrawContext, EdgeProps, Node};
 
-use crate::{EEdge, ENode};
+use crate::{EEdge, ElkNode};
 // use petgraph::{EdgeType, stable_graph::IndexType};
 
 const TIP_ANGLE: f32 = std::f32::consts::TAU / 30.;
@@ -127,8 +127,8 @@ pub struct EEdgeShape {
     points: Vec<Pos2>,
 }
 
-impl From<EdgeProps<EEdge>> for EEdgeShape {
-    fn from(props: EdgeProps<EEdge>) -> Self {
+impl From<EdgeProps> for EEdgeShape {
+    fn from(props: EdgeProps) -> Self {
         Self {
             default_impl: DefaultEdgeShape::from(props),
             points: vec![],
@@ -136,13 +136,11 @@ impl From<EdgeProps<EEdge>> for EEdgeShape {
     }
 }
 
-impl<N: Clone, Ty: EdgeType, Ix: IndexType, D: DisplayNode<N, EEdge, Ty, Ix>>
-    DisplayEdge<N, EEdge, Ty, Ix, D> for EEdgeShape
-{
+impl<D: DisplayNode<Directed>> DisplayEdge<Directed, D> for EEdgeShape {
     fn shapes(
         &mut self,
-        start: &Node<N, EEdge, Ty, Ix, D>,
-        end: &Node<N, EEdge, Ty, Ix, D>,
+        start: &Node<Directed, D>,
+        end: &Node<Directed, D>,
         ctx: &DrawContext,
     ) -> Vec<egui::Shape> {
         let mut res = vec![];
@@ -196,14 +194,9 @@ impl<N: Clone, Ty: EdgeType, Ix: IndexType, D: DisplayNode<N, EEdge, Ty, Ix>>
         res
     }
 
-    fn update(&mut self, _: &egui_graphs::EdgeProps<EEdge>) {}
+    fn update(&mut self, _: &egui_graphs::EdgeProps) {}
 
-    fn is_inside(
-        &self,
-        start: &Node<N, EEdge, Ty, Ix, D>,
-        end: &Node<N, EEdge, Ty, Ix, D>,
-        pos: Pos2,
-    ) -> bool {
+    fn is_inside(&self, start: &Node<Directed, D>, end: &Node<Directed, D>, pos: Pos2) -> bool {
         self.default_impl.is_inside(start, end, pos)
     }
 }

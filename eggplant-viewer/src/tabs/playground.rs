@@ -107,31 +107,6 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                                     } else { None };
                                     (nodes, edges, positions, true)
                                 }
-                                DemoGraph::Undirected(g) => {
-                                    let nodes: Vec<i64> = g
-                                        .g()
-                                        .node_indices()
-                                        .map(|i| i.index() as i64)
-                                        .collect();
-                                    let edges: Vec<(i64, i64)> = g
-                                        .g()
-                                        .edge_indices()
-                                        .filter_map(|e| g.g().edge_endpoints(e))
-                                        .map(|(a, b)| {
-                                            let (u, v) = if a.index() <= b.index() { (a, b) } else { (b, a) };
-                                            (u.index() as i64, v.index() as i64)
-                                        })
-                                        .collect();
-                                    let positions = if self.export_include_positions {
-                                        let mut v = Vec::with_capacity(nodes.len());
-                                        for idx in g.g().node_indices() {
-                                            let p = g.g().node_weight(idx).unwrap().location();
-                                            v.push((idx.index() as i64, p.x, p.y));
-                                        }
-                                        Some(v)
-                                    } else { None };
-                                    (nodes, edges, positions, false)
-                                }
                             };
                             let spec = crate::spec::build_export_spec(
                                 ui,
@@ -192,7 +167,6 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 .show(ui, |ui| self.ui_graph_section(ui));
             self.ui_navigation(ui);
             self.ui_layout_section(ui);
-            self.ui_layout_force_directed(ui);
             self.ui_interaction(ui);
             self.ui_selected(ui);
             self.ui_style(ui);
