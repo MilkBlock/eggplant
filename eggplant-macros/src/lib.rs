@@ -365,7 +365,7 @@ pub fn dsl(
                                 #E::ast::GenericExpr::Call(self.node.span.to_span(),"vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
-                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&mut self, ctx: &mut #W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             let vec = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
                                 inner.into_iter().map(|x| ctx.intern_base(x)).collect()
                             }else {
@@ -450,7 +450,7 @@ pub fn dsl(
                         #[track_caller]
                         fn #insert_fn_name(&mut self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
                             use #W::Value;
-                            use #W::ToValue;
+                            use #W::Insertable;
                             self.intern_container(#field_name)
                         }
                     }
@@ -652,7 +652,7 @@ pub fn dsl(
                                 }
                             }
                         }
-                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::ToValue<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
                             fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                                 #W::Value::new(self.erase())
                             }
@@ -679,7 +679,7 @@ pub fn dsl(
                                 T::on_drop(self);
                             }
                         }
-                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::DeValue for #name_node<T,V> {
+                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
                             type Target = #W::VecContainer<#first_generic>;
                             fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
                                 #W::Value::new(val)
@@ -919,12 +919,12 @@ pub fn dsl(
                             }
                         }
                     }
-                    // impl #W::ToValue<#name_node<(),#variant_marker>> for #valued_variant_name {
+                    // impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
                     //     fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                     //         self._itself
                     //     }
                     // }
-                    impl #W::ToValue<#name_node<(),()>> for #valued_variant_name {
+                    impl #W::Insertable<#name_node<(),()>> for #valued_variant_name {
                         fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
                             #W::Value::new(self._itself.val)
                         }
@@ -1133,7 +1133,7 @@ pub fn dsl(
                                 #(#to_egglog_match_arms),*
                             }
                         }
-                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // 使用 ctx.insert 将节点插入到 egraph 中
                             // 这里可以根据 sym_to_value_map 查询已有的值
                             let sym = self.cur_sym();
@@ -1232,9 +1232,15 @@ pub fn dsl(
                     static #name_counter: #W::TyCounter<#name_egglogty_impl<()>> = #W::TyCounter::new();
                     #(#set_fns)*
                 };
-                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::ToValue<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
                     fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                         #W::Value::new(self.erase())
+                    }
+                }
+                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
+                    type Target = #name_node<T,()>;
+                    fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
+                        #W::Value::new(val)
                     }
                 }
                 #rule_ctx_trait_and_impl

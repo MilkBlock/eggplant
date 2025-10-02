@@ -1,5 +1,6 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_fp;
+use eggplant::wrap::VecContainer;
 #[eggplant::dsl(container =Array)]
 pub enum Expr {
     Const { num: i64 },
@@ -34,6 +35,11 @@ fn main() {
         },
         |ctx, pat| {
             println!("{:?}", pat);
+            ctx.insert_vec_sum(ctx.insert_array({
+                let mut v = VecContainer::new();
+                v.push(ctx.insert_const(3));
+                v
+            }));
             let v = ctx.devalue(pat.vec_expr.exprs);
             for expr in v.iter() {
                 println!("got expr {:?}", expr)

@@ -438,7 +438,7 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
             #[track_caller]
             fn #insert_fn_name(&mut self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 use #W::Value;
-                use #W::ToValue;
+                use #W::Insertable;
                 let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];

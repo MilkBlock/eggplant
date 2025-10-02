@@ -1,5 +1,6 @@
 use crate::wrap::{
-    self, BoxedContainer, BoxedValue, DeValue, EgglogContainerTy, EgglogNode, PatRecSgl, ToValue,
+    self, BoxedContainer, BoxedValue, EgglogContainerTy, EgglogNode, Insertable, PatRecSgl,
+    RetypeValue,
 };
 use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::ast::ResolvedVar;
@@ -28,7 +29,7 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
             rule_ctx: egglog_ctx,
         }
     }
-    pub fn devalue<'d, B: BoxedValue, D: DeValue<Target = B>>(
+    pub fn devalue<'d, B: BoxedValue, D: RetypeValue<Target = B>>(
         &'d mut self,
         val: Value<D>,
     ) -> B::Output<'d> {
@@ -55,7 +56,7 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     pub fn insert(&mut self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.rule_ctx.lookup(table, key).unwrap()
     }
-    pub fn union<T0, T1>(&mut self, x: impl ToValue<T0>, y: impl ToValue<T1>) {
+    pub fn union<T0, T1>(&mut self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
         let x = x.to_value(self);
         let y = y.to_value(self);
         self.rule_ctx.union(x.val, y.val);

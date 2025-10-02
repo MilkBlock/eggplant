@@ -347,7 +347,7 @@ pub fn variant2valued_ref_node_list(variant: &Variant) -> Vec<proc_macro2::Token
     variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |ident, ty| Some(quote! {#ident:#ty}),
-        |ident, ty| Some(quote! {#ident: impl #W::ToValue<#ty<(), ()>>}),
+        |ident, ty| Some(quote! {#ident: impl #W::Insertable<#ty<(), ()>>}),
     )
 }
 pub fn variant2ref_node_list_without_type(variant: &Variant) -> Vec<proc_macro2::TokenStream> {

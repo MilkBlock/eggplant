@@ -875,23 +875,23 @@ pub trait FromPlainValues {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self;
 }
 
-/// ToValue and DeValue are quite different, ToValue is used in Union or table insert
-/// while DeValue only used when you want operational structure
-pub trait ToValue<T> {
+/// Insertable and RetypeValue are quite different, Insertable is used in Union or table insert
+/// while RetypeValueonly used when you want operational structure
+pub trait Insertable<T> {
     fn to_value(&self, ctx: &mut RuleCtx) -> Value<T>;
 }
-pub trait DeValue {
+pub trait RetypeValue {
     type Target;
     fn retype_value(val: egglog::Value) -> Value<Self::Target>;
 }
 
-impl<D: DeValue> DeValue for Value<D> {
+impl<D: RetypeValue> RetypeValue for Value<D> {
     type Target = D::Target;
     fn retype_value(val: egglog::Value) -> Value<Self::Target> {
         Value::new(val)
     }
 }
-impl<T: BoxedValue> DeValue for T {
+impl<T: BoxedValue> RetypeValue for T {
     type Target = T;
     fn retype_value(val: egglog::Value) -> Value<Self::Target> {
         Value::new(val)
@@ -910,7 +910,7 @@ impl<T: EgglogTy> Copy for Value<T> {}
 
 /// if one struct BoxUnBox that means it can be converted to a boxed value in database
 /// this is an essential condition to be insert into egglog_backend
-/// any struct implements this trait inferred to be [`ToValue`]
+/// any struct implements this trait inferred to be [`Insertable`]
 pub trait BoxedBase: BoxedValue {
     type Boxed: BaseValue;
     fn unbox(boxed: Self::Boxed, ctx: &mut RuleCtx) -> Self;
@@ -924,7 +924,7 @@ pub trait BoxedContainer: BoxedValue {
 
 pub trait SingleFieldVariant {}
 
-impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> ToValue<B> for B {
+impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
     fn to_value(&self, ctx: &mut RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
     }
@@ -964,15 +964,27 @@ pub struct VecContainer<T: EgglogTy + 'static> {
     pub(crate) inner: egglog::sort::VecContainer,
     pub(crate) _p: PhantomData<T>,
 }
-// impl<T: EgglogTy> ContainerValue for VecContainer<T> {
-//     fn rebuild_contents(&mut self, rebuilder: &dyn egglog::sort::Rebuilder) -> bool {
-//         self.inner.rebuild_contents(rebuilder)
-//     }
 
-//     fn iter(&self) -> impl Iterator<Item = egglog::Value> + '_ {
-//         self.inner.iter()
-//     }
-// }
+impl<T: EgglogTy + 'static> IntoIterator for &VecContainer<T> {
+    type Item = egglog::Value;
+    type IntoIter = std::slice::Iter<'_, egglog::Value>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.inner.data.iter()
+    }
+}
+impl<Ty: EgglogTy> VecContainer<Ty> {
+    //     fn rebuild_contents(&mut self, rebuilder: &dyn egglog::sort::Rebuilder) -> bool {
+    //         self.inner.rebuild_contents(rebuilder)
+    //     }
+
+    //     fn iter(&self) -> impl Iterator<Item = egglog::Value> + '_ {
+    //         self.inner.iter()
+    //     }
+    pub fn push<T: EgglogTy + RetypeValue<Target = Ty>>(&mut self, val: Value<T>) {
+        self.inner.data.push(val.erase())
+    }
+}
 
 #[derive(EnumDiscriminants, EnumIs, Debug, Clone)]
 pub enum TyPH<T: strum::IntoDiscriminant>
