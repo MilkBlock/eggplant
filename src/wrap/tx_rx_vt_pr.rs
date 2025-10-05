@@ -13,6 +13,7 @@ use egglog::{
     span,
     util::{IndexMap, IndexSet},
 };
+#[cfg(feature = "viewer")]
 use eggplant_viewer::EGraphViewer;
 use graphviz_rust::dot_structures::Attribute;
 use log::info;
@@ -594,13 +595,13 @@ impl TxCommit for TxRxVTPR {
             Query::default(),
             &[],
             move |ctx, _| {
-                let mut ctx = RuleCtx::new(ctx);
+                let ctx = RuleCtx::new(ctx);
                 let sym2value_map = sym2value_map.clone();
                 for &sym in &backup_staged_new_syms {
                     log::debug!("topo_insert:{}", sym);
                     if let Some(node) = map_clone.get(&sym) {
                         // add node to egraph using native_egglog API
-                        let value = node.egglog.native_egglog(&mut ctx, &sym2value_map);
+                        let value = node.egglog.native_egglog(&ctx, &sym2value_map);
                         // store sym value pair to sym_to_value_map
                         sym2value_map.insert(sym, value);
                         log::debug!("Added node {} to sym_to_value_map using native_egglog", sym);
@@ -612,7 +613,7 @@ impl TxCommit for TxRxVTPR {
                     log::debug!("topo_update:{}", sym);
                     if let Some(node) = map_clone.get(&sym) {
                         // add node to egraph using native_egglog API
-                        let value = node.egglog.native_egglog(&mut ctx, &sym2value_map);
+                        let value = node.egglog.native_egglog(&ctx, &sym2value_map);
                         // store sym value pair to sym_to_value_map
                         sym2value_map.insert(sym, value);
                         log::debug!(
@@ -759,7 +760,7 @@ impl RuleRunner for TxRxVTPR {
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&mut RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
         PR::on_record_start();
@@ -1127,6 +1128,7 @@ impl ToDot for TxRxVTPR {
     }
 }
 
+#[cfg(feature = "viewer")]
 impl EGraphViewer for TxRxVTPR {
     fn egraph(&self) -> Arc<Mutex<EGraph>> {
         self.egraph.clone()

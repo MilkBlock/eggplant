@@ -14,6 +14,9 @@ pub use wrap::*;
 pub mod pat_rec;
 pub use pat_rec::*;
 
+pub mod constraint;
+pub use constraint::*;
+
 pub mod tx;
 pub mod tx_minimal;
 pub mod tx_rx_vt;
@@ -159,7 +162,9 @@ macro_rules! basic_tx_rx_vt_pr_fp {
             }
         }
         impl eggplant::wrap::NonPatRecSgl for $name {}
+        #[cfg(feature = "viewer")]
         use eggplant::eggplant_viewer::EGraphViewer;
+        #[cfg(feature = "viewer")]
         impl eggplant::eggplant_viewer::EGraphViewerSgl for $name {
             fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
                 Self::sgl().egraph()
@@ -191,7 +196,9 @@ macro_rules! basic_tx_rx_vt_pr_ap {
             }
         }
         impl eggplant::wrap::NonPatRecSgl for $name {}
+        #[cfg(feature = "viewer")]
         use eggplant::eggplant_viewer::EGraphViewer;
+        #[cfg(feature = "viewer")]
         impl eggplant::eggplant_viewer::EGraphViewerSgl for $name {
             fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
                 Self::sgl().egraph()

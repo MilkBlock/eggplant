@@ -1,4 +1,7 @@
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, etc::generate_dot_by_graph};
+use crate::wrap::{
+    EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, constraint::IntoConstraintAtoms,
+    etc::generate_dot_by_graph,
+};
 
 use super::*;
 use dashmap::DashMap;
@@ -278,6 +281,9 @@ impl NodeSetter for PatRecorder {
 impl PatRec for PatRecorder {
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
         self.add_node(node);
+    }
+    fn on_new_constraint(&self, constraint: impl IntoConstraintAtoms) {
+        println!("constraint: {:?}", constraint.into_atoms())
     }
 
     fn on_record_start(&self) {

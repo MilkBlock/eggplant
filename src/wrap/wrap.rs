@@ -1,3 +1,4 @@
+use crate::wrap::constraint::IntoConstraintAtoms;
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FromBase, QueryBuilder,
     RuleCtx, SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
@@ -222,6 +223,8 @@ pub trait VersionCtl {
 pub trait PatRec: NodeDropper + Tx {
     #[track_caller]
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
+    #[track_caller]
+    fn on_new_constraint(&self, constraint: impl IntoConstraintAtoms);
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2query(&self, pat_id: PatId) -> QueryBuilder;
@@ -232,6 +235,8 @@ pub struct PatId(pub u32);
 pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     #[track_caller]
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static));
+    #[track_caller]
+    fn on_new_constraint(constraint: impl IntoConstraintAtoms);
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2query(pat_id: PatId) -> QueryBuilder;
@@ -243,7 +248,9 @@ where
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_new_query_leaf(node);
     }
-
+    fn on_new_constraint(constraint: impl IntoConstraintAtoms) {
+        Self::sgl().on_new_constraint(constraint);
+    }
     fn on_record_start() {
         Self::sgl().on_record_start();
     }
@@ -329,7 +336,7 @@ pub trait ToEgglog {
     fn to_egglog(&self) -> EgglogAction;
     fn native_egglog(
         &self,
-        ctx: &mut RuleCtx,
+        ctx: &RuleCtx,
         sym_to_value_map: &DashMap<Sym, egglog::Value>,
     ) -> egglog::Value;
 }
@@ -878,7 +885,7 @@ pub trait FromPlainValues {
 /// Insertable and RetypeValue are quite different, Insertable is used in Union or table insert
 /// while RetypeValueonly used when you want operational structure
 pub trait Insertable<T> {
-    fn to_value(&self, ctx: &mut RuleCtx) -> Value<T>;
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T>;
 }
 pub trait RetypeValue {
     type Target;
@@ -913,45 +920,33 @@ impl<T: EgglogTy> Copy for Value<T> {}
 /// any struct implements this trait inferred to be [`Insertable`]
 pub trait BoxedBase: BoxedValue {
     type Boxed: BaseValue;
-    fn unbox(boxed: Self::Boxed, ctx: &mut RuleCtx) -> Self;
-    fn box_it(self, ctx: &mut RuleCtx) -> Self::Boxed;
+    fn unbox(boxed: Self::Boxed, ctx: &RuleCtx) -> Self;
+    fn box_it(self, ctx: &RuleCtx) -> Self::Boxed;
 }
 pub trait BoxedContainer: BoxedValue {
     type Boxed: ContainerValue;
-    fn unbox(boxed: Self::Boxed, ctx: &mut RuleCtx) -> Self;
-    fn box_it(self, ctx: &mut RuleCtx) -> Self::Boxed;
+    fn unbox(boxed: Self::Boxed, ctx: &RuleCtx) -> Self;
+    fn box_it(self, ctx: &RuleCtx) -> Self::Boxed;
 }
 
 pub trait SingleFieldVariant {}
 
 impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
-    fn to_value(&self, ctx: &mut RuleCtx) -> Value<Self> {
+    fn to_value(&self, ctx: &RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
     }
 }
 
 pub trait BoxedValue {
     type Output<'a>;
-    fn devalue<'b>(rule_ctx: &'b mut RuleCtx, value: egglog::Value) -> Self::Output<'b>;
+    fn devalue<'b>(rule_ctx: &'b RuleCtx, value: egglog::Value) -> Self::Output<'b>;
 }
-// impl<T0: ContainerValue, T: BoxedContainer<Container = T0>> BoxedValue for T {
-//     fn get(rule_ctx: &mut RuleCtx, value: egglog::Value) -> Self {
-//         let value = rule_ctx.rule_ctx.value_to_container(value);
-//         value
-//     }
-// }
-// impl<T: BoxedBase> BoxedValue for T {
-//     fn get(rule_ctx: &mut RuleCtx, value: egglog::Value) -> Self {
-//         let value = rule_ctx.rule_ctx.value_to_base(value);
-//         Self::unbox(value, rule_ctx)
-//     }
-// }
+
 type Ref<'a, T> = Box<dyn std::ops::Deref<Target = T> + 'a>;
 impl<T: EgglogTy> BoxedValue for VecContainer<T> {
-    fn devalue<'b>(rule_ctx: &'b mut RuleCtx, value: egglog::Value) -> Self::Output<'b> {
+    fn devalue<'b>(rule_ctx: &'b RuleCtx, value: egglog::Value) -> Self::Output<'b> {
         let container = rule_ctx
-            .rule_ctx
-            .value_to_container::<egglog::sort::VecContainer>(value)
+            ._devalue_container::<egglog::sort::VecContainer>(value)
             .unwrap();
         let c: Ref<'b, egglog::sort::VecContainer> = Box::new(container);
         // safety : VecContainer<T>'s memory layout is same with VecContainer so this is legal
@@ -965,9 +960,9 @@ pub struct VecContainer<T: EgglogTy + 'static> {
     pub(crate) _p: PhantomData<T>,
 }
 
-impl<T: EgglogTy + 'static> IntoIterator for &VecContainer<T> {
-    type Item = egglog::Value;
-    type IntoIter = std::slice::Iter<'_, egglog::Value>;
+impl<'a, T: EgglogTy + 'static> IntoIterator for &'a VecContainer<T> {
+    type Item = &'a egglog::Value;
+    type IntoIter = std::slice::Iter<'a, egglog::Value>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.inner.data.iter()

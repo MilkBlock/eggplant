@@ -142,17 +142,17 @@ impl FromBase<&'static str> for Literal {
 
 impl BoxedBase for f64 {
     type Boxed = Boxed<OrderedFloat<f64>>;
-    fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
+    fn box_it(self, _ctx: &super::RuleCtx) -> Self::Boxed {
         Boxed(OrderedFloat(self))
     }
-    fn unbox(boxed: Self::Boxed, _ctx: &mut super::RuleCtx) -> Self {
+    fn unbox(boxed: Self::Boxed, _ctx: &super::RuleCtx) -> Self {
         *boxed.0
     }
 }
 impl BoxedValue for f64 {
     type Output<'a> = Self;
-    fn devalue<'b>(rule_ctx: &'b mut super::RuleCtx, value: egglog::Value) -> Self::Output<'b> {
-        let value = rule_ctx.rule_ctx.value_to_base(value);
+    fn devalue<'b>(rule_ctx: &'b super::RuleCtx, value: egglog::Value) -> Self::Output<'b> {
+        let value = rule_ctx._devalue_base(value);
         Self::unbox(value, rule_ctx)
     }
 }
@@ -161,11 +161,11 @@ macro_rules! impl_simple_boxed_base_for {
         impl BoxedBase for $ty {
             type Boxed = $ty;
 
-            fn unbox(boxed: Self::Boxed, _ctx: &mut super::RuleCtx) -> Self {
+            fn unbox(boxed: Self::Boxed, _ctx: &super::RuleCtx) -> Self {
                 boxed
             }
 
-            fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
+            fn box_it(self, _ctx: &super::RuleCtx) -> Self::Boxed {
                 self
             }
         }
@@ -176,8 +176,8 @@ macro_rules! impl_simple_boxed_value_for_boxed_base {
     ($ty:ty) => {
         impl BoxedValue for $ty {
             type Output<'a> = $ty;
-            fn devalue<'b>(rule_ctx: &'b mut RuleCtx, value: egglog::Value) -> Self::Output<'b> {
-                let value = rule_ctx.rule_ctx.value_to_base(value);
+            fn devalue<'b>(rule_ctx: &'b RuleCtx, value: egglog::Value) -> Self::Output<'b> {
+                let value = rule_ctx._devalue_base(value);
                 Self::unbox(value, rule_ctx)
             }
         }
@@ -185,28 +185,28 @@ macro_rules! impl_simple_boxed_value_for_boxed_base {
 }
 impl BoxedBase for String {
     type Boxed = Boxed<String>;
-    fn unbox(boxed: Self::Boxed, _ctx: &mut super::RuleCtx) -> Self {
+    fn unbox(boxed: Self::Boxed, _ctx: &super::RuleCtx) -> Self {
         boxed.0
     }
-    fn box_it(self, _ctx: &mut super::RuleCtx) -> Self::Boxed {
+    fn box_it(self, _ctx: &super::RuleCtx) -> Self::Boxed {
         Boxed::new(self)
     }
 }
 impl BoxedValue for String {
     type Output<'a> = Self;
-    fn devalue(rule_ctx: &mut RuleCtx, value: egglog::Value) -> Self {
-        let value = rule_ctx.rule_ctx.value_to_base(value);
+    fn devalue(rule_ctx: &RuleCtx, value: egglog::Value) -> Self {
+        let value = rule_ctx._devalue_base(value);
         Self::unbox(value, rule_ctx)
     }
 }
 impl<T: EgglogTy> BoxedContainer for VecContainer<T> {
     type Boxed = egglog::sort::VecContainer;
 
-    fn unbox(boxed: Self::Boxed, _ctx: &mut RuleCtx) -> Self {
+    fn unbox(boxed: Self::Boxed, _ctx: &RuleCtx) -> Self {
         unsafe { mem::transmute(boxed) }
     }
 
-    fn box_it(self, _ctx: &mut RuleCtx) -> Self::Boxed {
+    fn box_it(self, _ctx: &RuleCtx) -> Self::Boxed {
         unsafe { mem::transmute(self) }
     }
 }

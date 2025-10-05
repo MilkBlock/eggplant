@@ -365,7 +365,7 @@ pub fn dsl(
                                 #E::ast::GenericExpr::Call(self.node.span.to_span(),"vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
-                        fn native_egglog(&mut self, ctx: &mut #W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&mut self, ctx: &#W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             let vec = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
                                 inner.into_iter().map(|x| ctx.intern_base(x)).collect()
                             }else {
@@ -391,7 +391,7 @@ pub fn dsl(
                                 #E::ast::GenericExpr::Call(self.node.span.to_span(), "vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
-                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // use ctx.insert to insert
                             let vec:Vec<#E::Value> = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
                                 inner.into_iter().map(|sym|
@@ -444,11 +444,11 @@ pub fn dsl(
                 quote! {
                     pub trait #ctx_trait_name {
                         #[track_caller]
-                        fn #insert_fn_name(&mut self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
+                        fn #insert_fn_name(&self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
                         #[track_caller]
-                        fn #insert_fn_name(&mut self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
+                        fn #insert_fn_name(&self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
                             use #W::Value;
                             use #W::Insertable;
                             self.intern_container(#field_name)
@@ -653,7 +653,7 @@ pub fn dsl(
                             }
                         }
                         impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
-                            fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
+                            fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                                 #W::Value::new(self.erase())
                             }
                         }
@@ -925,7 +925,7 @@ pub fn dsl(
                     //     }
                     // }
                     impl #W::Insertable<#name_node<(),()>> for #valued_variant_name {
-                        fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
                             #W::Value::new(self._itself.val)
                         }
                     }
@@ -944,6 +944,10 @@ pub fn dsl(
                 .variants
                 .iter()
                 .map(|x| set_fns_tt(x, &name_inner, &name_node));
+            let handle_fns = data_enum
+                .variants
+                .iter()
+                .map(|x| handle_fns_tt(x, &name_inner, &name_node));
 
             let (variant_markers, variant_names) = variant_marker_names(data_enum);
             let rule_ctx_trait_and_impl = {
@@ -1133,7 +1137,7 @@ pub fn dsl(
                                 #(#to_egglog_match_arms),*
                             }
                         }
-                        fn native_egglog(&self, ctx: &mut #W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // 使用 ctx.insert 将节点插入到 egraph 中
                             // 这里可以根据 sym_to_value_map 查询已有的值
                             let sym = self.cur_sym();
@@ -1231,9 +1235,10 @@ pub fn dsl(
                     }
                     static #name_counter: #W::TyCounter<#name_egglogty_impl<()>> = #W::TyCounter::new();
                     #(#set_fns)*
+                    #(#handle_fns)*
                 };
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
-                    fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
+                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                         #W::Value::new(self.erase())
                     }
                 }
@@ -1514,18 +1519,18 @@ pub fn base_ty(
         }
         impl #W::BoxedBase for #ident {
             type Boxed = #E::sort::Boxed<#ident>;
-            fn unbox(boxed: Self::Boxed, ctx: &mut eggplant::wrap::RuleCtx) -> Self {
+            fn unbox(boxed: Self::Boxed, ctx: &eggplant::wrap::RuleCtx) -> Self {
                 boxed.0
             }
-            fn box_it(self, ctx: &mut eggplant::wrap::RuleCtx) -> Self::Boxed {
+            fn box_it(self, ctx: &eggplant::wrap::RuleCtx) -> Self::Boxed {
                 #E::sort::Boxed(self)
             }
         }
         impl #W::BoxedValue for #ident {
             type Output<'a> = Self;
-            fn devalue<'b>(rule_ctx: &'b mut eggplant::wrap::RuleCtx, value: egglog::Value) -> Self::Output<'b>{
+            fn devalue<'b>(rule_ctx: &'b eggplant::wrap::RuleCtx, value: egglog::Value) -> Self::Output<'b>{
                 use #W::BoxedBase;
-                let value = rule_ctx.rule_ctx.value_to_base(value);
+                let value = rule_ctx._devalue_base(value);
                 Self::unbox(value, rule_ctx)
             }
         }

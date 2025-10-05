@@ -347,6 +347,53 @@ pub fn query_leaf_fns_tt(
         ref_node_list_leave_idents,
     )
 }
+pub fn handle_fns_tt(variant: &syn::Variant, name_inner: &Ident, name_node: &Ident) -> TokenStream {
+    let base_types = {
+        variant2mapped_ident_type_list_view_container_as_complex(
+            variant,
+            |_ident, ty| Some(quote! {#ty}),
+            |_ident, _ty| None,
+        )
+    };
+    let base_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |ident, _| Some(quote! {#ident}),
+        |ident, _| None,
+    );
+    let (variant_marker, _variant_name) = variant2marker_name(variant);
+
+    let handle_fns = base_types.iter().zip(base_field_idents.iter()).map(
+        |(base_type, field_ident)| {
+            let base_handle_fn_name = format_ident!("handle_{}", field_ident.to_string());
+            quote! {
+                /// set fn of node, firstly update the sym version and specified field and then informs rx what happen on this node
+                /// rx's behavior depends on whether version control is enabled
+                #[track_caller]
+                pub fn #base_handle_fn_name(&self) -> #W::HandleToConstrain<#base_type>{
+                    if let #W::TyPH::VarPH(_,_) = &self.node.ty{
+                        #W::HandleToConstrain{
+                            handle: #W::HandleTy::Base {
+                                field_name : stringify!(#field_ident),
+                                sym: self.node.sym.erase()
+                            },
+                            _p: PhantomData::<#base_type>
+                        }
+                    }else {
+                        panic!("you can't get basic handle from non-queryed or non-varianted node")
+                    }
+                }
+            }
+        },
+    );
+
+    quote! {
+        impl<T: #W::NodeDropperSgl + #W::PatRecSgl> self::#name_node<T,#variant_marker>{
+            #(
+                #handle_fns
+            )*
+        }
+    }
+}
 
 pub fn set_fns_tt(variant: &syn::Variant, name_inner: &Ident, name_node: &Ident) -> TokenStream {
     let ref_node_list = variant2ref_node_list(&variant);
@@ -436,7 +483,7 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
     (
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&mut self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 use #W::Value;
                 use #W::Insertable;
                 let key = [
@@ -450,7 +497,7 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
         },
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&mut self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
         },
         // insert_fn_name,
         // valued_ref_node_list,

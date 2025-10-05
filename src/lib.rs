@@ -7,6 +7,7 @@ pub mod derive_more {
 }
 pub use egglog;
 pub use eggplant_macros::*;
+#[cfg(feature = "viewer")]
 pub use eggplant_viewer;
 
 pub use inventory;

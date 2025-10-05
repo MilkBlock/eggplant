@@ -1,5 +1,6 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_fp;
+#[cfg(feature = "viewer")]
 use eggplant_viewer::EGraphViewerSgl;
 #[eggplant::dsl]
 pub enum Expr {
@@ -57,5 +58,6 @@ fn main() {
     MyTx::wag_to_dot("wag.dot".into());
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot".into());
+    #[cfg(feature = "viewer")]
     MyTx::view().unwrap();
 }

@@ -9,6 +9,8 @@ license.workspace = true
 readme.workspace = true
 
 [features]
+default = []
+viewer = ["eggplant-viewer"]
 
 [dependencies]
 derive_more = { version = "2.0.1", features = [
@@ -25,7 +27,8 @@ dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
-eggplant-viewer.workspace = true
+
+eggplant-viewer = { workspace = true, optional = true }
 egglog.workspace = true
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
@@ -49,7 +52,7 @@ readme = "README.md"
 authors = ["MilkBlock"]
 
 [workspace.dependencies]
-eggplant-macros = { path = "./eggplant-macros", version = "0.1.0" }
+eggplant-macros = { path = "./eggplant-macros" }
 eggplant-viewer = { path = "./eggplant-viewer" }
 # egglog = { git = "https://github.com/MilkBlock/egglog", rev = "2d9bb73" }
 egglog = { path = "../egglog" }
