@@ -1020,6 +1020,8 @@ pub fn dsl(
                     use #W::TxSgl;
                     use #W::NonPatRecSgl;
                     use #W::PatRecSgl;
+                    use #W::HandleToConstrain;
+                    use #W::HandleTy;
                     #(
                         impl<T:TxSgl + NonPatRecSgl> self::#name_node<T, #variant_markers> {
                             pub fn new(#(#new_fn_args),*) -> Self{
@@ -1029,6 +1031,15 @@ pub fn dsl(
                         impl<T:TxSgl + PatRecSgl> self::#name_node<T, #variant_markers> {
                             pub fn query(#(#query_fn_args),*) -> Self{
                                 #name_node::<T,()>::#query_fn_names(#(#query_fn_arg_idents),*)
+                            }
+                            #[track_caller]
+                            pub fn handle(&self) -> HandleToConstrain<Self>{
+                                HandleToConstrain{
+                                    handle: HandleTy::Complex {
+                                        sym: self.node.sym.erase()
+                                    },
+                                    _p: PhantomData::<Self>
+                                }
                             }
                         }
                         impl<T:TxSgl> std::ops::Deref for self::#name_node<T, #variant_markers> {
