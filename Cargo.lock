@@ -1209,7 +1209,7 @@ dependencies = [
 [[package]]
 name = "egglog"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=1832ba0#1832ba08fba3bf9203c54fc73a3c5adcbd2519bc"
+source = "git+https://github.com/MilkBlock/egglog?rev=12e9743#12e9743563b8b27d6eff28ad4cbdb427194a83da"
 dependencies = [
  "chrono",
  "clap",
@@ -1239,7 +1239,7 @@ dependencies = [
 [[package]]
 name = "egglog-add-primitive"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=1832ba0#1832ba08fba3bf9203c54fc73a3c5adcbd2519bc"
+source = "git+https://github.com/MilkBlock/egglog?rev=12e9743#12e9743563b8b27d6eff28ad4cbdb427194a83da"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -1248,7 +1248,7 @@ dependencies = [
 [[package]]
 name = "egglog-bridge"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=1832ba0#1832ba08fba3bf9203c54fc73a3c5adcbd2519bc"
+source = "git+https://github.com/MilkBlock/egglog?rev=12e9743#12e9743563b8b27d6eff28ad4cbdb427194a83da"
 dependencies = [
  "anyhow",
  "dyn-clone",
@@ -1271,7 +1271,7 @@ dependencies = [
 [[package]]
 name = "egglog-concurrency"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=1832ba0#1832ba08fba3bf9203c54fc73a3c5adcbd2519bc"
+source = "git+https://github.com/MilkBlock/egglog?rev=12e9743#12e9743563b8b27d6eff28ad4cbdb427194a83da"
 dependencies = [
  "arc-swap",
  "rayon",
@@ -1280,7 +1280,7 @@ dependencies = [
 [[package]]
 name = "egglog-core-relations"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=1832ba0#1832ba08fba3bf9203c54fc73a3c5adcbd2519bc"
+source = "git+https://github.com/MilkBlock/egglog?rev=12e9743#12e9743563b8b27d6eff28ad4cbdb427194a83da"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -1309,7 +1309,7 @@ dependencies = [
 [[package]]
 name = "egglog-numeric-id"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=1832ba0#1832ba08fba3bf9203c54fc73a3c5adcbd2519bc"
+source = "git+https://github.com/MilkBlock/egglog?rev=12e9743#12e9743563b8b27d6eff28ad4cbdb427194a83da"
 dependencies = [
  "lazy_static",
  "rayon",
@@ -1318,7 +1318,7 @@ dependencies = [
 [[package]]
 name = "egglog-union-find"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=1832ba0#1832ba08fba3bf9203c54fc73a3c5adcbd2519bc"
+source = "git+https://github.com/MilkBlock/egglog?rev=12e9743#12e9743563b8b27d6eff28ad4cbdb427194a83da"
 dependencies = [
  "crossbeam",
  "egglog-concurrency",
