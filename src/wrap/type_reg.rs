@@ -51,11 +51,17 @@ impl EgglogTy for &'static str {
 }
 /// basic type only need default [`EgglogTy::Valued`]
 /// while for EnumTy they need to specify ValuedVars when pattern recognized to be values
-pub trait EgglogTy {
+pub trait EgglogTy: 'static {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
     type Valued: FromPlainValues;
     type EnumVariantMarker: EgglogEnumVariantTy;
+    fn get_arc_sort(egraph: &EGraph) -> egglog::ArcSort {
+        egraph
+            .get_sort_by_name(Self::TY_NAME)
+            .expect("sort should be registered before get")
+            .clone()
+    }
 }
 impl<T: EgglogTy + ToStrArcSort, PR: PatRecSgl> PatVars<PR> for T {
     type Valued = T::Valued;

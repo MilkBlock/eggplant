@@ -1,12 +1,11 @@
 use crate::wrap::{
-    self, BoxedContainer, BoxedValue, EgglogContainerTy, EgglogNode, Insertable, PatRecSgl,
-    RetypeValue,
+    self, BoxedContainer, BoxedValue, EgglogContainerTy, EgglogNode, Insertable,
+    IntoConstraintFact, PatRecSgl, RetypeValue,
 };
 use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::ast::ResolvedVar;
-use egglog::prelude::{
-    EqProofId, FuncType, GenericAtom, GenericAtomTerm, Query, ResolvedCall, TermProofId,
-};
+use egglog::ast::{ResolvedExpr, ResolvedFact};
+use egglog::prelude::{EqProofId, FuncType, ResolvedCall, TermProofId};
 use egglog::{
     BaseValue,
     ast::FunctionSubtype,
@@ -168,15 +167,19 @@ pub enum RunConfig {
     Once,
 }
 
-pub struct QueryBuilder {
-    atoms: Vec<(TableName, Vec<(VarName, SortName)>)>,
+pub struct FactsBuilder {
+    table_facts: Vec<(TableName, Vec<(VarName, SortName)>)>,
+    constraint_facts: Vec<Box<dyn IntoConstraintFact>>,
 }
 pub type TableName = String;
 pub type SortName = String;
 pub type VarName = String;
-impl QueryBuilder {
+impl FactsBuilder {
     pub fn new() -> Self {
-        Self { atoms: Vec::new() }
+        Self {
+            table_facts: Vec::new(),
+            constraint_facts: Vec::new(),
+        }
     }
     fn to_resolved_var(
         egraph: &egglog::EGraph,
@@ -194,23 +197,24 @@ impl QueryBuilder {
             is_global_ref: false,
         }
     }
+    pub fn add_constraint_facts(&mut self, facts: Vec<Box<dyn IntoConstraintFact>>) {
+        self.constraint_facts.extend(facts);
+    }
     /// procedural macro call this function to add atom
-    pub fn add_atom(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
-        self.atoms.push((query_table, vars));
+    pub fn add_table_fact(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_facts.push((query_table, vars));
     }
 
-    /// for every variable we don't care whether it is selected as Action Input
-    fn build_atom(
+    /// Build comparison constraint atom
+    fn build_table_fact(
         egraph: &egglog::EGraph,
         table: TableName,
         vars: Vec<(VarName, SortName)>,
-    ) -> GenericAtom<ResolvedCall, ResolvedVar> {
-        log::debug!("table_name:{}", table);
-        log::debug!("vars::{:?}", vars);
+    ) -> ResolvedFact {
         let (output, inputs) = vars.split_last().unwrap();
-        GenericAtom {
-            span: span!(),
-            head: ResolvedCall::Func(FuncType {
+        ResolvedFact::Fact(ResolvedExpr::Call(
+            span!(),
+            ResolvedCall::Func(FuncType {
                 name: table,
                 subtype: FunctionSubtype::Constructor,
                 input: inputs
@@ -227,23 +231,78 @@ impl QueryBuilder {
                 output: Arc::new(EqSort {
                     name: output.1.clone(),
                 }),
+                recommend_var_name: Some(output.0.clone()),
             }),
-            args: vars
+            inputs
                 .iter()
                 .map(|(var_name, sort_name)| {
-                    GenericAtomTerm::Var(
+                    ResolvedExpr::Var(
                         span!(),
                         Self::to_resolved_var(&egraph, var_name.clone(), sort_name.clone()),
                     )
                 })
                 .collect(),
-        }
+        ))
     }
-    pub fn build(self, egraph: &egglog::EGraph) -> Query<ResolvedCall, ResolvedVar> {
+    // /// for every variable we don't care whether it is selected as Action Input
+    // fn _build_atom(
+    //     egraph: &egglog::EGraph,
+    //     table: TableName,
+    //     vars: Vec<(VarName, SortName)>,
+    // ) -> GenericAtom<ResolvedCall, ResolvedVar> {
+    //     log::debug!("table_name:{}", table);
+    //     log::debug!("vars::{:?}", vars);
+    //     let (output, inputs) = vars.split_last().unwrap();
+    //     GenericAtom {
+    //         span: span!(),
+    //         head: ResolvedCall::Func(FuncType {
+    //             name: table,
+    //             subtype: FunctionSubtype::Constructor,
+    //             input: inputs
+    //                 .iter()
+    //                 .map(|(_, sort_name)| {
+    //                     egraph
+    //                         .get_sort_by_name(&sort_name)
+    //                         .cloned()
+    //                         .unwrap_or(Arc::new(EqSort {
+    //                             name: sort_name.clone(),
+    //                         }) as Arc<dyn Sort>)
+    //                 })
+    //                 .collect(),
+    //             output: Arc::new(EqSort {
+    //                 name: output.1.clone(),
+    //             }),
+    //         }),
+    //         args: vars
+    //             .iter()
+    //             .map(|(var_name, sort_name)| {
+    //                 GenericAtomTerm::Var(
+    //                     span!(),
+    //                     Self::to_resolved_var(&egraph, var_name.clone(), sort_name.clone()),
+    //                 )
+    //             })
+    //             .collect(),
+    //     }
+    // }
+    // pub fn build(self, egraph: &egglog::EGraph) -> Query<ResolvedCall, ResolvedVar> {
+    //     let mut v = Vec::new();
+    //     for atom in self.table_facts {
+    //         v.push(Self::_build_atom(egraph, atom.0, atom.1));
+    //     }
+    //     // Add constraints to the query
+    //     v.extend(self.constraint_facts);
+    //     Query { atoms: v }
+    // }
+    pub fn build(self, egraph: &egglog::EGraph) -> Vec<ResolvedFact> {
         let mut v = Vec::new();
-        for atom in self.atoms {
-            v.push(Self::build_atom(egraph, atom.0, atom.1));
+        for table_fact in self.table_facts {
+            v.push(Self::build_table_fact(egraph, table_fact.0, table_fact.1));
         }
-        Query { atoms: v }
+        // Add constraints to the query
+        for constraint_fact in self.constraint_facts {
+            v.extend(constraint_fact.into_constraint_fact(egraph));
+        }
+        v
     }
+    pub fn build_fact() {}
 }

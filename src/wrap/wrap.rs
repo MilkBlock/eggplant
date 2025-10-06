@@ -1,6 +1,6 @@
-use crate::wrap::constraint::IntoConstraintAtoms;
+use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
-    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FromBase, QueryBuilder,
+    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
     RuleCtx, SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
 };
 use dashmap::DashMap;
@@ -224,10 +224,10 @@ pub trait PatRec: NodeDropper + Tx {
     #[track_caller]
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
-    fn on_new_constraint(&self, constraint: impl IntoConstraintAtoms);
+    fn on_new_constraint(&self, constraint: impl IntoConstraintFact);
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
-    fn pat2query(&self, pat_id: PatId) -> QueryBuilder;
+    fn pat2query(&self, pat_id: PatId) -> FactsBuilder;
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PatId(pub u32);
@@ -236,10 +236,10 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     #[track_caller]
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static));
     #[track_caller]
-    fn on_new_constraint(constraint: impl IntoConstraintAtoms);
+    fn on_new_constraint(constraint: impl IntoConstraintFact);
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
-    fn pat2query(pat_id: PatId) -> QueryBuilder;
+    fn pat2query(pat_id: PatId) -> FactsBuilder;
 }
 impl<T: SingletonGetter> PatRecSgl for T
 where
@@ -248,7 +248,7 @@ where
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_new_query_leaf(node);
     }
-    fn on_new_constraint(constraint: impl IntoConstraintAtoms) {
+    fn on_new_constraint(constraint: impl IntoConstraintFact) {
         Self::sgl().on_new_constraint(constraint);
     }
     fn on_record_start() {
@@ -259,7 +259,7 @@ where
         Self::sgl().on_record_end(pat_vars)
     }
 
-    fn pat2query(pat_id: PatId) -> QueryBuilder {
+    fn pat2query(pat_id: PatId) -> FactsBuilder {
         Self::sgl().pat2query(pat_id)
     }
 }
@@ -377,7 +377,7 @@ pub trait EgglogNode: ToEgglog + Any + EValue + Send + Sync {
     ) -> TermId;
 
     #[track_caller]
-    fn add_atom(&self, query_builder: &mut QueryBuilder);
+    fn add_table_fact(&self, query_builder: &mut FactsBuilder);
 }
 pub trait VarsCollector {
     /// 1. if self is a typed placeholder [`TyPH::VarPH`], collect itself and its basic vars

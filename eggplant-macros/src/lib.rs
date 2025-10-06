@@ -617,7 +617,7 @@ pub fn dsl(
                                 panic!()
                             }
                             #[track_caller]
-                            fn add_atom( &self, query_builder:&mut #W::QueryBuilder) {
+                            fn add_table_fact( &self, query_builder:&mut #W::FactsBuilder) {
                                 use #W::EgglogTy;
 
                             }
@@ -776,10 +776,10 @@ pub fn dsl(
                 .variants
                 .iter()
                 .map(|x| to_term_match_arms_ts(x, &name_inner));
-            let add_atom_match_arms = data_enum
+            let add_table_fact_match_arms = data_enum
                 .variants
                 .iter()
-                .map(|x| add_atom_match_arms_ts(x, &name_inner))
+                .map(|x| add_table_fact_match_arms_ts(x, &name_inner))
                 .collect::<Vec<_>>();
             let collect_var_match_arms = data_enum
                 .variants
@@ -944,10 +944,14 @@ pub fn dsl(
                 .variants
                 .iter()
                 .map(|x| set_fns_tt(x, &name_inner, &name_node));
-            let handle_fns = data_enum
+            let handle_getter_fns = data_enum
                 .variants
                 .iter()
-                .map(|x| handle_fns_tt(x, &name_inner, &name_node));
+                .map(|x| handle_getter_fns_tt(x, &name_inner, &name_node));
+            let constraint_fns = data_enum
+                .variants
+                .iter()
+                .map(|x| query_constrain_fns_tt(x, &name_inner, &name_node));
 
             let (variant_markers, variant_names) = variant_marker_names(data_enum);
             let rule_ctx_trait_and_impl = {
@@ -1080,19 +1084,19 @@ pub fn dsl(
                             }
                         }
                         #[track_caller]
-                        fn add_atom(
+                        fn add_table_fact(
                             &self,
-                            query_builder:&mut #W::QueryBuilder
+                            query_builder:&mut #W::FactsBuilder
                         ) {
                             use #W::EgglogTy;
                             match &self.node.ty{
                                 #W::TyPH::Ty(_) => {
-                                        panic!("can't call add_atom on non-pattern-def EgglogNode")
+                                        panic!("can't call add_fact on non-pattern-def EgglogNode")
                                 },
                                 #W::TyPH::VarPH(dis, succs) => {
                                     let mut succs = succs.iter().cloned();
                                     match dis{
-                                        #(#add_atom_match_arms),*
+                                        #(#add_table_fact_match_arms),*
                                     }
                                 },
                                 #W::TyPH::PH => {
@@ -1235,7 +1239,8 @@ pub fn dsl(
                     }
                     static #name_counter: #W::TyCounter<#name_egglogty_impl<()>> = #W::TyCounter::new();
                     #(#set_fns)*
-                    #(#handle_fns)*
+                    #(#handle_getter_fns)*
+                    #(#constraint_fns)*
                 };
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
                     fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
@@ -1428,6 +1433,12 @@ pub fn pat_vars(
                             #(#field_idents,)*
                             _p: std::marker::PhantomData
                         }
+                    }
+                }
+                impl #impl_generics #ident #ty_generics #where_clause{
+                    fn assert(self, constraint: impl #W::IntoConstraintFact) -> Self {
+                        PR::on_new_constraint(constraint);
+                        self
                     }
                 }
             }

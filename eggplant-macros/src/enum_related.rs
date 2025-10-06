@@ -32,7 +32,7 @@ pub fn to_term_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> Toke
     }}
 }
 
-pub fn add_atom_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
+pub fn add_table_fact_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
     let _variant_idents = variant2field_ident(variant);
     let variant_name = &variant.ident;
     let var_names = variant2mapped_ident_type_list(
@@ -49,7 +49,7 @@ pub fn add_atom_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> Tok
 
     quote! {
     #discriminant_enum_name::#variant_name => {
-        query_builder.add_atom(
+        query_builder.add_table_fact(
             stringify!(#variant_name).to_string(),
             vec![
                 #((#var_names, #sort_names),)*
@@ -347,7 +347,11 @@ pub fn query_leaf_fns_tt(
         ref_node_list_leave_idents,
     )
 }
-pub fn handle_fns_tt(variant: &syn::Variant, name_inner: &Ident, name_node: &Ident) -> TokenStream {
+pub fn query_constrain_fns_tt(
+    variant: &syn::Variant,
+    _name_inner: &Ident,
+    name_node: &Ident,
+) -> TokenStream {
     let base_types = {
         variant2mapped_ident_type_list_view_container_as_complex(
             variant,
@@ -358,7 +362,53 @@ pub fn handle_fns_tt(variant: &syn::Variant, name_inner: &Ident, name_node: &Ide
     let base_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |ident, _| Some(quote! {#ident}),
-        |ident, _| None,
+        |_ident, _| None,
+    );
+    let (variant_marker, _variant_name) = variant2marker_name(variant);
+
+    let handle_fns =
+        base_types
+            .iter()
+            .zip(base_field_idents.iter())
+            .map(|(base_type, field_ident)| {
+                let constrain_fn_name = format_ident!("{}", field_ident.to_string());
+                let handle_fn_name = format_ident!("handle_{}", field_ident.to_string());
+                quote! {
+                    /// set fn of node, firstly update the sym version and specified field and then informs rx what happen on this node
+                    /// rx's behavior depends on whether version control is enabled
+                    #[track_caller]
+                    pub fn #constrain_fn_name(self, #field_ident:&#base_type) -> Self{
+                        use eggplant::wrap::PEq;
+                        PR::on_new_constraint(self.#handle_fn_name().eq(#field_ident));
+                        self
+                    }
+                }
+            });
+
+    quote! {
+        impl<PR: #W::NodeDropperSgl + #W::PatRecSgl> self::#name_node<PR,#variant_marker>{
+            #(
+                #handle_fns
+            )*
+        }
+    }
+}
+pub fn handle_getter_fns_tt(
+    variant: &syn::Variant,
+    _name_inner: &Ident,
+    name_node: &Ident,
+) -> TokenStream {
+    let base_types = {
+        variant2mapped_ident_type_list_view_container_as_complex(
+            variant,
+            |_ident, ty| Some(quote! {#ty}),
+            |_ident, _ty| None,
+        )
+    };
+    let base_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |ident, _| Some(quote! {#ident}),
+        |_ident, _| None,
     );
     let (variant_marker, _variant_name) = variant2marker_name(variant);
 
@@ -387,7 +437,7 @@ pub fn handle_fns_tt(variant: &syn::Variant, name_inner: &Ident, name_node: &Ide
     );
 
     quote! {
-        impl<T: #W::NodeDropperSgl + #W::PatRecSgl> self::#name_node<T,#variant_marker>{
+        impl<PR: #W::NodeDropperSgl + #W::PatRecSgl> self::#name_node<PR,#variant_marker>{
             #(
                 #handle_fns
             )*

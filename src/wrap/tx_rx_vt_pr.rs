@@ -8,7 +8,6 @@ use core::panic;
 use dashmap::DashMap;
 use egglog::{
     EGraph, PrettyPrintConfig, RunReport, SerializeConfig,
-    core::Query,
     prelude::{EqProofId, ProofStore, TermProofId, add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
@@ -589,10 +588,10 @@ impl TxCommit for TxRxVTPR {
         // sue add_rule API to create rule
         let mut egraph = self.egraph.lock().unwrap();
         egglog::prelude::add_ruleset(&mut egraph, &ruleset_name).unwrap();
-        let rule_rst = egraph.raw_add_rule_with_name(
+        let rule_rst = egraph.raw_resolved_rule_add_rule_with_name(
             format!("commit{}", self.commit_counter.lock().unwrap()),
             ruleset_name.to_string(),
-            Query::default(),
+            vec![],
             &[],
             move |ctx, _| {
                 let ctx = RuleCtx::new(ctx);
@@ -767,15 +766,15 @@ impl RuleRunner for TxRxVTPR {
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
 
-        let query = PR::pat2query(pat_id).build(&egraph);
+        let facts = PR::pat2query(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
-        log::debug!("{:#?}", query);
+        log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);
 
-        let rst = egraph.raw_add_rule_with_name(
+        let rst = egraph.raw_resolved_rule_add_rule_with_name(
             rule_name.to_string(),
             rule_set.0.to_string(),
-            query,
+            facts,
             vars.as_slice(),
             move |ctx, values| {
                 let mut ctx = RuleCtx::new(ctx);
