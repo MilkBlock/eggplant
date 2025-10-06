@@ -41,5 +41,5 @@ fn main() {
     );
 
     MyTx::run_ruleset(ruleset, RunConfig::Once);
-    MyTx::egraph_to_dot("egraph.dot".into());
+    MyTx::egraph_to_dot("egraph.dot");
 }

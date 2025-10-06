@@ -20,7 +20,7 @@ use std::{
     marker::PhantomData,
     mem,
     panic::Location,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, atomic::AtomicU32},
 };
 use strum::IntoDiscriminant;
@@ -1054,34 +1054,34 @@ where
 
 pub type SerializedPetGraph = petgraph::Graph<String, String>;
 pub trait ToDotSgl {
-    fn egraph_to_dot(path: PathBuf);
-    fn wag_to_dot(path: PathBuf);
+    fn egraph_to_dot(path: impl AsRef<Path>);
+    fn wag_to_dot(path: impl AsRef<Path>);
     fn wag_to_petgraph() -> SerializedPetGraph;
-    fn proof_to_dot(path: PathBuf);
+    fn proof_to_dot(path: impl AsRef<Path>);
     fn table_view();
 }
 pub trait ToDot {
-    fn egraph_to_dot(&self, path: PathBuf);
-    fn wag_to_dot(&self, path: PathBuf);
+    fn egraph_to_dot(&self, path: impl AsRef<Path>);
+    fn wag_to_dot(&self, path: impl AsRef<Path>);
     fn wag_to_petgraph(&self) -> SerializedPetGraph;
-    fn proof_to_dot(&self, path: PathBuf);
+    fn proof_to_dot(&self, path: impl AsRef<Path>);
     fn table_view(&self);
 }
 impl<S: SingletonGetter> ToDotSgl for S
 where
     S::RetTy: ToDot + 'static,
 {
-    fn egraph_to_dot(path: PathBuf) {
+    fn egraph_to_dot(path: impl AsRef<Path>) {
         Self::sgl().egraph_to_dot(path);
     }
 
-    fn wag_to_dot(path: PathBuf) {
+    fn wag_to_dot(path: impl AsRef<Path>) {
         Self::sgl().wag_to_dot(path);
     }
     fn wag_to_petgraph() -> SerializedPetGraph {
         Self::sgl().wag_to_petgraph()
     }
-    fn proof_to_dot(path: PathBuf) {
+    fn proof_to_dot(path: impl AsRef<Path>) {
         Self::sgl().proof_to_dot(path);
     }
     fn table_view() {

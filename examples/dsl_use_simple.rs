@@ -35,7 +35,7 @@ fn main() {
     };
     root.commit();
     println!("push elpased: {:?}", a.elapsed());
-    MyTx::sgl().to_dot("egraph.dot".into());
+    MyTx::sgl().to_dot("egraph.dot");
 }
 
 basic_tx_vt!(MyTx);

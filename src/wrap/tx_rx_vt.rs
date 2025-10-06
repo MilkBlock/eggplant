@@ -12,7 +12,7 @@ use petgraph::{
     dot::{Config, Dot},
     prelude::{StableDiGraph, StableGraph},
 };
-use std::{collections::HashMap, fs::File, io::Write, path::PathBuf, sync::Mutex};
+use std::{collections::HashMap, fs::File, io::Write, path::{Path, PathBuf}, sync::Mutex};
 
 pub struct TxRxVT {
     pub egraph: Mutex<EGraph>,
@@ -644,10 +644,10 @@ impl NodeSetter for TxRxVT {
 }
 
 impl ToDot for TxRxVT {
-    fn egraph_to_dot(&self, path: PathBuf) {
+    fn egraph_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
-        let dot_path = path;
+        let dot_path = path.as_ref().to_path_buf();
         serialized
             .egraph
             .to_dot_file(dot_path.clone())
@@ -655,7 +655,7 @@ impl ToDot for TxRxVT {
     }
 
     /// transform WorkAreaGraph into dot file
-    fn wag_to_dot(&self, path: PathBuf) {
+    fn wag_to_dot(&self, path: impl AsRef<Path>) {
         pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
             g: &StableGraph<N, E, Ty>,
             path: PathBuf,
@@ -667,10 +667,10 @@ impl ToDot for TxRxVT {
             f.write_all(dot_string.as_bytes()).expect("Failed to write");
         }
         let g = self.build_petgraph();
-        generate_dot_by_graph(&g, path, &[]);
+        generate_dot_by_graph(&g, path.as_ref().to_path_buf(), &[]);
     }
 
-    fn proof_to_dot(&self, path: PathBuf) {
+    fn proof_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
         let proof_graph = &egraph.backend.get_proof_graph().unwrap();
 
@@ -684,7 +684,7 @@ impl ToDot for TxRxVT {
             let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
             f.write_all(dot_string.as_bytes()).expect("Failed to write");
         }
-        generate_dot_by_graph(&proof_graph, path, &[]);
+        generate_dot_by_graph(&proof_graph, path.as_ref().to_path_buf(), &[]);
     }
 
     fn table_view(&self) {

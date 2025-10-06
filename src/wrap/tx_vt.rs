@@ -8,7 +8,7 @@ use egglog::{
     EGraph, SerializeConfig,
     util::{IndexMap, IndexSet},
 };
-use std::{collections::HashMap, path::PathBuf, sync::Mutex};
+use std::{collections::HashMap, path::{Path, PathBuf}, sync::Mutex};
 
 #[derive(Default)]
 pub struct TxVT {
@@ -34,10 +34,10 @@ pub enum TopoDirection {
 }
 /// Tx with version ctl feature
 impl TxVT {
-    pub fn to_dot(&self, file_name: PathBuf) {
+    pub fn to_dot(&self, file_name: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
-        let dot_path = file_name.with_extension("dot");
+        let dot_path = file_name.as_ref().with_extension("dot");
         serialized
             .egraph
             .to_dot_file(dot_path.clone())

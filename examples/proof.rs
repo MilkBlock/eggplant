@@ -63,9 +63,9 @@ fn main() {
     MyTx::sgl().on_pull_value(MyTx::value(&sum));
     println!("value of num3 is {:?}", MyTx::value(&num_3));
     MyTx::sgl().on_pull_value(MyTx::value(&num_3));
-    MyTx::egraph_to_dot("egraph.dot".into());
-    MyTx::wag_to_dot("wag.dot".into());
-    MyTx::proof_to_dot("proof.dot".into());
+    MyTx::egraph_to_dot("egraph.dot");
+    MyTx::wag_to_dot("wag.dot");
+    MyTx::proof_to_dot("proof.dot");
 
     MyTx::explain(Value::<i64>::new(egglog::Value::new_const(4)));
     // let store = MyTx::sgl().proof_store.lock().unwrap();

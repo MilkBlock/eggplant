@@ -35,10 +35,10 @@ fn main() {
     node2.set_v(6).stage();
     root.commit();
     Selected::<MyTx>::set((), &root);
-    MyTx::sgl().to_dot("egraph.dot".into());
+    MyTx::sgl().to_dot("egraph.dot");
     root.locate_latest();
     Selected::<MyTx>::set((), &root);
-    MyTx::sgl().to_dot("egraph1.dot".into());
+    MyTx::sgl().to_dot("egraph1.dot");
 }
 
 basic_tx_vt!(MyTx);

@@ -32,7 +32,7 @@ fn main() {
     node2.set_v(6);
     println!("node2's current version is {}", node2.cur_sym());
     F::set((), &root);
-    MyTx::sgl().to_dot("egraph.dot".into());
+    MyTx::sgl().to_dot("egraph.dot");
 }
 
 basic_tx_no_vt!(MyTx);

@@ -70,9 +70,9 @@ fn main() {
     expr2.pull();
 
     // Generate graph files
-    MyTx::egraph_to_dot("egraph_lt100.dot".into());
-    MyTx::wag_to_dot("wag_lt100.dot".into());
-    MyPatRec::sgl().pats_to_dot("pats_lt100.dot".into());
+    MyTx::egraph_to_dot("egraph_lt100.dot");
+    MyTx::wag_to_dot("wag_lt100.dot");
+    MyPatRec::sgl().pats_to_dot("pats_lt100.dot");
 
     println!("\nTest completed!");
     println!("- expr1 (30 + 40): should be constant folded to 70, because both operands are < 100");

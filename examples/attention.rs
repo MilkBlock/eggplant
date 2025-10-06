@@ -133,11 +133,11 @@ fn main() {
 
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("{:#?}", report);
-    MyTx::egraph_to_dot("egraph.dot".into());
+    MyTx::egraph_to_dot("egraph.dot");
 
     let val = MyTx::value(&max);
     MyTx::sgl().on_pull_value(val);
-    MyTx::wag_to_dot("wag.dot".into());
+    MyTx::wag_to_dot("wag.dot");
     a::<MyTx>();
 }
 

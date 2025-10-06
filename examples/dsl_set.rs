@@ -24,7 +24,7 @@ fn main() {
     let node3 = Value::new(1, &node2);
     let _root = V::new(&VecCon::new(vec![&node1, &node2, &node3]));
     node2.set_v(5);
-    MyTx::sgl().to_dot("egraph.dot".into());
+    MyTx::sgl().to_dot("egraph.dot");
 }
 
 basic_tx_no_vt!(MyTx);

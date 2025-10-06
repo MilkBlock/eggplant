@@ -21,7 +21,7 @@ use std::{
     collections::HashMap,
     fs::File,
     io::Write,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex},
 };
 
@@ -875,17 +875,17 @@ impl RuleRunner for TxRxVTPR {
 
 impl ToDot for TxRxVTPR {
     /// transform EGraph into dot file
-    fn egraph_to_dot(&self, path: PathBuf) {
+    fn egraph_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
         let serialized = egraph.serialize_tracing(SerializeConfig::default());
-        let dot_path = path;
+        let dot_path = path.as_ref().to_path_buf();
         serialized
             .to_dot_file(dot_path.clone())
             .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
     }
 
     /// transform WorkAreaGraph into dot file with enhanced visualization
-    fn wag_to_dot(&self, path: PathBuf) {
+    fn wag_to_dot(&self, path: impl AsRef<Path>) {
         use graphviz_rust::attributes::NodeAttributes;
         use graphviz_rust::{
             attributes::*,
@@ -1098,10 +1098,10 @@ impl ToDot for TxRxVTPR {
         let dot_string = graph.print(&mut PrinterContext::default());
 
         // 8. Write to file
-        std::fs::write(path, dot_string).expect("Failed to write dot file");
+        std::fs::write(path.as_ref(), dot_string).expect("Failed to write dot file");
     }
 
-    fn proof_to_dot(&self, path: PathBuf) {
+    fn proof_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
         let proof_graph = egraph.backend.get_proof_graph().unwrap();
 
@@ -1115,7 +1115,7 @@ impl ToDot for TxRxVTPR {
             let dot_string = format!("{:?}", petgraph::dot::Dot::with_config(&g, &graph_config));
             f.write_all(dot_string.as_bytes()).expect("Failed to write");
         }
-        generate_dot_by_graph(&proof_graph, path, &[]);
+        generate_dot_by_graph(&proof_graph, path.as_ref().to_path_buf(), &[]);
     }
     fn table_view(&self) {
         let egraph = self.egraph.lock().unwrap();

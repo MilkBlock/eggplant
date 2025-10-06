@@ -10,7 +10,7 @@ use egglog::util::IndexSet;
 use petgraph::prelude::StableDiGraph;
 use std::{
     collections::HashMap,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Mutex, atomic::AtomicU32},
 };
 
@@ -127,9 +127,9 @@ impl PatRecorder {
         }
         g
     }
-    pub fn pats_to_dot(&self, path: PathBuf) {
+    pub fn pats_to_dot(&self, path: impl AsRef<Path>) {
         let g = self.wag_build_petgraph();
-        generate_dot_by_graph(&g, path, &[]);
+        generate_dot_by_graph(&g, path.as_ref().to_path_buf(), &[]);
     }
 
     /// topo all input nodes with specified direction

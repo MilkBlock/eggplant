@@ -63,5 +63,5 @@ fn main() {
     });
     expr.commit();
     MyTx::run_ruleset(ruleset, RunConfig::Sat);
-    MyTx::egraph_to_dot("egraph.dot".into());
+    MyTx::egraph_to_dot("egraph.dot");
 }

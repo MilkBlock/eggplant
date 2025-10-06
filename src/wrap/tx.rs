@@ -4,7 +4,7 @@ use egglog::ast::Command;
 use super::*;
 use dashmap::DashMap;
 use egglog::{EGraph, SerializeConfig, util::IndexSet};
-use std::{path::PathBuf, sync::Mutex};
+use std::{path::{Path, PathBuf}, sync::Mutex};
 
 #[allow(unused)]
 pub struct TxNoVT {
@@ -30,10 +30,10 @@ impl TxNoVT {
     pub fn new() -> Self {
         Self::new_with_type_defs(EgglogTypeRegistry::collect_type_defs())
     }
-    pub fn to_dot(&self, file_name: PathBuf) {
+    pub fn to_dot(&self, file_name: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
-        let dot_path = file_name.with_extension("dot");
+        let dot_path = file_name.as_ref().with_extension("dot");
         serialized
             .egraph
             .to_dot_file(dot_path.clone())

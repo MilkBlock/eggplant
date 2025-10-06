@@ -1,7 +1,7 @@
 use super::*;
 use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use egglog::{EGraph, SerializeConfig, ast::Command};
-use std::{path::PathBuf, sync::Mutex};
+use std::{path::{Path, PathBuf}, sync::Mutex};
 
 pub struct TxMinimal {
     egraph: Mutex<EGraph>,
@@ -22,10 +22,10 @@ impl TxMinimal {
     pub fn new() -> Self {
         Self::new_with_type_defs(EgglogTypeRegistry::collect_type_defs())
     }
-    pub fn to_dot(&self, file_name: PathBuf) {
+    pub fn to_dot(&self, file_name: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
         let serialized = egraph.serialize(SerializeConfig::default());
-        let dot_path = file_name.with_extension("dot");
+        let dot_path = file_name.as_ref().with_extension("dot");
         serialized
             .egraph
             .to_dot_file(dot_path.clone())
