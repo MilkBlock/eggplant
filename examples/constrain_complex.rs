@@ -65,8 +65,6 @@ fn main() {
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("{:#?}", report);
     MyTx::table_view();
-    // MyTx::explain_eq_raw(6, 4);
-    // MyTx::explain_raw(5);
 
     expr.pull();
     MyTx::egraph_to_dot("egraph.dot".into());

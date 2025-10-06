@@ -793,7 +793,7 @@ pub fn dsl(
                 let insert_fn_name =
                     format_ident!("insert_{}", variant_name.to_string().to_snake_case());
 
-                // 使用 variant2mapped_ident_type_list 来处理字段映射
+                // Use variant2mapped_ident_type_list to handle field mapping
                 let get_value_calls = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
                     |ident, _| {
@@ -1153,18 +1153,18 @@ pub fn dsl(
                             }
                         }
                         fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
-                            // 使用 ctx.insert 将节点插入到 egraph 中
-                            // 这里可以根据 sym_to_value_map 查询已有的值
+                            // Use ctx.insert to insert nodes into egraph
+                            // Here we can query existing values based on sym_to_value_map
                             let sym = self.cur_sym();
                             if let Some(value) = sym_to_value_map.get(&sym) {
-                                // 如果 sym 已经在 map 中，返回对应的值
+                                // If sym is already in map, return corresponding value
                                 value.clone()
                             } else {
-                                // 否则，使用 ctx.insert 插入新节点
-                                // 根据节点类型调用相应的 insert 方法
+                                // Otherwise, use ctx.insert to insert new node
+                                // Call corresponding insert method based on node type
                                 match &*self.node.ty.unwrap_ref() {
                                     inner =>
-                                        // 动态调用相应的 insert 方法
+                                        // Dynamically call corresponding insert method
                                         match inner {
                                             #(#native_egglog_match_arms),*
                                     }

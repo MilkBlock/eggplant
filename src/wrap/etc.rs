@@ -60,7 +60,7 @@ pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeTyp
     let dot_name = path.clone();
     let mut f = File::create(dot_name.clone()).unwrap();
     let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
-    f.write_all(dot_string.as_bytes()).expect("写入失败");
+    f.write_all(dot_string.as_bytes()).expect("Failed to write");
 }
 pub(crate) fn quote(s: &str) -> String {
     format!("{:?}", s)

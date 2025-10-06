@@ -465,7 +465,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
 
         let mut g = Graph::new(StableGraph::default());
 
-        // 创建10个节点
+        // Create 10 nodes
         let nodes: Vec<_> = (0..10)
             .map(|i| {
                 g.add_node(ElkNode {
@@ -480,7 +480,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             })
             .collect();
 
-        // 创建20条边，构建一个复杂的连接模式
+        // Create 20 edges to build a complex connection pattern
         let edges = vec![
             (0, 1),
             (0, 2),

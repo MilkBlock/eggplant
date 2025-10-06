@@ -327,7 +327,7 @@ impl TxRxVT {
         next_syms
     }
     pub fn build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
-        // 1. 收集所有节点
+        // 1. Collect all nodes
         let v = self
             .map
             .iter()
@@ -335,7 +335,7 @@ impl TxRxVT {
             .collect::<Vec<_>>();
         let mut g = StableDiGraph::new();
         let mut idxs = Vec::new();
-        // 2. 建立 WorkAreaNode 的 cur_sym 到 petgraph::NodeIndex 的映射
+        // 2. Build mapping from WorkAreaNode cur_sym to petgraph::NodeIndex
         use std::collections::HashMap;
         let mut sym2idx = HashMap::new();
         log::debug!("map:{:?}", self.map);
@@ -345,7 +345,7 @@ impl TxRxVT {
             sym2idx.insert(node.egglog.cur_sym(), idx);
             log::debug!("sym2idx insert {}", node.egglog.cur_sym());
         }
-        // 3. 添加边（succs）
+        // 3. Add edges (succs)
         for node in &v {
             let from = node.egglog.cur_sym();
             let from_idx = sym2idx[&from];
@@ -664,7 +664,7 @@ impl ToDot for TxRxVT {
             let dot_name = path.clone();
             let mut f = File::create(dot_name.clone()).unwrap();
             let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
-            f.write_all(dot_string.as_bytes()).expect("写入失败");
+            f.write_all(dot_string.as_bytes()).expect("Failed to write");
         }
         let g = self.build_petgraph();
         generate_dot_by_graph(&g, path, &[]);
@@ -682,7 +682,7 @@ impl ToDot for TxRxVT {
             let dot_name = name.clone();
             let mut f = File::create(dot_name.clone()).unwrap();
             let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
-            f.write_all(dot_string.as_bytes()).expect("写入失败");
+            f.write_all(dot_string.as_bytes()).expect("Failed to write");
         }
         generate_dot_by_graph(&proof_graph, path, &[]);
     }

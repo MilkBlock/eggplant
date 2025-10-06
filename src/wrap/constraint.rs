@@ -48,6 +48,25 @@ pub trait PEq {
         other: impl AsHandle<Target = T2>,
     ) -> NEConstraint<Self::SelfEgglogTy, T2>;
 }
+pub trait Compare {
+    type SelfEgglogTy: EgglogTy;
+    fn lt<T2: EgglogTy>(
+        &self,
+        other: impl AsHandle<Target = T2>,
+    ) -> LtConstraint<Self::SelfEgglogTy, T2>;
+    fn le<T2: EgglogTy>(
+        &self,
+        other: impl AsHandle<Target = T2>,
+    ) -> LeConstraint<Self::SelfEgglogTy, T2>;
+    fn gt<T2: EgglogTy>(
+        &self,
+        other: impl AsHandle<Target = T2>,
+    ) -> GtConstraint<Self::SelfEgglogTy, T2>;
+    fn ge<T2: EgglogTy>(
+        &self,
+        other: impl AsHandle<Target = T2>,
+    ) -> GeConstraint<Self::SelfEgglogTy, T2>;
+}
 #[derive(derive_more::Debug, Clone)]
 pub struct EqConstraint<T1: EgglogTy, T2: EgglogTy> {
     a: HandleToConstrain<T1>,
@@ -58,6 +77,22 @@ pub struct NEConstraint<T1: EgglogTy, T2: EgglogTy> {
     a: HandleToConstrain<T1>,
     b: HandleToConstrain<T2>,
 }
+
+// Macro definition: generate constraint structs
+macro_rules! define_constraint_structs {
+    ($($name:ident),* $(,)?) => {
+        $(
+            #[derive(derive_more::Debug, Clone)]
+            pub struct $name<T1: EgglogTy, T2: EgglogTy> {
+                a: HandleToConstrain<T1>,
+                b: HandleToConstrain<T2>,
+            }
+        )*
+    };
+}
+
+// Use macro to generate all constraint structs
+define_constraint_structs! { LtConstraint, LeConstraint, GtConstraint, GeConstraint }
 impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for EqConstraint<T1, T2> {
     fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<ResolvedFact> {
         vec![ResolvedFact::Eq(
@@ -65,7 +100,7 @@ impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for EqConstraint<T1, T2> {
             self.a.to_resolved_expr(egraph),
             self.b.to_resolved_expr(egraph),
         )]
-        // 生成一个 atom 这个atom 是Eq
+        // Generate an atom, this atom is Eq
     }
 }
 impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for NEConstraint<T1, T2> {
@@ -85,6 +120,39 @@ impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for NEConstraint<T1, T2> {
         ))]
     }
 }
+
+// Macro definition: generate IntoConstraintFact implementations
+macro_rules! impl_into_constraint_fact {
+    ($($constraint:ident => $op:literal),* $(,)?) => {
+        $(
+            impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for $constraint<T1, T2> {
+                fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<ResolvedFact> {
+                    let op = egraph.get_primitive($op).unwrap()[0].clone();
+                    vec![ResolvedFact::Fact(ResolvedExpr::Call(
+                        span!(),
+                        ResolvedCall::Primitive(SpecializedPrimitive {
+                            primitive: op,
+                            input: vec![T1::get_arc_sort(egraph), T2::get_arc_sort(egraph)],
+                            output: egraph.get_sort_by_name("Unit").unwrap().clone(),
+                        }),
+                        vec![
+                            self.a.to_resolved_expr(egraph),
+                            self.b.to_resolved_expr(egraph),
+                        ],
+                    ))]
+                }
+            }
+        )*
+    };
+}
+
+// Use macro to generate all IntoConstraintFact implementations
+impl_into_constraint_fact! {
+    LtConstraint => "<",
+    LeConstraint => "<=",
+    GtConstraint => ">",
+    GeConstraint => ">="
+}
 impl<T1: EgglogTy> PEq for HandleToConstrain<T1> {
     type SelfEgglogTy = T1;
     fn eq<T2: EgglogTy>(&self, other: impl AsHandle<Target = T2>) -> EqConstraint<T1, T2> {
@@ -103,6 +171,55 @@ impl<T1: EgglogTy> PEq for HandleToConstrain<T1> {
         }
     }
 }
+
+// Macro definition: generate Compare trait implementations
+macro_rules! impl_compare_for_type {
+    ($type:ty) => {
+        impl Compare for HandleToConstrain<$type> {
+            type SelfEgglogTy = $type;
+            fn lt<T2: EgglogTy>(
+                &self,
+                other: impl AsHandle<Target = T2>,
+            ) -> LtConstraint<$type, T2> {
+                LtConstraint {
+                    a: self.clone(),
+                    b: other.as_handle().clone(),
+                }
+            }
+            fn le<T2: EgglogTy>(
+                &self,
+                other: impl AsHandle<Target = T2>,
+            ) -> LeConstraint<$type, T2> {
+                LeConstraint {
+                    a: self.clone(),
+                    b: other.as_handle().clone(),
+                }
+            }
+            fn gt<T2: EgglogTy>(
+                &self,
+                other: impl AsHandle<Target = T2>,
+            ) -> GtConstraint<$type, T2> {
+                GtConstraint {
+                    a: self.clone(),
+                    b: other.as_handle().clone(),
+                }
+            }
+            fn ge<T2: EgglogTy>(
+                &self,
+                other: impl AsHandle<Target = T2>,
+            ) -> GeConstraint<$type, T2> {
+                GeConstraint {
+                    a: self.clone(),
+                    b: other.as_handle().clone(),
+                }
+            }
+        }
+    };
+}
+
+// Use macro to generate Compare implementations for numeric types
+impl_compare_for_type!(i64);
+impl_compare_for_type!(f64);
 pub trait ConstrainClosure<T: EgglogTy, C: IntoConstraintFact>:
     Fn(HandleToConstrain<T>) -> C
 {
@@ -114,7 +231,7 @@ pub enum HandleTy {
     Complex { sym: Sym },
     Literal { lit: Literal },
 }
-/// hanle used to generate constraint fact
+/// Handle used to generate constraint fact
 #[derive(derive_more::Debug)]
 pub struct HandleToConstrain<T: EgglogTy> {
     pub handle: HandleTy,

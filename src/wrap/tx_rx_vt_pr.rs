@@ -1113,7 +1113,7 @@ impl ToDot for TxRxVTPR {
             let dot_name = name.clone();
             let mut f = File::create(dot_name.clone()).unwrap();
             let dot_string = format!("{:?}", petgraph::dot::Dot::with_config(&g, &graph_config));
-            f.write_all(dot_string.as_bytes()).expect("写入失败");
+            f.write_all(dot_string.as_bytes()).expect("Failed to write");
         }
         generate_dot_by_graph(&proof_graph, path, &[]);
     }

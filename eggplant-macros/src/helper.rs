@@ -229,7 +229,7 @@ pub fn get_ref_type(ty: &Type) -> proc_macro2::TokenStream {
     match ty {
         Type::Path(type_path) => {
             let type_name = &type_path.path.segments.last().unwrap().ident;
-            let sym_name = format_ident!("&{}", type_name); // 拼接 `Sym`
+            let sym_name = format_ident!("&{}", type_name); // concatenate `Sym`
             quote! { #sym_name }
         }
         _ => panic!("Unsupported type for `WithSymNode`"),

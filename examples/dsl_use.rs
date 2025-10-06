@@ -141,7 +141,7 @@ enum Fn {
 
 #[eggplant::dsl]
 enum WeightedFn {
-    WF { f: Fn, w: Weight }, // 作为元组字段
+    WF { f: Fn, w: Weight }, // as tuple field
 }
 
 #[eggplant::dsl]
@@ -205,11 +205,11 @@ fn main() {
         )])),
     );
 
-    // 构建动画序列
+    // Build animation sequence
     let atom = Atom::new(&anim_atom);
     let seq = Seq::new(&VecCtl::new(vec![&atom]));
 
-    // 构建并行时间线
+    // Build parallel timeline
     let s = VecCtl::new(vec![&seq]);
     let s2 = VecCtl::new(vec![&seq, &&seq]);
     let mut timeline = Para::<MyTx>::new(&s);
@@ -217,7 +217,7 @@ fn main() {
     timeline.set_vec_ctl(&s2);
 
     CurrentTimeline::set((), &timeline);
-    // 输出到dot文件
+    // Output to dot file
     MyTx::sgl().to_dot(PathBuf::from("timeline_egraph"));
 }
 
