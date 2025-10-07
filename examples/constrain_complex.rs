@@ -52,9 +52,8 @@ fn main() {
             let l = Const::query();
             let r = Const::query();
             let p = Mul::query(&l, &r);
-            let l_h = l.handle();
-            let r_h = r.handle();
-            MulPat::new(l, r, p).assert(l_h.eq(&r_h))
+            let l_r_eq = l.handle().eq(&r.handle());
+            MulPat::new(l, r, p).assert(l_r_eq)
         },
         |ctx, pat| {
             let cal = ctx.devalue(pat.l.num) * ctx.devalue(pat.r.num);
