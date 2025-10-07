@@ -233,11 +233,25 @@ pub fn dsl(
                         "new_{}_from_term_dyn",
                         variant_name.to_string().to_snake_case()
                     );
+                    // Parse cost attribute
+                    let cost_value = variant
+                        .attrs
+                        .iter()
+                        .find(|attr| attr.path().is_ident("cost"))
+                        .and_then(|attr| {
+                            attr.parse_args::<syn::LitInt>()
+                                .ok()
+                                .and_then(|lit| lit.base10_parse::<u64>().ok())
+                        });
+                    let cost_value = cost_value
+                        .map(|v| quote! { Some(#v) })
+                        .unwrap_or(quote! { None });
+
                     quote! {  #W::TyConstructor {
                         cons_name: stringify!(#variant_name),
                         input:&[ #(stringify!(#tys)),* ] ,
                         output:stringify!(#name),
-                        cost :None,
+                        cost :#cost_value,
                         term_to_node: #name::<(),()>::#new_from_term_dyn_fn_name,
                         unextractable :false,
                     } }

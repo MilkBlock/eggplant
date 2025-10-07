@@ -6,6 +6,7 @@ mod tests {
 
     #[eggplant::dsl]
     enum Expr {
+        #[cost(3)]
         Const { num: i64 },
     }
     #[eggplant::dsl]
