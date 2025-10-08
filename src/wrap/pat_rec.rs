@@ -10,7 +10,7 @@ use egglog::util::IndexSet;
 use petgraph::prelude::StableDiGraph;
 use std::{
     collections::HashMap,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Mutex, atomic::AtomicU32},
 };
 

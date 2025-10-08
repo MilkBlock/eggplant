@@ -12,7 +12,13 @@ use petgraph::{
     dot::{Config, Dot},
     prelude::{StableDiGraph, StableGraph},
 };
-use std::{collections::HashMap, fs::File, io::Write, path::{Path, PathBuf}, sync::Mutex};
+use std::{
+    collections::HashMap,
+    fs::File,
+    io::Write,
+    path::{Path, PathBuf},
+    sync::Mutex,
+};
 
 pub struct TxRxVT {
     pub egraph: Mutex<EGraph>,

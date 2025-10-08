@@ -4,7 +4,7 @@ use egglog::ast::Command;
 use super::*;
 use dashmap::DashMap;
 use egglog::{EGraph, SerializeConfig, util::IndexSet};
-use std::{path::{Path, PathBuf}, sync::Mutex};
+use std::{path::Path, sync::Mutex};
 
 #[allow(unused)]
 pub struct TxNoVT {

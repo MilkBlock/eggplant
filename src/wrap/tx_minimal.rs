@@ -1,7 +1,7 @@
 use super::*;
 use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
 use egglog::{EGraph, SerializeConfig, ast::Command};
-use std::{path::{Path, PathBuf}, sync::Mutex};
+use std::{path::Path, sync::Mutex};
 
 pub struct TxMinimal {
     egraph: Mutex<EGraph>,

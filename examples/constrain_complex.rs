@@ -52,7 +52,7 @@ fn main() {
             let l = Const::query();
             let r = Const::query();
             let p = Mul::query(&l, &r);
-            let l_r_eq = l.handle().eq(&r.handle());
+            let l_r_eq = { l.handle().eq(&r.handle()) };
             MulPat::new(l, r, p).assert(l_r_eq)
         },
         |ctx, pat| {

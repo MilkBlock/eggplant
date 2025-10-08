@@ -8,7 +8,7 @@ use egglog::{
     EGraph, SerializeConfig,
     util::{IndexMap, IndexSet},
 };
-use std::{collections::HashMap, path::{Path, PathBuf}, sync::Mutex};
+use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Default)]
 pub struct TxVT {

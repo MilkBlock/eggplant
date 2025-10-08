@@ -1046,15 +1046,6 @@ pub fn dsl(
                             pub fn query(#(#query_fn_args),*) -> Self{
                                 #name_node::<T,()>::#query_fn_names(#(#query_fn_arg_idents),*)
                             }
-                            #[track_caller]
-                            pub fn handle(&self) -> HandleToConstrain<Self>{
-                                HandleToConstrain{
-                                    handle: HandleTy::Complex {
-                                        sym: self.node.sym.erase()
-                                    },
-                                    _p: PhantomData::<Self>
-                                }
-                            }
                         }
                         impl<T:TxSgl> std::ops::Deref for self::#name_node<T, #variant_markers> {
                             type Target = #name_node<T>;
@@ -1276,6 +1267,17 @@ pub fn dsl(
                     type Target = #name_node<T,()>;
                     fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
                         #W::Value::new(val)
+                    }
+                }
+                impl<T: #W::NodeDropperSgl + #W::PatRecSgl, V: #W::EgglogEnumVariantTy> #name_node<T,V> {
+                    #[track_caller]
+                    pub fn handle(&self) -> #W::HandleToConstrain<Self>{
+                        #W::HandleToConstrain{
+                            handle: #W::HandleTy::Complex {
+                                sym: self.node.sym.erase()
+                            },
+                            _p: std::marker::PhantomData::<Self>
+                        }
                     }
                 }
                 #rule_ctx_trait_and_impl
