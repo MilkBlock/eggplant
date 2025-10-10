@@ -13,12 +13,13 @@ pub enum Expr {
 }
 
 #[eggplant::base_ty]
-#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
 pub enum Op {
     Add,
     Sub,
     Mul,
     Div,
+    #[default]
     Unknown,
 }
 

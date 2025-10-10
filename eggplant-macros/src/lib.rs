@@ -1495,7 +1495,10 @@ pub fn pat_vars(
 }
 
 #[proc_macro_attribute]
-/// pattern vars
+/// base_ty define,
+///
+/// # Mention
+/// this macro requires enum and should impl Default Serialize Deserialize Hash Debug trait
 pub fn base_ty(
     _attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -1522,11 +1525,6 @@ pub fn base_ty(
                     egglog::ast::Literal::Unit => todo!(),
                     _ => panic!("unknown op {}", self),
                 }
-            }
-        }
-        impl Default for #ident {
-            fn default() -> Self {
-                #ident::Unknown
             }
         }
         #[derive(Debug)]
