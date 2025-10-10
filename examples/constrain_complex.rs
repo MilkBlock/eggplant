@@ -29,9 +29,8 @@ fn main() {
             let l = Const::query();
             let r = Const::query();
             let p = Add::query(&l, &r);
-            let l_h = l.handle();
-            let r_h = r.handle();
-            AddPat::new(l, r, p).assert(l_h.eq(&r_h))
+            let l_h_eq_r_h = l.handle().eq(&r.handle());
+            AddPat::new(l, r, p).assert(l_h_eq_r_h)
         },
         |ctx, pat| {
             let cal = ctx.devalue(pat.l.num) + ctx.devalue(pat.r.num);

@@ -27,7 +27,7 @@ fn main() {
         ruleset,
         || {
             let l = Const::query().num(&3);
-            let r: Expr<MyPatRec, ConstTy> = Const::query();
+            let r = Const::query();
             let p = Add::query(&l, &r);
             AddPat::new(l, r, p)
         },

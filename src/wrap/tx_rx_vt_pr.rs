@@ -766,7 +766,7 @@ impl RuleRunner for TxRxVTPR {
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
 
-        let facts = PR::pat2query(pat_id).build(&egraph);
+        let facts = PR::pat2fact_builder(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
         log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);

@@ -1,7 +1,7 @@
 #[cfg(target_arch = "wasm32")]
 pub fn download_json(filename: &str, content: &str) -> Result<(), String> {
     use wasm_bindgen::JsCast;
-    use web_sys::{window, Blob, BlobPropertyBag, HtmlElement, Url};
+    use web_sys::{Blob, BlobPropertyBag, HtmlElement, Url, window};
 
     let window = window().ok_or_else(|| "no window".to_string())?;
     let document = window.document().ok_or_else(|| "no document".to_string())?;

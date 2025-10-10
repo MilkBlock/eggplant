@@ -244,55 +244,6 @@ impl FactsBuilder {
                 .collect(),
         ))
     }
-    // /// for every variable we don't care whether it is selected as Action Input
-    // fn _build_atom(
-    //     egraph: &egglog::EGraph,
-    //     table: TableName,
-    //     vars: Vec<(VarName, SortName)>,
-    // ) -> GenericAtom<ResolvedCall, ResolvedVar> {
-    //     log::debug!("table_name:{}", table);
-    //     log::debug!("vars::{:?}", vars);
-    //     let (output, inputs) = vars.split_last().unwrap();
-    //     GenericAtom {
-    //         span: span!(),
-    //         head: ResolvedCall::Func(FuncType {
-    //             name: table,
-    //             subtype: FunctionSubtype::Constructor,
-    //             input: inputs
-    //                 .iter()
-    //                 .map(|(_, sort_name)| {
-    //                     egraph
-    //                         .get_sort_by_name(&sort_name)
-    //                         .cloned()
-    //                         .unwrap_or(Arc::new(EqSort {
-    //                             name: sort_name.clone(),
-    //                         }) as Arc<dyn Sort>)
-    //                 })
-    //                 .collect(),
-    //             output: Arc::new(EqSort {
-    //                 name: output.1.clone(),
-    //             }),
-    //         }),
-    //         args: vars
-    //             .iter()
-    //             .map(|(var_name, sort_name)| {
-    //                 GenericAtomTerm::Var(
-    //                     span!(),
-    //                     Self::to_resolved_var(&egraph, var_name.clone(), sort_name.clone()),
-    //                 )
-    //             })
-    //             .collect(),
-    //     }
-    // }
-    // pub fn build(self, egraph: &egglog::EGraph) -> Query<ResolvedCall, ResolvedVar> {
-    //     let mut v = Vec::new();
-    //     for atom in self.table_facts {
-    //         v.push(Self::_build_atom(egraph, atom.0, atom.1));
-    //     }
-    //     // Add constraints to the query
-    //     v.extend(self.constraint_facts);
-    //     Query { atoms: v }
-    // }
     pub fn build(self, egraph: &egglog::EGraph) -> Vec<ResolvedFact> {
         let mut v = Vec::new();
         for table_fact in self.table_facts {

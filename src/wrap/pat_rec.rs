@@ -289,7 +289,7 @@ impl PatRec for PatRecorder {
     }
     // find pattern defined in current Tx and transformed it into [Facts<String,String>]
     // one pattern may has multiple roots
-    fn pat2query(&self, pat_id: PatId) -> FactsBuilder {
+    fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder {
         // build TermDag from roots
         let pat_nodes = IndexSet::from_iter(self.map.iter().filter_map(|x| {
             if x.value().pat_id == pat_id {

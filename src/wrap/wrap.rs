@@ -20,7 +20,7 @@ use std::{
     marker::PhantomData,
     mem,
     panic::Location,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, atomic::AtomicU32},
 };
 use strum::IntoDiscriminant;
@@ -227,7 +227,7 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_new_constraint(&self, constraint: impl IntoConstraintFact);
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
-    fn pat2query(&self, pat_id: PatId) -> FactsBuilder;
+    fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PatId(pub u32);
@@ -239,7 +239,7 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_new_constraint(constraint: impl IntoConstraintFact);
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
-    fn pat2query(pat_id: PatId) -> FactsBuilder;
+    fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
 }
 impl<T: SingletonGetter> PatRecSgl for T
 where
@@ -259,8 +259,8 @@ where
         Self::sgl().on_record_end(pat_vars)
     }
 
-    fn pat2query(pat_id: PatId) -> FactsBuilder {
-        Self::sgl().pat2query(pat_id)
+    fn pat2fact_builder(pat_id: PatId) -> FactsBuilder {
+        Self::sgl().pat2fact_builder(pat_id)
     }
 }
 
