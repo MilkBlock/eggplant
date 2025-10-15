@@ -470,7 +470,11 @@ impl TxCommit for TxRxVT {
     /// 2. commit basing the latest version of the working graph (working graph record all versions)
     /// 3. if TxCommit is implemented you can change egraph by `commit` rather than `set`. It's lazy because it uses a buffer to store all `staged set`.
     /// 4. if you didn't stage `set` on nodes, it will do nothing on commited node only flush all staged_new_node buffer
-    fn on_commit<T: EgglogNode>(&self, commit_root: &T) {
+    fn on_commit_op_listener<T: EgglogNode>(
+        &self,
+        commit_root: &T,
+        _: Option<Box<dyn RuleCtxListener>>,
+    ) {
         log::debug!("on_commit {:?}", commit_root.to_egglog_string());
         let check_point = CommitCheckPoint {
             committed_node_root: commit_root.cur_sym(),
