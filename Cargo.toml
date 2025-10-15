@@ -38,8 +38,8 @@ serde_json.workspace = true
 usvg = "0.45.1"
 
 [workspace]
-members = ["eggplant-macros", "eggplant-viewer"]
-resolver = "2"                                   # recommended 2021 Edition
+members = ["eggplant-macros", "eggplant-viewer", "eggplant-transpiler"]
+resolver = "2"                                                          # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
@@ -54,6 +54,7 @@ authors = ["MilkBlock"]
 [workspace.dependencies]
 eggplant-macros = { path = "./eggplant-macros" }
 eggplant-viewer = { path = "./eggplant-viewer" }
+eggplant-transpiler = { path = "./eggplant-transpiler" }
 egglog = { git = "https://github.com/MilkBlock/egglog", rev = "12e9743" }
 # egglog = { path = "../egglog" }
 # egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}

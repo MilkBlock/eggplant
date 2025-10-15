@@ -1,6 +1,7 @@
 // use core::panic;
 use darling::{Error, FromMeta, ast::NestedMeta};
 
+use eggplant_transpiler::CodeGenOptions;
 use heck::ToSnakeCase;
 use helper::*;
 use proc_macro2::{Ident, TokenStream};
@@ -11,6 +12,7 @@ use helper::{E, INVE, W};
 
 use crate::enum_related::*;
 mod enum_related;
+mod transpiler;
 
 #[proc_macro_attribute]
 pub fn func(
@@ -1579,4 +1581,70 @@ pub fn container(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     dsl(attr, item)
+}
+
+/// Transpile macro that converts egglog DSL to Rust code
+///
+/// # Usage
+/// ```rust
+/// transpile! {
+///     "(datatype Math (MNum i64) (MAdd Math Math))"
+/// }
+/// ```
+#[proc_macro]
+pub fn datatype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let dsl_code = input.to_string();
+
+    // Use the actual transpiler from eggplant_transpiler
+    let transpiler = transpiler::Transpiler::with_options(CodeGenOptions {
+        omit_main: true,
+        omit_use_statements: true,
+        omit_ruleset_definitions: true,
+        omit_run_ruleset_calls: true,
+        omit_global_singleton_definitions: true,
+        omit_datatype: false,
+        omit_head_annotation: true,
+    });
+    let rust_code = transpiler.transpile(&dsl_code);
+    let rust_code = rust_code.parse::<TokenStream>().unwrap();
+
+    let input = TokenStream::from(input);
+    let expanded = quote! {
+        datatype!(#input)
+        #rust_code
+    };
+
+    proc_macro::TokenStream::from(expanded)
+}
+#[proc_macro]
+pub fn rule(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let dsl_code = input.to_string();
+    // Use the actual transpiler from eggplant_transpiler
+    let transpiler = transpiler::Transpiler::with_options(CodeGenOptions {
+        omit_main: true,
+        omit_use_statements: true,
+        omit_ruleset_definitions: true,
+        omit_run_ruleset_calls: true,
+        omit_global_singleton_definitions: true,
+        omit_datatype: true,
+        omit_head_annotation: true,
+    });
+    let rust_code = transpiler.transpile(&dsl_code);
+    eprintln!("{}", rust_code);
+    if rust_code == "" {
+        panic!(
+            "no rule is generated, please check your dsl code: {}",
+            dsl_code
+        );
+    }
+    let rust_code = rust_code.parse::<TokenStream>().unwrap();
+    // let doc_dsl_code = format!("rule!({})", dsl_code);
+
+    let input = TokenStream::from(input);
+    let expanded = quote! {
+        rule!(#input)
+        #rust_code
+    };
+
+    proc_macro::TokenStream::from(expanded)
 }
