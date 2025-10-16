@@ -25,13 +25,6 @@ pub struct RuleCtx<'a, 'b, 'c> {
     pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b>>,
     listener: RuleCtxObj,
 }
-#[derive(Default, Clone)]
-struct NullCtxListener {}
-impl RuleCtxListener for NullCtxListener {
-    fn dyn_clone(&self) -> Box<dyn RuleCtxListener> {
-        Box::new(self.clone())
-    }
-}
 unsafe impl Send for RuleCtxObj {}
 unsafe impl Sync for RuleCtxObj {}
 pub struct RuleCtxObj(pub Option<Box<dyn RuleCtxListener>>);
@@ -45,8 +38,9 @@ impl Clone for RuleCtxObj {
 }
 
 pub trait RuleCtxListener {
-    fn on_insert(&self, _table: &str, _key: &[egglog::Value]) {}
-    fn on_union(&self, _x: egglog::Value, _y: egglog::Value) {}
+    fn on_insert(&self, table: &str, key: &[egglog::Value]);
+    fn on_union(&self, x: egglog::Value, y: egglog::Value);
+    fn on_subsume(&self, table: &str, key: &[egglog::Value]);
     fn dyn_clone(&self) -> Box<dyn RuleCtxListener>;
 }
 
@@ -82,16 +76,25 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+        self.listener.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).lookup(table, key).unwrap() }
     }
     pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
         let x = x.to_value(self);
         let y = y.to_value(self);
+        self.listener
+            .0
+            .as_ref()
+            .map(|listener| listener.on_union(x.val, y.val));
         unsafe {
             (*self.rule_ctx.get()).union(x.val, y.val);
         }
     }
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
+        self.listener
+            .0
+            .as_ref()
+            .map(|listener| listener.on_subsume(table, key));
         unsafe { (*self.rule_ctx.get()).subsume(table, key) }
     }
     pub fn _devalue_container<T: ContainerValue>(

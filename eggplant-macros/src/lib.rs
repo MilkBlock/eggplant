@@ -1590,7 +1590,7 @@ pub fn container(
 ///
 /// # Usage
 /// ```rust
-/// transpile! {
+/// datatype! {
 ///     "(datatype Math (MNum i64) (MAdd Math Math))"
 /// }
 /// ```
@@ -1613,7 +1613,8 @@ pub fn datatype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let input = TokenStream::from(input);
     let expanded = quote! {
-        datatype!(#input)
+        datatype(#input)
+        #[doc = "DSl Generated"]
         #rust_code
     };
 
@@ -1645,7 +1646,8 @@ pub fn rule(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let input = TokenStream::from(input);
     let expanded = quote! {
-        rule!(#input)
+        rule(#input)
+        #[doc = "Rule Generated"]
         #rust_code
     };
 

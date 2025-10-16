@@ -162,17 +162,17 @@ macro_rules! basic_tx_rx_vt_pr_fp {
             }
         }
         impl eggplant::wrap::NonPatRecSgl for $name {}
-        #[cfg(feature = "viewer")]
-        use eggplant::eggplant_viewer::EGraphViewer;
-        #[cfg(feature = "viewer")]
-        impl eggplant::eggplant_viewer::EGraphViewerSgl for $name {
-            fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
-                Self::sgl().egraph()
-            }
-            fn view() -> Result<(), eggplant::eggplant_viewer::Error> {
-                eggplant::eggplant_viewer::view::<Self>()
-            }
-        }
+        // #[cfg(feature = "viewer")]
+        // use eggplant::eggplant_viewer::EGraphViewer;
+        // #[cfg(feature = "viewer")]
+        // impl eggplant::eggplant_viewer::EGraphViewerSgl for $name {
+        //     fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
+        //         Self::sgl().egraph()
+        //     }
+        //     fn view() -> Result<(), eggplant::eggplant_viewer::Error> {
+        //         eggplant::eggplant_viewer::view::<Self>()
+        //     }
+        // }
     };
 }
 
