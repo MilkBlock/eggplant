@@ -388,11 +388,7 @@ impl TxCommit for TxVT {
     /// 1. commit all descendants (if you also call set fn on subnodes they will also be committed)
     /// 2. commit basing the latest version of the working graph (working graph record all versions)
     /// 3. if TxCommit is implemented you can only change egraph by commit things. It's lazy.
-    fn on_commit_op_listener<T: EgglogNode>(
-        &self,
-        commit_root: &T,
-        _: Option<Box<dyn RuleCtxListener>>,
-    ) {
+    fn on_commit_op_hook<T: EgglogNode>(&self, commit_root: &T, _: Option<Box<dyn RuleCtxHook>>) {
         let check_point = CommitCheckPoint {
             committed_node_root: commit_root.cur_sym(),
             staged_set_nodes: self.staged_set_map.iter().map(|a| *a.key()).collect(),

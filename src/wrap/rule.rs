@@ -23,32 +23,32 @@ use wrap::Value;
 // it contains the Tx to which the rule is applied
 pub struct RuleCtx<'a, 'b, 'c> {
     pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b>>,
-    listener: RuleCtxObj,
+    hook: RuleCtxObj,
 }
 unsafe impl Send for RuleCtxObj {}
 unsafe impl Sync for RuleCtxObj {}
-pub struct RuleCtxObj(pub Option<Box<dyn RuleCtxListener>>);
+pub struct RuleCtxObj(pub Option<Box<dyn RuleCtxHook>>);
 impl Clone for RuleCtxObj {
     fn clone(&self) -> Self {
         match &self.0 {
-            Some(listener) => RuleCtxObj(Some(listener.dyn_clone())),
+            Some(hook) => RuleCtxObj(Some(hook.dyn_clone())),
             None => RuleCtxObj(None),
         }
     }
 }
 
-pub trait RuleCtxListener {
+pub trait RuleCtxHook {
     fn on_insert(&self, table: &str, key: &[egglog::Value]);
     fn on_union(&self, x: egglog::Value, y: egglog::Value);
     fn on_subsume(&self, table: &str, key: &[egglog::Value]);
-    fn dyn_clone(&self) -> Box<dyn RuleCtxListener>;
+    fn dyn_clone(&self) -> Box<dyn RuleCtxHook>;
 }
 
 impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
-    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, listener: RuleCtxObj) -> Self {
+    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleCtxObj) -> Self {
         Self {
             rule_ctx: UnsafeCell::new(egglog_ctx),
-            listener,
+            hook,
         }
     }
     pub fn devalue<'d, B: BoxedValue, D: RetypeValue<Target = B>>(
@@ -76,25 +76,19 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
-        self.listener.0.as_ref().map(|x| x.on_insert(table, key));
+        self.hook.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).lookup(table, key).unwrap() }
     }
     pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
         let x = x.to_value(self);
         let y = y.to_value(self);
-        self.listener
-            .0
-            .as_ref()
-            .map(|listener| listener.on_union(x.val, y.val));
+        self.hook.0.as_ref().map(|hook| hook.on_union(x.val, y.val));
         unsafe {
             (*self.rule_ctx.get()).union(x.val, y.val);
         }
     }
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
-        self.listener
-            .0
-            .as_ref()
-            .map(|listener| listener.on_subsume(table, key));
+        self.hook.0.as_ref().map(|hook| hook.on_subsume(table, key));
         unsafe { (*self.rule_ctx.get()).subsume(table, key) }
     }
     pub fn _devalue_container<T: ContainerValue>(
@@ -116,7 +110,7 @@ pub trait RuleRunner {
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
         action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
-        ctx_listener: Option<Box<dyn RuleCtxListener>>,
+        ctx_hook: Option<Box<dyn RuleCtxHook>>,
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
@@ -137,23 +131,23 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
         pat: impl Fn() -> P,
         action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
     ) {
-        Self::add_rule_op_listener(rule_name, rule_set, pat, action, None);
+        Self::add_rule_op_hook(rule_name, rule_set, pat, action, None);
     }
-    fn add_rule_with_listener<P: PatVars<Self::PatRecSgl>>(
+    fn add_rule_with_hook<P: PatVars<Self::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
         action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
-        listener: Box<dyn RuleCtxListener>,
+        hook: Box<dyn RuleCtxHook>,
     ) {
-        Self::add_rule_op_listener(rule_name, rule_set, pat, action, Some(listener));
+        Self::add_rule_op_hook(rule_name, rule_set, pat, action, Some(hook));
     }
-    fn add_rule_op_listener<P: PatVars<Self::PatRecSgl>>(
+    fn add_rule_op_hook<P: PatVars<Self::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
         action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
-        ctx_listener: Option<Box<dyn RuleCtxListener>>,
+        ctx_hook: Option<Box<dyn RuleCtxHook>>,
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
@@ -169,14 +163,14 @@ where
 {
     type EqProof = <T::RetTy as RuleRunner>::EqProof;
     type TermProof = <T::RetTy as RuleRunner>::TermProof;
-    fn add_rule_op_listener<P: PatVars<T::PatRecSgl>>(
+    fn add_rule_op_hook<P: PatVars<T::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
         action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
-        ctx_listener: Option<Box<dyn RuleCtxListener>>,
+        ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
-        Self::sgl().add_rule::<T::PatRecSgl, P>(rule_name, rule_set, pat, action, ctx_listener);
+        Self::sgl().add_rule::<T::PatRecSgl, P>(rule_name, rule_set, pat, action, ctx_hook);
     }
     fn new_ruleset(rule_set: &'static str) -> RuleSetId {
         Self::sgl().new_ruleset(rule_set)

@@ -1,4 +1,4 @@
-use crate::wrap::RuleCtxListener;
+use crate::wrap::RuleCtxHook;
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
@@ -648,14 +648,14 @@ impl From<Vec<Sym>> for Syms {
 pub trait TxCommit {
     #[track_caller]
     fn on_stage<T: EgglogNode + ?Sized>(&self, node: &T);
-    fn on_commit_op_listener<T: EgglogNode>(&self, node: &T, _: Option<Box<dyn RuleCtxListener>>);
+    fn on_commit_op_hook<T: EgglogNode>(&self, node: &T, _: Option<Box<dyn RuleCtxHook>>);
 }
 
 pub trait TxCommitSgl {
     #[track_caller]
     fn on_commit<T: EgglogNode>(node: &T);
     #[track_caller]
-    fn on_commit_with_listener<T: EgglogNode>(node: &T, listener: Box<dyn RuleCtxListener>);
+    fn on_commit_with_hook<T: EgglogNode>(node: &T, hook: Box<dyn RuleCtxHook>);
     #[track_caller]
     fn on_stage<T: EgglogNode>(node: &T);
 }
@@ -665,15 +665,15 @@ where
     Ret: Tx + VersionCtl + TxCommit,
     S: SingletonGetter<RetTy = Ret>,
 {
-    fn on_commit_with_listener<T: EgglogNode>(node: &T, listener: Box<dyn RuleCtxListener>) {
-        S::sgl().on_commit_op_listener(node, Some(listener));
+    fn on_commit_with_hook<T: EgglogNode>(node: &T, hook: Box<dyn RuleCtxHook>) {
+        S::sgl().on_commit_op_hook(node, Some(hook));
     }
     fn on_stage<T: EgglogNode>(node: &T) {
         S::sgl().on_stage(node);
     }
 
     fn on_commit<T: EgglogNode>(node: &T) {
-        S::sgl().on_commit_op_listener(node, None);
+        S::sgl().on_commit_op_hook(node, None);
     }
 }
 
@@ -690,7 +690,7 @@ pub trait Commit {
     #[track_caller]
     fn commit(&self);
     #[track_caller]
-    fn commit_with_listener(&self, listener: Box<dyn RuleCtxListener>);
+    fn commit_with_hook(&self, hook: Box<dyn RuleCtxHook>);
     #[track_caller]
     fn stage(&self);
 }

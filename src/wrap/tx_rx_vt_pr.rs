@@ -518,10 +518,10 @@ impl TxCommit for TxRxVTPR {
     /// 3. if TxCommit is implemented you can change egraph by `commit` rather than `set`. It's lazy because it uses a buffer to store all `staged set`.
     /// 4. if you didn't stage `set` on nodes, it will do nothing on commited node only flush all staged_new_node buffer
     /// 5. after commit, you can get [`egglog::Value`] of [`Sym`] because they has been committed to egrpah
-    fn on_commit_op_listener<T: EgglogNode>(
+    fn on_commit_op_hook<T: EgglogNode>(
         &self,
         commit_root: &T,
-        ctx_listener: Option<Box<dyn RuleCtxListener>>,
+        ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
         // log::debug!("on_commit {:?}", commit_root.to_egglog_string());
         let check_point = CommitCheckPoint {
@@ -592,14 +592,14 @@ impl TxCommit for TxRxVTPR {
         // sue add_rule API to create rule
         let mut egraph = self.egraph.lock().unwrap();
         egglog::prelude::add_ruleset(&mut egraph, &ruleset_name).unwrap();
-        let listener = RuleCtxObj(ctx_listener);
+        let hook = RuleCtxObj(ctx_hook);
         let rule_rst = egraph.raw_resolved_rule_add_rule_with_name(
             format!("commit{}", self.commit_counter.lock().unwrap()),
             ruleset_name.to_string(),
             vec![],
             &[],
             move |ctx, _| {
-                let ctx = RuleCtx::new(ctx, listener.clone());
+                let ctx = RuleCtx::new(ctx, hook.clone());
                 let sym2value_map = sym2value_map.clone();
                 for &sym in &backup_staged_new_syms {
                     log::debug!("topo_insert:{}", sym);
@@ -765,7 +765,7 @@ impl RuleRunner for TxRxVTPR {
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
         action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
-        ctx_listener: Option<Box<dyn RuleCtxListener>>,
+        ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
         PR::on_record_start();
@@ -777,14 +777,14 @@ impl RuleRunner for TxRxVTPR {
         log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);
 
-        let listener = RuleCtxObj(ctx_listener);
+        let hook = RuleCtxObj(ctx_hook);
         let rst = egraph.raw_resolved_rule_add_rule_with_name(
             rule_name.to_string(),
             rule_set.0.to_string(),
             facts,
             vars.as_slice(),
             move |ctx, values| {
-                let mut ctx = RuleCtx::new(ctx, listener.clone());
+                let mut ctx = RuleCtx::new(ctx, hook.clone());
                 let valued_pat_vars = P::Valued::from_plain_values(&mut values.iter().cloned());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())

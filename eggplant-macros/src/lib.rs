@@ -1232,8 +1232,8 @@ pub fn dsl(
                         fn commit(&self) {
                             T::on_commit(self);
                         }
-                        fn commit_with_listener(&self, listener:Box<dyn #W::RuleCtxListener>) {
-                            T::on_commit_with_listener(self, listener);
+                        fn commit_with_hook(&self, hook:Box<dyn #W::RuleCtxHook>) {
+                            T::on_commit_with_hook(self, hook);
                         }
                         fn stage(&self) {
                             T::on_stage(self);
