@@ -1,8 +1,8 @@
 pub use crate::wrap::constraint::Compare;
 pub use crate::wrap::{
     Commit, EgglogNode, FromBase, Insertable, LocateVersion, PEq, PatRecSgl, PatRecorder,
-    RuleRunnerSgl, RunConfig, RxSgl, SingletonGetter, ToDot, ToDotSgl, TxCommit, TxCommitSgl,
-    TxSgl, Value,
+    RuleRunnerSgl, RuleSetId, RunConfig, RxSgl, SingletonGetter, ToDot, ToDotSgl, TxCommit,
+    TxCommitSgl, TxSgl, Value,
 };
 pub use dashmap;
 pub use derive_more;
