@@ -10,6 +10,35 @@ Based on that fact, `eggplant` provides out-of-box Graph API that allows you to 
 
 There is also a Proc-Macro library for users to quickly define a suite of DSL.
 
+## Transpiler Macros
+
+Eggplant provides transpiler macros that convert egglog DSL syntax directly to Rust code:
+
+### datatype! Macro
+
+Converts egglog datatype definitions to Rust code:
+
+```rust
+datatype! {
+    (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
+}
+```
+
+This generates the corresponding Rust enum and associated types.
+
+### rule! Macro
+
+Converts egglog rewrite rules to Rust code:
+
+```rust
+rule! {
+    (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
+    (rewrite (MAdd x y) (MAdd y x))
+}
+```
+
+This generates the corresponding pattern matching and rewrite rule code. This will be marked error by compiler, and you should inline it to get generated code.
+
 ## Motivation
 
 Recently, I've been researching the implementation of egglog. Since the egglog ecosystem is not yet mature, I spent some time providing a better API implementation with procedural macros and compile-time type checking for rust-native. This includes:
@@ -36,6 +65,19 @@ pub enum Expr {
 ```
 
 Yes, you read that correctly. Our addition, subtraction, multiplication, and division constant DSL is defined just like that. Using Rust's Sum Type can represent a set of DSL very well, which is very intuitive.
+
+You can also specify cost attributes for DSL variants to guide extraction of optimal values:
+
+```rust
+#[eggplant::dsl]
+pub enum Expr {
+    #[cost(0)]
+    Const { num: i64 },
+    Mul { l: Expr, r: Expr },
+}
+```
+
+The `#[cost(0)]` attribute specifies that `Const` nodes have a cost of 0, which helps the system extract the most optimal expressions during pattern rewriting.
 
 ## Pattern Define API
 
@@ -114,13 +156,8 @@ Since egglog's database backend is not yet released on crate.io, I'm using git l
 
 ## Future Work
 
-Of course, this framework still lacks some other APIs such as:
-
-- Adding Predicate API to pattern definitions as constraint conditions for pattern judgment (currently can be solved by judging in action)
-- Supporting pattern references for writing complex patterns (feels relatively easy to implement)
-- Cost attributes for extracting optimal values
-
-## Complete Code
+1. Support slotted egraph 
+2. Proof & Viewer 
 
 Here's the complete code for implementing addition, subtraction, multiplication, and division constant propagation:
 
@@ -174,12 +211,32 @@ fn main() {
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);
-    for _ in 0..4 {
-        let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
-    }
+    MyTx::run_ruleset(ruleset, RunConfig::Sat);
     MyTx::sgl().egraph_to_dot("egraph.dot".into());
 }
 ```
+
+## Examples
+
+The project includes several example files demonstrating different features of eggplant:
+
+### Basic Examples
+
+- **`examples/constrain_basic.rs`**: Demonstrates basic constant propagation with pattern matching. Shows how to define addition patterns and apply constant folding rules.
+
+- **`examples/constrain_complex.rs`**: Shows more complex pattern matching with equality constraints. Includes addition and multiplication patterns with handle equality checks.
+
+### Constraint Examples
+
+- **`examples/constrain_lt100_test.rs`**: Demonstrates pattern matching with numerical constraints. Shows how to apply rules only when operands satisfy specific conditions (e.g., both operands < 100).
+
+### Container Examples
+
+- **`examples/container.rs`**: Shows how to use container types (arrays and sets) in DSL definitions. Demonstrates vector summation and set operations with custom container types.
+
+### Base Type Examples
+
+- **`examples/base_ty_def.rs`**: Demonstrates the use of base types in DSL definitions. Shows how to define an operation type enum and use it in binary expressions with pattern matching.
 
 ## Documentation
 
