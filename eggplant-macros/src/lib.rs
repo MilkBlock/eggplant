@@ -414,18 +414,17 @@ pub fn dsl(
                         }
                         fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             // use ctx.insert to insert
-                            let vec:Vec<#E::Value> = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
+                            ctx.intern_container::<Self, #W::#container_ty<#name_node<(),()>>>(
+                                if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
                                 inner.into_iter().map(|sym|
                                     if let Some(value) = sym_to_value_map.get(&sym.erase()) {
                                         value.clone()
                                     } else {
                                         panic!("{}'s value not found, maybe haven't committed", sym)
                                     }).collect()
-                            }else {
-                                panic!()
-                            };
-                            ctx.intern_container::<Self, #W::#container_ty<#name_node<(),()>>>(
-                                vec.into()
+                                }else {
+                                    panic!()
+                                }
                             ).val
                         }
                     }

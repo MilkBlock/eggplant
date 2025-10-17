@@ -55,7 +55,7 @@ authors = ["MilkBlock"]
 eggplant-macros = { path = "./eggplant-macros" }
 eggplant-viewer = { path = "./eggplant-viewer" }
 eggplant-transpiler = { path = "./eggplant-transpiler" }
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "12e9743" }
+egglog = { git = "https://github.com/MilkBlock/egglog", rev = "5ebaedc" }
 # egglog = { path = "../egglog" }
 # egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}
 itertools = "0.14.0"

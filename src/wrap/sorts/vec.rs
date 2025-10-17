@@ -40,3 +40,63 @@ impl<Ty: EgglogTy> VecContainer<Ty> {
         self.inner.data.push(val.erase())
     }
 }
+
+impl<Ty: EgglogTy> FromIterator<egglog::Value> for VecContainer<Ty> {
+    fn from_iter<T: IntoIterator<Item = egglog::Value>>(iter: T) -> Self {
+        VecContainer::from(iter.into_iter().collect::<Vec<_>>())
+    }
+}
+
+unsafe impl<T: EgglogTy> Send for VecContainer<T> {}
+unsafe impl<T: EgglogTy> Sync for VecContainer<T> {}
+impl<T: EgglogTy> Clone for VecContainer<T> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _p: self._p.clone(),
+        }
+    }
+}
+
+impl<T: EgglogTy> VecContainer<T> {
+    pub fn new() -> VecContainer<T> {
+        VecContainer {
+            inner: egglog::sort::VecContainer {
+                do_rebuild: false,
+                data: vec![],
+            },
+            _p: PhantomData,
+        }
+    }
+    pub fn iter(&self) -> impl Iterator<Item = Value<T>> {
+        self.inner
+            .data
+            .as_slice()
+            .iter()
+            .map(|x| Value::new(*x))
+            .into_iter()
+    }
+}
+impl<T: EgglogTy> From<Vec<egglog::Value>> for VecContainer<T> {
+    fn from(value: Vec<egglog::Value>) -> Self {
+        VecContainer {
+            inner: egglog::sort::VecContainer {
+                do_rebuild: false,
+                data: value,
+            },
+            _p: PhantomData,
+        }
+    }
+}
+
+impl<T: EgglogTy> From<Vec<Value<T>>> for VecContainer<T> {
+    fn from(value: Vec<Value<T>>) -> Self {
+        VecContainer {
+            inner: egglog::sort::VecContainer {
+                do_rebuild: false,
+                data: unsafe { mem::transmute(value) },
+            },
+            _p: PhantomData,
+        }
+    }
+}

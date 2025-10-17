@@ -1,11 +1,6 @@
-use std::{
-    fmt, fs::File, hash::Hash, io::Write, marker::PhantomData, mem::transmute, path::PathBuf,
-};
+use std::{fmt, fs::File, hash::Hash, io::Write, path::PathBuf};
 
-use crate::{
-    prelude::VecContainer,
-    wrap::{self, EgglogTy},
-};
+use crate::{prelude::VecContainer, wrap::EgglogTy};
 use egglog::{Term, TermDag};
 use petgraph::{
     EdgeType,
@@ -111,59 +106,5 @@ impl<T: EgglogTy> PartialEq for VecContainer<T> {
 impl<T: EgglogTy> Hash for VecContainer<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.inner.hash(state);
-    }
-}
-
-unsafe impl<T: EgglogTy> Send for VecContainer<T> {}
-unsafe impl<T: EgglogTy> Sync for VecContainer<T> {}
-impl<T: EgglogTy> Clone for VecContainer<T> {
-    fn clone(&self) -> Self {
-        Self {
-            inner: self.inner.clone(),
-            _p: self._p.clone(),
-        }
-    }
-}
-
-impl<T: EgglogTy> VecContainer<T> {
-    pub fn new() -> VecContainer<T> {
-        VecContainer {
-            inner: egglog::sort::VecContainer {
-                do_rebuild: false,
-                data: vec![],
-            },
-            _p: PhantomData,
-        }
-    }
-    pub fn iter(&self) -> impl Iterator<Item = wrap::Value<T>> {
-        self.inner
-            .data
-            .as_slice()
-            .iter()
-            .map(|x| wrap::Value::new(*x))
-            .into_iter()
-    }
-}
-impl<T: EgglogTy> From<Vec<egglog::Value>> for VecContainer<T> {
-    fn from(value: Vec<egglog::Value>) -> Self {
-        VecContainer {
-            inner: egglog::sort::VecContainer {
-                do_rebuild: false,
-                data: value,
-            },
-            _p: PhantomData,
-        }
-    }
-}
-
-impl<T: EgglogTy> From<Vec<wrap::Value<T>>> for VecContainer<T> {
-    fn from(value: Vec<wrap::Value<T>>) -> Self {
-        VecContainer {
-            inner: egglog::sort::VecContainer {
-                do_rebuild: false,
-                data: unsafe { transmute(value) },
-            },
-            _p: PhantomData,
-        }
     }
 }
