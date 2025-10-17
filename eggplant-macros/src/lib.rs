@@ -1601,7 +1601,7 @@ pub fn container(
 /// # Usage
 /// ```rust
 /// datatype! {
-///     "(datatype Math (MNum i64) (MAdd Math Math))"
+///     (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
 /// }
 /// ```
 #[proc_macro]
@@ -1631,6 +1631,13 @@ pub fn datatype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     proc_macro::TokenStream::from(expanded)
 }
 #[proc_macro]
+/// Transpile egglog Rewrite into Rust code
+/// ```rust
+/// rule! {
+///     (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
+///     (rewrite (MAdd x y) (MAdd y x))
+/// }
+/// ```
 pub fn rule(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let dsl_code = input.to_string();
     // Use the actual transpiler from eggplant_transpiler
