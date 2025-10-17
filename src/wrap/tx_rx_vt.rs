@@ -676,26 +676,9 @@ impl ToDot for TxRxVT {
         generate_dot_by_graph(&g, path.as_ref().to_path_buf(), &[]);
     }
 
-    fn proof_to_dot(&self, path: impl AsRef<Path>) {
-        let egraph = self.egraph.lock().unwrap();
-        let proof_graph = &egraph.backend.get_proof_graph().unwrap();
-
-        pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
-            g: &petgraph::Graph<N, E, Ty>,
-            name: PathBuf,
-            graph_config: &[Config],
-        ) {
-            let dot_name = name.clone();
-            let mut f = File::create(dot_name.clone()).unwrap();
-            let dot_string = format!("{:?}", Dot::with_config(&g, &graph_config));
-            f.write_all(dot_string.as_bytes()).expect("Failed to write");
-        }
-        generate_dot_by_graph(&proof_graph, path.as_ref().to_path_buf(), &[]);
-    }
-
     fn table_view(&self) {
         let egraph = self.egraph.lock().unwrap();
-        egraph.backend.dump_debug_info();
+        egraph.dump_debug_info();
     }
 
     fn wag_to_petgraph(&self) -> SerializedPetGraph {

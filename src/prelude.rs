@@ -9,6 +9,7 @@ pub use crate::wrap::{
 pub use dashmap;
 pub use derive_more;
 pub use egglog;
+pub use egglog::ast::{RustSpan, Span};
 pub use eggplant_macros::*;
 pub use inventory;
 pub use serde;

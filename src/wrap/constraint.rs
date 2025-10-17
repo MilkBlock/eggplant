@@ -1,7 +1,6 @@
 use egglog::{
     EGraph,
-    ast::{Literal, ResolvedExpr, ResolvedFact, ResolvedVar},
-    core::{ResolvedCall, SpecializedPrimitive},
+    ast::{Expr, Fact, GenericExpr, GenericFact, Literal, RustSpan, Span},
     span,
 };
 use std::marker::PhantomData;
@@ -9,7 +8,7 @@ use std::marker::PhantomData;
 use crate::wrap::{EgglogTy, FromBase, Sym};
 pub trait IntoConstraintFact: 'static + std::fmt::Debug {
     #[track_caller]
-    fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<ResolvedFact>;
+    fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact>;
 }
 
 pub trait AsHandle {
@@ -94,8 +93,8 @@ macro_rules! define_constraint_structs {
 // Use macro to generate all constraint structs
 define_constraint_structs! { LtConstraint, LeConstraint, GtConstraint, GeConstraint }
 impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for EqConstraint<T1, T2> {
-    fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<ResolvedFact> {
-        vec![ResolvedFact::Eq(
+    fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact> {
+        vec![Fact::Eq(
             span!(),
             self.a.to_resolved_expr(egraph),
             self.b.to_resolved_expr(egraph),
@@ -104,15 +103,10 @@ impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for EqConstraint<T1, T2> {
     }
 }
 impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for NEConstraint<T1, T2> {
-    fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<ResolvedFact> {
-        let neq = egraph.get_primitive("!=").unwrap()[0].clone();
-        vec![ResolvedFact::Fact(ResolvedExpr::Call(
+    fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact> {
+        vec![Fact::Fact(Expr::Call(
             span!(),
-            ResolvedCall::Primitive(SpecializedPrimitive {
-                primitive: neq,
-                input: vec![T1::get_arc_sort(egraph), T2::get_arc_sort(egraph)],
-                output: egraph.get_sort_by_name("Unit").unwrap().clone(),
-            }),
+            "!=".to_string(),
             vec![
                 self.a.to_resolved_expr(egraph),
                 self.b.to_resolved_expr(egraph),
@@ -126,15 +120,10 @@ macro_rules! impl_into_constraint_fact {
     ($($constraint:ident => $op:literal),* $(,)?) => {
         $(
             impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for $constraint<T1, T2> {
-                fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<ResolvedFact> {
-                    let op = egraph.get_primitive($op).unwrap()[0].clone();
-                    vec![ResolvedFact::Fact(ResolvedExpr::Call(
+                fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<GenericFact<String, String>> {
+                    vec![Fact::Fact(GenericExpr::<String,String>::Call(
                         span!(),
-                        ResolvedCall::Primitive(SpecializedPrimitive {
-                            primitive: op,
-                            input: vec![T1::get_arc_sort(egraph), T2::get_arc_sort(egraph)],
-                            output: egraph.get_sort_by_name("Unit").unwrap().clone(),
-                        }),
+                        $op.to_string(),
                         vec![
                             self.a.to_resolved_expr(egraph),
                             self.b.to_resolved_expr(egraph),
@@ -245,25 +234,13 @@ impl<T: EgglogTy> HandleToConstrain<T> {
             HandleTy::Literal { lit } => format!("{}.literal.{lit:?}", T::TY_NAME_LOWER),
         }
     }
-    pub fn to_resolved_expr(&self, egraph: &EGraph) -> ResolvedExpr {
+    pub fn to_resolved_expr(&self, _egraph: &EGraph) -> GenericExpr<String, String> {
         match &self.handle {
-            HandleTy::Base { field_name, sym } => ResolvedExpr::Var(
-                span!(),
-                ResolvedVar {
-                    name: format!("{}{}", sym, field_name),
-                    sort: T::get_arc_sort(egraph),
-                    is_global_ref: false,
-                },
-            ),
-            HandleTy::Complex { sym } => ResolvedExpr::Var(
-                span!(),
-                ResolvedVar {
-                    name: format!("{}", sym),
-                    sort: T::get_arc_sort(egraph),
-                    is_global_ref: false,
-                },
-            ),
-            HandleTy::Literal { lit } => ResolvedExpr::Lit(span!(), lit.clone()),
+            HandleTy::Base { field_name, sym } => {
+                GenericExpr::Var(span!(), format!("{}{}", sym, field_name))
+            }
+            HandleTy::Complex { sym } => GenericExpr::Var(span!(), format!("{}", sym)),
+            HandleTy::Literal { lit } => GenericExpr::Lit(span!(), lit.clone()),
         }
     }
 }

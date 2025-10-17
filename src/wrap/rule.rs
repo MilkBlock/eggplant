@@ -3,12 +3,10 @@ use crate::wrap::{
     IntoConstraintFact, PatRecSgl, RetypeValue,
 };
 use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
-use egglog::ast::ResolvedVar;
-use egglog::ast::{ResolvedExpr, ResolvedFact};
-use egglog::prelude::{EqProofId, FuncType, ResolvedCall, TermProofId};
+use egglog::ast::{Expr, Fact, ResolvedVar};
 use egglog::{
     BaseValue,
-    ast::FunctionSubtype,
+    ast::{RustSpan, Span},
     prelude::RustRuleContext,
     sort::{EqSort, Sort},
     span,
@@ -102,8 +100,6 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     }
 }
 pub trait RuleRunner {
-    type EqProof;
-    type TermProof;
     fn add_rule<T: PatRecSgl, P: PatVars<T>>(
         &self,
         rule_name: &str,
@@ -114,17 +110,9 @@ pub trait RuleRunner {
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
-    fn explain<T: EgglogTy>(&self, value: wrap::Value<T>) -> TermProofId;
-    fn explain_eq<T1: EgglogTy, T2: EgglogTy>(
-        &self,
-        v1: wrap::Value<T1>,
-        v2: wrap::Value<T2>,
-    ) -> EqProofId;
     fn value<T: EgglogNode>(&self, node: &T) -> Value<T>;
 }
 pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
-    type EqProof;
-    type TermProof;
     fn add_rule<P: PatVars<Self::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,
@@ -151,18 +139,12 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
-    fn explain<T: EgglogTy>(value: Value<T>) -> TermProofId;
-    fn explain_raw(value: u32) -> TermProofId;
-    fn explain_eq<T1: EgglogTy, T2: EgglogTy>(v1: Value<T1>, v2: Value<T2>) -> EqProofId;
-    fn explain_eq_raw(v1: u32, v2: u32) -> EqProofId;
     fn value<T: EgglogNode>(node: &T) -> Value<T>;
 }
-impl<T: WithPatRecSgl + NodeDropperSgl, EP, TP> RuleRunnerSgl for T
+impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
 where
-    T::RetTy: RuleRunner<EqProof = EP, TermProof = TP>,
+    T::RetTy: RuleRunner,
 {
-    type EqProof = <T::RetTy as RuleRunner>::EqProof;
-    type TermProof = <T::RetTy as RuleRunner>::TermProof;
     fn add_rule_op_hook<P: PatVars<T::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,
@@ -179,26 +161,8 @@ where
         Self::sgl().run_ruleset(rule_set_id, run_config)
     }
 
-    fn explain<Ty: EgglogTy>(value: Value<Ty>) -> TermProofId {
-        Self::sgl().explain(value)
-    }
-    fn explain_raw(value: u32) -> TermProofId {
-        Self::sgl().explain(Value::<i64>::new(egglog::Value::new_const(value)))
-    }
-
     fn value<N: EgglogNode>(node: &N) -> Value<N> {
         Self::sgl().value(node)
-    }
-
-    fn explain_eq<T1: EgglogTy, T2: EgglogTy>(v1: Value<T1>, v2: Value<T2>) -> EqProofId {
-        Self::sgl().explain_eq(v1, v2)
-    }
-
-    fn explain_eq_raw(v1: u32, v2: u32) -> EqProofId {
-        Self::sgl().explain_eq(
-            Value::<i64>::new(egglog::Value::new_const(v1)),
-            Value::<i64>::new(egglog::Value::new_const(v2)),
-        )
     }
 }
 
@@ -225,6 +189,7 @@ impl FactsBuilder {
             constraint_facts: Vec::new(),
         }
     }
+    #[allow(unused)]
     fn to_resolved_var(
         egraph: &egglog::EGraph,
         var_name: VarName,
@@ -251,44 +216,25 @@ impl FactsBuilder {
 
     /// Build comparison constraint atom
     fn build_table_fact(
-        egraph: &egglog::EGraph,
+        _egraph: &egglog::EGraph,
         table: TableName,
         vars: Vec<(VarName, SortName)>,
-    ) -> ResolvedFact {
+    ) -> Fact {
         let (output, inputs) = vars.split_last().unwrap();
-        ResolvedFact::Fact(ResolvedExpr::Call(
-            span!(),
-            ResolvedCall::Func(FuncType {
-                name: table,
-                subtype: FunctionSubtype::Constructor,
-                input: inputs
+
+        Fact::Fact(
+            Expr::Call(
+                span!(),
+                table,
+                inputs
                     .iter()
-                    .map(|(_, sort_name)| {
-                        egraph
-                            .get_sort_by_name(&sort_name)
-                            .cloned()
-                            .unwrap_or(Arc::new(EqSort {
-                                name: sort_name.clone(),
-                            }) as Arc<dyn Sort>)
-                    })
+                    .map(|(var_name, _sort_name)| Expr::Var(span!(), var_name.clone()))
                     .collect(),
-                output: Arc::new(EqSort {
-                    name: output.1.clone(),
-                }),
-                recommend_var_name: Some(output.0.clone()),
-            }),
-            inputs
-                .iter()
-                .map(|(var_name, sort_name)| {
-                    ResolvedExpr::Var(
-                        span!(),
-                        Self::to_resolved_var(&egraph, var_name.clone(), sort_name.clone()),
-                    )
-                })
-                .collect(),
-        ))
+            )
+            .eq_var(output.0.clone()),
+        )
     }
-    pub fn build(self, egraph: &egglog::EGraph) -> Vec<ResolvedFact> {
+    pub fn build(self, egraph: &egglog::EGraph) -> Vec<Fact> {
         let mut v = Vec::new();
         for table_fact in self.table_facts {
             v.push(Self::build_table_fact(egraph, table_fact.0, table_fact.1));
@@ -300,4 +246,17 @@ impl FactsBuilder {
         v
     }
     pub fn build_fact() {}
+}
+
+trait ExprEq {
+    fn eq_var(self, var: VarName) -> Expr;
+}
+impl ExprEq for Expr {
+    fn eq_var(self, var: VarName) -> Expr {
+        Expr::Call(
+            span!(),
+            "=".to_string(),
+            vec![Expr::Var(span!(), var), self],
+        )
+    }
 }

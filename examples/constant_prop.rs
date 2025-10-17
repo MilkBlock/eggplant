@@ -1,5 +1,5 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr_fp;
+use eggplant::tx_rx_vt_pr;
 #[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
@@ -9,7 +9,7 @@ pub enum Expr {
     Div { l: Expr, r: Expr },
 }
 
-tx_rx_vt_pr_fp!(MyTx, MyPatRec);
+tx_rx_vt_pr!(MyTx, MyPatRec);
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
         #[eggplant::pat_vars]
@@ -48,8 +48,6 @@ fn main() {
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("{:#?}", report);
     MyTx::table_view();
-    MyTx::explain_eq_raw(6, 4);
-    MyTx::explain_raw(5);
 
     expr.pull();
     MyTx::egraph_to_dot("egraph.dot");

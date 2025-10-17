@@ -1,5 +1,5 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr_fp;
+use eggplant::tx_rx_vt_pr;
 #[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
@@ -9,7 +9,7 @@ pub enum Expr {
     Div { l: Expr, r: Expr },
 }
 
-tx_rx_vt_pr_fp!(MyTx, MyPatRec);
+tx_rx_vt_pr!(MyTx, MyPatRec);
 fn main() {
     env_logger::init();
     let expr: Expr<MyTx, _> = Add::new(&Mul::new(&Const::new(3), &Const::new(3)), &Const::new(3));

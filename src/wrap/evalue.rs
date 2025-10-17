@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use egglog::{
     EGraph, Value,
-    ast::{Expr, GenericExpr, Literal},
+    ast::{Expr, GenericExpr, Literal, RustSpan, Span},
     span,
 };
 

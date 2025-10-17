@@ -7,21 +7,21 @@ use super::*;
 use core::panic;
 use dashmap::DashMap;
 use egglog::{
-    EGraph, PrettyPrintConfig, RunReport, SerializeConfig,
-    prelude::{EqProofId, ProofStore, TermProofId, add_ruleset, run_ruleset},
+    EGraph, RunReport, SerializeConfig,
+    ast::Facts,
+    prelude::{add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
 };
-#[cfg(feature = "viewer")]
-use eggplant_viewer::EGraphViewer;
+use egglog::{
+    ast::{RustSpan, Span},
+    prelude::rust_rule,
+};
 use graphviz_rust::dot_structures::Attribute;
-use log::info;
-use petgraph::{EdgeType, prelude::StableDiGraph};
+use petgraph::prelude::StableDiGraph;
 use std::{
     collections::HashMap,
-    fs::File,
-    io::Write,
-    path::{Path, PathBuf},
+    path::Path,
     sync::{Arc, Mutex},
 };
 
@@ -41,7 +41,7 @@ pub struct TxRxVTPR {
     registry: EgglogTypeRegistry,
     /// mapping from sym to value, used to query [`Value`] in EGraph of specified [`Sym`]
     sym2value_map: Arc<DashMap<Sym, egglog::Value>>,
-    proof_store: Mutex<ProofStore>,
+    // proof_store: Mutex<ProofStore>,
     commit_counter: Mutex<u32>,
 }
 
@@ -176,7 +176,7 @@ impl TxRxVTPR {
             staged_new_map: Mutex::new(IndexMap::default()),
             checkpoints: Mutex::new(vec![]),
             sym2value_map: Arc::new(DashMap::new()),
-            proof_store: Mutex::new(ProofStore::default()),
+            // proof_store: Mutex::new(ProofStore::default()),
             commit_counter: Mutex::new(0),
         };
         let type_defs = EgglogTypeRegistry::collect_type_defs();
@@ -186,58 +186,58 @@ impl TxRxVTPR {
         tx
     }
     fn add_eggplant_sorts(e: &mut EGraph) {
-        egglog::prelude::add_leaf_sort(e, StaticStrSort, span!()).unwrap();
+        egglog::prelude::add_base_sort(e, StaticStrSort, span!()).unwrap();
         for sort_fn in inventory::iter::<UserBaseSort> {
             (sort_fn.sort_insert_fn)(e)
         }
     }
     /// this tracing is implemented by Proof Table writing, which is quick but without full proof
-    pub fn new_with_fast_proof() -> Self {
-        let tx = Self {
-            egraph: Arc::new(Mutex::new({
-                let mut e = EGraph::with_tracing();
-                Self::add_eggplant_sorts(&mut e);
-                e
-            })),
-            registry: EgglogTypeRegistry::new_with_inventory(),
-            map: DashMap::new(),
-            staged_set_map: DashMap::new(),
-            staged_new_map: Mutex::new(IndexMap::default()),
-            checkpoints: Mutex::new(vec![]),
-            sym2value_map: Arc::new(DashMap::new()),
-            proof_store: Mutex::new(ProofStore::default()),
-            commit_counter: Mutex::new(0),
-        };
-        let type_defs = EgglogTypeRegistry::collect_type_defs();
-        for def in type_defs {
-            tx.send(TxCommand::NativeCommand { command: def });
-        }
-        tx
-    }
+    // pub fn new_with_fast_proof() -> Self {
+    //     let tx = Self {
+    //         egraph: Arc::new(Mutex::new({
+    //             let mut e = EGraph::with_tracing();
+    //             Self::add_eggplant_sorts(&mut e);
+    //             e
+    //         })),
+    //         registry: EgglogTypeRegistry::new_with_inventory(),
+    //         map: DashMap::new(),
+    //         staged_set_map: DashMap::new(),
+    //         staged_new_map: Mutex::new(IndexMap::default()),
+    //         checkpoints: Mutex::new(vec![]),
+    //         sym2value_map: Arc::new(DashMap::new()),
+    //         proof_store: Mutex::new(ProofStore::default()),
+    //         commit_counter: Mutex::new(0),
+    //     };
+    //     let type_defs = EgglogTypeRegistry::collect_type_defs();
+    //     for def in type_defs {
+    //         tx.send(TxCommand::NativeCommand { command: def });
+    //     }
+    //     tx
+    // }
     /// this tracing is implemented by TableAction tracing without proof table writing, might be slow
     /// but with full feature
-    pub fn new_with_accurate_proof() -> Self {
-        let tx = Self {
-            egraph: Arc::new(Mutex::new({
-                let mut e = EGraph::with_tracing();
-                Self::add_eggplant_sorts(&mut e);
-                e
-            })),
-            registry: EgglogTypeRegistry::new_with_inventory(),
-            map: DashMap::new(),
-            staged_set_map: DashMap::new(),
-            staged_new_map: Mutex::new(IndexMap::default()),
-            checkpoints: Mutex::new(vec![]),
-            sym2value_map: Arc::new(DashMap::new()),
-            proof_store: Mutex::new(ProofStore::default()),
-            commit_counter: Mutex::new(0),
-        };
-        let type_defs = EgglogTypeRegistry::collect_type_defs();
-        for def in type_defs {
-            tx.send(TxCommand::NativeCommand { command: def });
-        }
-        tx
-    }
+    // pub fn new_with_accurate_proof() -> Self {
+    //     let tx = Self {
+    //         egraph: Arc::new(Mutex::new({
+    //             let mut e = EGraph::with_tracing();
+    //             Self::add_eggplant_sorts(&mut e);
+    //             e
+    //         })),
+    //         registry: EgglogTypeRegistry::new_with_inventory(),
+    //         map: DashMap::new(),
+    //         staged_set_map: DashMap::new(),
+    //         staged_new_map: Mutex::new(IndexMap::default()),
+    //         checkpoints: Mutex::new(vec![]),
+    //         sym2value_map: Arc::new(DashMap::new()),
+    //         proof_store: Mutex::new(ProofStore::default()),
+    //         commit_counter: Mutex::new(0),
+    //     };
+    //     let type_defs = EgglogTypeRegistry::collect_type_defs();
+    //     for def in type_defs {
+    //         tx.send(TxCommand::NativeCommand { command: def });
+    //     }
+    //     tx
+    // }
     // if auto_latest is true, it will locate the latest version of the node and add it to the map
     fn add_node(&self, mut node: WorkAreaNode, auto_latest: bool) {
         let sym = node.cur_sym();
@@ -593,11 +593,12 @@ impl TxCommit for TxRxVTPR {
         let mut egraph = self.egraph.lock().unwrap();
         egglog::prelude::add_ruleset(&mut egraph, &ruleset_name).unwrap();
         let hook = RuleCtxObj(ctx_hook);
-        let rule_rst = egraph.raw_resolved_rule_add_rule_with_name(
-            format!("commit{}", self.commit_counter.lock().unwrap()),
-            ruleset_name.to_string(),
-            vec![],
+        let rule_rst = rust_rule(
+            &mut egraph,
+            format!("commit{}", self.commit_counter.lock().unwrap()).as_str(),
+            ruleset_name.as_str(),
             &[],
+            Facts(vec![]),
             move |ctx, _| {
                 let ctx = RuleCtx::new(ctx, hook.clone());
                 let sym2value_map = sym2value_map.clone();
@@ -685,7 +686,6 @@ impl Rx for TxRxVTPR {
             .extract_value(
                 sort,
                 egraph
-                    .backend
                     // here we should get canno repr of specified value because egglog-backend will merge two equivalent e-node with one canno repr
                     .get_canon_repr(value.val, egglog::sort::ColumnTy::Id),
             )
@@ -756,9 +756,6 @@ impl NodeSetter for TxRxVTPR {
 }
 
 impl RuleRunner for TxRxVTPR {
-    type EqProof = EqProofId;
-    type TermProof = TermProofId;
-
     fn add_rule<PR: PatRecSgl, P: PatVars<PR>>(
         &self,
         rule_name: &str,
@@ -778,11 +775,15 @@ impl RuleRunner for TxRxVTPR {
         log::debug!("{:#?}", vars);
 
         let hook = RuleCtxObj(ctx_hook);
-        let rst = egraph.raw_resolved_rule_add_rule_with_name(
-            rule_name.to_string(),
-            rule_set.0.to_string(),
-            facts,
-            vars.as_slice(),
+        let rst = rust_rule(
+            &mut egraph,
+            rule_name,
+            rule_set.0,
+            &vars
+                .iter()
+                .map(|x| (x.0.as_str(), x.1.clone()))
+                .collect::<Vec<_>>(),
+            Facts(facts),
             move |ctx, values| {
                 let mut ctx = RuleCtx::new(ctx, hook.clone());
                 let valued_pat_vars = P::Valued::from_plain_values(&mut values.iter().cloned());
@@ -790,8 +791,7 @@ impl RuleRunner for TxRxVTPR {
                 Some(())
             },
         );
-        let (s, rule_id) = rst.expect("add_rule_set err");
-        info!("reg rule rule_id {rule_id:?} {s}");
+        let _ = rst.expect("add_rule err");
     }
 
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId {
@@ -807,7 +807,7 @@ impl RuleRunner for TxRxVTPR {
             RunConfig::Sat => {
                 let mut run_report = RunReport::default();
                 loop {
-                    let iter_report = egraph.step_rules(ruleset_id.0);
+                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
                     let updated = iter_report.updated;
                     run_report.union(iter_report);
                     if !updated {
@@ -818,32 +818,32 @@ impl RuleRunner for TxRxVTPR {
             RunConfig::Times(times) => {
                 let mut run_report = RunReport::default();
                 for _ in 0..times {
-                    let iter_report = egraph.step_rules(ruleset_id.0);
+                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
                     run_report.union(iter_report);
                 }
                 run_report
             }
             RunConfig::Once => {
-                let run_report = egraph.step_rules(ruleset_id.0);
+                let run_report = egraph.step_rules(ruleset_id.0).unwrap();
                 run_report
             }
         }
     }
 
-    fn explain<T: EgglogTy>(&self, value: Value<T>) -> TermProofId {
-        let mut prf_store = self.proof_store.lock().unwrap();
-        let prf_id = self
-            .egraph
-            .lock()
-            .unwrap()
-            .backend
-            .explain_term(value.erase(), &mut prf_store)
-            .unwrap();
-        prf_store
-            .print_term_proof(prf_id, &mut std::io::stdout())
-            .unwrap();
-        prf_id
-    }
+    // fn explain<T: EgglogTy>(&self, value: Value<T>) -> TermProofId {
+    //     let mut prf_store = self.proof_store.lock().unwrap();
+    //     let prf_id = self
+    //         .egraph
+    //         .lock()
+    //         .unwrap()
+    //         .backend
+    //         .explain_term(value.erase(), &mut prf_store)
+    //         .unwrap();
+    //     prf_store
+    //         .print_term_proof(prf_id, &mut std::io::stdout())
+    //         .unwrap();
+    //     prf_id
+    // }
 
     fn value<T: EgglogNode>(&self, node: &T) -> Value<T> {
         Value::new(
@@ -855,38 +855,39 @@ impl RuleRunner for TxRxVTPR {
         )
     }
 
-    fn explain_eq<T1: EgglogTy, T2: EgglogTy>(
-        &self,
-        v1: super::Value<T1>,
-        v2: super::Value<T2>,
-    ) -> egglog::prelude::EqProofId {
-        let mut prf_store = self.proof_store.lock().unwrap();
-        let prf_id = self
-            .egraph
-            .lock()
-            .unwrap()
-            .backend
-            .explain_terms_equal(v1.erase(), v2.erase(), &mut prf_store)
-            .unwrap();
-        prf_store
-            .print_eq_proof_pretty(
-                prf_id,
-                &PrettyPrintConfig::default(),
-                &mut std::io::stdout(),
-            )
-            .unwrap();
-        println!("");
-        prf_id
-    }
+    // fn explain_eq<T1: EgglogTy, T2: EgglogTy>(
+    //     &self,
+    //     v1: super::Value<T1>,
+    //     v2: super::Value<T2>,
+    // ) -> egglog::prelude::EqProofId {
+    //     let mut prf_store = self.proof_store.lock().unwrap();
+    //     let prf_id = self
+    //         .egraph
+    //         .lock()
+    //         .unwrap()
+    //         .backend
+    //         .explain_terms_equal(v1.erase(), v2.erase(), &mut prf_store)
+    //         .unwrap();
+    //     prf_store
+    //         .print_eq_proof_pretty(
+    //             prf_id,
+    //             &PrettyPrintConfig::default(),
+    //             &mut std::io::stdout(),
+    //         )
+    //         .unwrap();
+    //     println!("");
+    //     prf_id
+    // }
 }
 
 impl ToDot for TxRxVTPR {
     /// transform EGraph into dot file
     fn egraph_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
-        let serialized = egraph.serialize_tracing(SerializeConfig::default());
+        let serialized = egraph.serialize(SerializeConfig::default());
         let dot_path = path.as_ref().to_path_buf();
         serialized
+            .egraph
             .to_dot_file(dot_path.clone())
             .unwrap_or_else(|_| panic!("Failed to write dot file to {dot_path:?}"));
     }
@@ -1108,35 +1109,28 @@ impl ToDot for TxRxVTPR {
         std::fs::write(path.as_ref(), dot_string).expect("Failed to write dot file");
     }
 
-    fn proof_to_dot(&self, path: impl AsRef<Path>) {
-        let egraph = self.egraph.lock().unwrap();
-        let proof_graph = egraph.backend.get_proof_graph().unwrap();
+    // fn proof_to_dot(&self, path: impl AsRef<Path>) {
+    //     let egraph = self.egraph.lock().unwrap();
+    //     let proof_graph = egraph.backend.get_proof_graph().unwrap();
 
-        pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
-            g: &petgraph::Graph<N, E, Ty>,
-            name: PathBuf,
-            graph_config: &[petgraph::dot::Config],
-        ) {
-            let dot_name = name.clone();
-            let mut f = File::create(dot_name.clone()).unwrap();
-            let dot_string = format!("{:?}", petgraph::dot::Dot::with_config(&g, &graph_config));
-            f.write_all(dot_string.as_bytes()).expect("Failed to write");
-        }
-        generate_dot_by_graph(&proof_graph, path.as_ref().to_path_buf(), &[]);
-    }
+    //     pub fn generate_dot_by_graph<N: std::fmt::Debug, E: std::fmt::Debug, Ty: EdgeType>(
+    //         g: &petgraph::Graph<N, E, Ty>,
+    //         name: PathBuf,
+    //         graph_config: &[petgraph::dot::Config],
+    //     ) {
+    //         let dot_name = name.clone();
+    //         let mut f = File::create(dot_name.clone()).unwrap();
+    //         let dot_string = format!("{:?}", petgraph::dot::Dot::with_config(&g, &graph_config));
+    //         f.write_all(dot_string.as_bytes()).expect("Failed to write");
+    //     }
+    //     generate_dot_by_graph(&proof_graph, path.as_ref().to_path_buf(), &[]);
+    // }
     fn table_view(&self) {
         let egraph = self.egraph.lock().unwrap();
-        egraph.backend.dump_debug_info();
+        egraph.dump_debug_info();
     }
 
     fn wag_to_petgraph(&self) -> SerializedPetGraph {
         todo!()
-    }
-}
-
-#[cfg(feature = "viewer")]
-impl EGraphViewer for TxRxVTPR {
-    fn egraph(&self) -> Arc<Mutex<EGraph>> {
-        self.egraph.clone()
     }
 }

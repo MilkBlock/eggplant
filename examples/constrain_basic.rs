@@ -1,5 +1,5 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr_fp;
+use eggplant::tx_rx_vt_pr;
 #[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
@@ -9,7 +9,7 @@ pub enum Expr {
     Div { l: Expr, r: Expr },
 }
 
-tx_rx_vt_pr_fp!(MyTx, MyPatRec);
+tx_rx_vt_pr!(MyTx, MyPatRec);
 
 #[eggplant::pat_vars]
 struct AddPat {

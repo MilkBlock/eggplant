@@ -48,7 +48,7 @@ mod tests {
 // mod test_container_of_base {
 //     use crate::{self as eggplant};
 //     use eggplant::prelude::*;
-//     use eggplant::tx_rx_vt_pr_fp;
+//     use eggplant::tx_rx_vt_pr;
 //     #[eggplant::dsl(container =Array)]
 //     pub enum Expr {
 //         VecSum { exprs: Array },
@@ -62,7 +62,7 @@ mod tests {
 //         vec_expr: VecSum,
 //     }
 
-//     tx_rx_vt_pr_fp!(MyTx, MyPatRec);
+//     tx_rx_vt_pr!(MyTx, MyPatRec);
 //     fn main() {
 //         env_logger::init();
 //         let expr: Expr<MyTx, _> = VecSum::new(&Array::new(vec![3, 2, 1]));

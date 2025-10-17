@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use derive_more::Deref;
 use egglog::{
     EGraph, Term, TermDag, TermId,
-    ast::{Command, GenericExpr, Literal, Schema, Span, Subdatatypes, Variant},
+    ast::{Command, GenericExpr, Literal, RustSpan, Schema, Span, Subdatatypes, Variant},
     prelude::BaseSort,
     sort::Q,
     span, var,
@@ -195,6 +195,7 @@ impl EgglogTypeRegistry {
                                     name: x.cons_name.to_string(),
                                     types: x.input.iter().map(|y| y.to_string()).collect(),
                                     cost: x.cost,
+                                    unextractable: x.unextractable,
                                 })
                                 .collect(),
                         ),

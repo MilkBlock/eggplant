@@ -1,5 +1,5 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr_fp;
+use eggplant::tx_rx_vt_pr;
 use eggplant::wrap::VecContainer;
 #[eggplant::dsl(container=Array, container = VarSet)]
 pub enum Expr {
@@ -20,7 +20,7 @@ struct VecPat {
     vec_expr: VecSum,
 }
 
-tx_rx_vt_pr_fp!(MyTx, MyPatRec);
+tx_rx_vt_pr!(MyTx, MyPatRec);
 fn main() {
     env_logger::init();
     let expr: Expr<MyTx, _> = VecSum::new(&Array::new(vec![

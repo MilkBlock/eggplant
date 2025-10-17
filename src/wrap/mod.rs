@@ -145,99 +145,11 @@ macro_rules! basic_tx_rx_vt_pr {
         impl eggplant::wrap::NonPatRecSgl for $name {}
     };
 }
-#[macro_export]
-macro_rules! basic_tx_rx_vt_pr_fp {
-    ($name:ident) => {
-        pub struct $name {
-            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR,
-        }
-        impl eggplant::prelude::SingletonGetter for $name {
-            type RetTy = eggplant::wrap::tx_rx_vt_pr::TxRxVTPR;
-            fn sgl() -> &'static eggplant::wrap::tx_rx_vt_pr::TxRxVTPR {
-                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
-                &INSTANCE
-                    .get_or_init(|| -> $name {
-                        Self {
-                            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR::new_with_fast_proof(),
-                        }
-                    })
-                    .tx
-            }
-        }
-        impl eggplant::wrap::NonPatRecSgl for $name {}
-        // #[cfg(feature = "viewer")]
-        // use eggplant::eggplant_viewer::EGraphViewer;
-        // #[cfg(feature = "viewer")]
-        // impl eggplant::eggplant_viewer::EGraphViewerSgl for $name {
-        //     fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
-        //         Self::sgl().egraph()
-        //     }
-        //     fn view() -> Result<(), eggplant::eggplant_viewer::Error> {
-        //         eggplant::eggplant_viewer::view::<Self>()
-        //     }
-        // }
-    };
-}
-
-#[macro_export]
-macro_rules! basic_tx_rx_vt_pr_ap {
-    ($name:ident) => {
-        pub struct $name {
-            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR,
-        }
-        impl eggplant::prelude::SingletonGetter for $name {
-            type RetTy = eggplant::wrap::tx_rx_vt_pr::TxRxVTPR;
-            fn sgl() -> &'static eggplant::wrap::tx_rx_vt_pr::TxRxVTPR {
-                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
-                &INSTANCE
-                    .get_or_init(|| -> $name {
-                        Self {
-                            tx: eggplant::wrap::tx_rx_vt_pr::TxRxVTPR::new_with_accurate_proof(),
-                        }
-                    })
-                    .tx
-            }
-        }
-        impl eggplant::wrap::NonPatRecSgl for $name {}
-        #[cfg(feature = "viewer")]
-        use eggplant::eggplant_viewer::EGraphViewer;
-        #[cfg(feature = "viewer")]
-        impl eggplant::eggplant_viewer::EGraphViewerSgl for $name {
-            fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
-                Self::sgl().egraph()
-            }
-            fn view() -> Result<(), eggplant::eggplant_viewer::Error> {
-                eggplant::eggplant_viewer::view::<Self>()
-            }
-        }
-    };
-}
 
 #[macro_export]
 macro_rules! tx_rx_vt_pr {
     ($tx_name:ident, $pat_rec_name:ident) => {
         eggplant::basic_tx_rx_vt_pr!($tx_name);
-        eggplant::basic_patttern_recorder!($pat_rec_name);
-        impl eggplant::wrap::WithPatRecSgl for $tx_name {
-            type PatRecSgl = $pat_rec_name;
-        }
-    };
-}
-#[macro_export]
-macro_rules! tx_rx_vt_pr_fp {
-    ($tx_name:ident, $pat_rec_name:ident) => {
-        eggplant::basic_tx_rx_vt_pr_fp!($tx_name);
-        eggplant::basic_patttern_recorder!($pat_rec_name);
-        impl eggplant::wrap::WithPatRecSgl for $tx_name {
-            type PatRecSgl = $pat_rec_name;
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! tx_rx_vt_pr_ap {
-    ($tx_name:ident, $pat_rec_name:ident) => {
-        eggplant::basic_tx_rx_vt_pr_ap!($tx_name);
         eggplant::basic_patttern_recorder!($pat_rec_name);
         impl eggplant::wrap::WithPatRecSgl for $tx_name {
             type PatRecSgl = $pat_rec_name;

@@ -1524,7 +1524,7 @@ pub fn base_ty(
     let sort = format_ident!("{}Sort", ident);
     quote!(
         #input
-        #INVE::submit! { #W::UserBaseSort{ sort_insert_fn: |e| egglog::prelude::add_leaf_sort(e, #sort, #E::span!()).unwrap() }}
+        #INVE::submit! { #W::UserBaseSort{ sort_insert_fn: |e| egglog::prelude::add_base_sort(e, #sort, #E::span!()).unwrap() }}
         impl std::fmt::Display for #ident {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", serde_json::to_string(&self).unwrap())

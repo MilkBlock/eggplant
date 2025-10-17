@@ -6,11 +6,13 @@ use crate::wrap::{
 };
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
+use egglog::ast::{RustSpan, Span};
+use egglog::prelude::span;
 use egglog::{
     ArcSort, BaseValue, ContainerValue, EGraph,
-    ast::{Command, GenericAction, GenericExpr, RustSpan, Span},
+    ast::{Command, GenericAction, GenericExpr},
 };
-use egglog::{TermDag, TermId, ast::Literal, span};
+use egglog::{TermDag, TermId, ast::Literal};
 use smallvec::SmallVec;
 use std::{
     any::Any,
@@ -1026,14 +1028,14 @@ pub trait ToDotSgl {
     fn egraph_to_dot(path: impl AsRef<Path>);
     fn wag_to_dot(path: impl AsRef<Path>);
     fn wag_to_petgraph() -> SerializedPetGraph;
-    fn proof_to_dot(path: impl AsRef<Path>);
+    // fn proof_to_dot(path: impl AsRef<Path>);
     fn table_view();
 }
 pub trait ToDot {
     fn egraph_to_dot(&self, path: impl AsRef<Path>);
     fn wag_to_dot(&self, path: impl AsRef<Path>);
     fn wag_to_petgraph(&self) -> SerializedPetGraph;
-    fn proof_to_dot(&self, path: impl AsRef<Path>);
+    // fn proof_to_dot(&self, path: impl AsRef<Path>);
     fn table_view(&self);
 }
 impl<S: SingletonGetter> ToDotSgl for S
@@ -1050,9 +1052,9 @@ where
     fn wag_to_petgraph() -> SerializedPetGraph {
         Self::sgl().wag_to_petgraph()
     }
-    fn proof_to_dot(path: impl AsRef<Path>) {
-        Self::sgl().proof_to_dot(path);
-    }
+    // fn proof_to_dot(path: impl AsRef<Path>) {
+    //     Self::sgl().proof_to_dot(path);
+    // }
     fn table_view() {
         Self::sgl().table_view();
     }

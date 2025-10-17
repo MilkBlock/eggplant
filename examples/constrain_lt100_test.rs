@@ -1,5 +1,5 @@
 use eggplant::prelude::*;
-use eggplant::tx_rx_vt_pr_fp;
+use eggplant::tx_rx_vt_pr;
 
 #[eggplant::dsl]
 pub enum Expr {
@@ -7,7 +7,7 @@ pub enum Expr {
     Add { l: Expr, r: Expr },
 }
 
-tx_rx_vt_pr_fp!(MyTx, MyPatRec);
+tx_rx_vt_pr!(MyTx, MyPatRec);
 
 fn main() {
     env_logger::init();
