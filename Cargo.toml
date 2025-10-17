@@ -10,7 +10,6 @@ readme.workspace = true
 
 [features]
 default = []
-viewer = ["eggplant-viewer"]
 
 [dependencies]
 derive_more = { version = "2.0.1", features = [
@@ -28,7 +27,6 @@ env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
 
-eggplant-viewer = { workspace = true, optional = true }
 egglog.workspace = true
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
@@ -38,8 +36,8 @@ serde_json.workspace = true
 usvg = "0.45.1"
 
 [workspace]
-members = ["eggplant-macros", "eggplant-viewer", "eggplant-transpiler"]
-resolver = "2"                                                          # recommended 2021 Edition
+members = ["eggplant-macros", "eggplant-transpiler"]
+resolver = "2"                                       # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
@@ -53,10 +51,9 @@ authors = ["MilkBlock"]
 
 [workspace.dependencies]
 eggplant-macros = { path = "./eggplant-macros" }
-eggplant-viewer = { path = "./eggplant-viewer" }
 eggplant-transpiler = { path = "./eggplant-transpiler" }
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "5ebaedc" }
-# egglog = { path = "../egglog" }
+# egglog = { git = "https://github.com/MilkBlock/egglog", rev = "5ebaedc" }
+egglog = { path = "../stable/egglog" }
 # egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}
 itertools = "0.14.0"
 
