@@ -4,7 +4,7 @@ use std::{
     mem,
 };
 
-use crate::wrap::{BoxedValue, EgglogTy, RetypeValue, RuleCtx, Value};
+use crate::wrap::{BoxedContainer, BoxedValue, EgglogTy, RetypeValue, RuleCtx, Value};
 
 type Ref<'a, T> = Box<dyn std::ops::Deref<Target = T> + 'a>;
 impl<T: EgglogTy> BoxedValue for SetContainer<T> {
@@ -97,5 +97,19 @@ impl<T: EgglogTy> From<Vec<Value<T>>> for SetContainer<T> {
             },
             _p: PhantomData,
         }
+    }
+}
+
+impl<T: EgglogTy> BoxedContainer for SetContainer<T> {
+    type Boxed = egglog::sort::SetContainer;
+    const CONSTRUCTOR_STR: &'static str = "set-of";
+    const TY_STR: &'static str = "Set";
+
+    fn unbox(boxed: Self::Boxed, _ctx: &RuleCtx) -> Self {
+        unsafe { mem::transmute(boxed) }
+    }
+
+    fn box_it(self, _ctx: &RuleCtx) -> Self::Boxed {
+        unsafe { mem::transmute(self) }
     }
 }

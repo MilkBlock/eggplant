@@ -931,6 +931,8 @@ pub trait BoxedBase: BoxedValue {
 }
 pub trait BoxedContainer: BoxedValue {
     type Boxed: ContainerValue;
+    const CONSTRUCTOR_STR: &'static str;
+    const TY_STR: &'static str;
     fn unbox(boxed: Self::Boxed, ctx: &RuleCtx) -> Self;
     fn box_it(self, ctx: &RuleCtx) -> Self::Boxed;
 }

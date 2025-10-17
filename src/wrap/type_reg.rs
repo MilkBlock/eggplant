@@ -110,7 +110,8 @@ pub enum Decl {
     EgglogContainerTy {
         name: &'static str,
         ele_ty_name: &'static str,
-        def_operator: &'static str,
+        constructor_str: &'static str,
+        ty_str: &'static str,
         term_to_node: TermToNode,
     },
     EgglogFuncTy {
@@ -167,10 +168,11 @@ impl EgglogTypeRegistry {
                 Decl::EgglogContainerTy {
                     name: _,
                     ele_ty_name,
-                    def_operator,
+                    constructor_str,
                     term_to_node,
+                    ty_str: _,
                 } => {
-                    map.insert((ele_ty_name, def_operator), term_to_node);
+                    map.insert((ele_ty_name, constructor_str), term_to_node);
                 }
                 _ => {}
             });
@@ -201,15 +203,16 @@ impl EgglogTypeRegistry {
                 Decl::EgglogContainerTy {
                     name,
                     ele_ty_name,
-                    def_operator: _,
+                    constructor_str: _,
                     term_to_node: _,
+                    ty_str,
                 } => {
                     let ele_ty = ele_ty_name.to_owned();
                     let ele = var!(ele_ty);
                     types.push((
                         span!(),
                         name.to_string(),
-                        Subdatatypes::NewSort("Vec".to_string(), vec![ele]),
+                        Subdatatypes::NewSort(ty_str.to_string(), vec![ele]),
                     ));
                 }
                 _ => {

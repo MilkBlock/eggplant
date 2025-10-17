@@ -1,6 +1,6 @@
 use std::{marker::PhantomData, mem};
 
-use crate::wrap::{BoxedValue, EgglogTy, RetypeValue, RuleCtx, Value};
+use crate::wrap::{BoxedContainer, BoxedValue, EgglogTy, RetypeValue, RuleCtx, Value};
 
 type Ref<'a, T> = Box<dyn std::ops::Deref<Target = T> + 'a>;
 impl<T: EgglogTy> BoxedValue for VecContainer<T> {
@@ -98,5 +98,18 @@ impl<T: EgglogTy> From<Vec<Value<T>>> for VecContainer<T> {
             },
             _p: PhantomData,
         }
+    }
+}
+impl<T: EgglogTy> BoxedContainer for VecContainer<T> {
+    type Boxed = egglog::sort::VecContainer;
+    const CONSTRUCTOR_STR: &'static str = "vec-of";
+    const TY_STR: &'static str = "Vec";
+
+    fn unbox(boxed: Self::Boxed, _ctx: &RuleCtx) -> Self {
+        unsafe { mem::transmute(boxed) }
+    }
+
+    fn box_it(self, _ctx: &RuleCtx) -> Self::Boxed {
+        unsafe { mem::transmute(self) }
     }
 }

@@ -289,7 +289,8 @@ pub fn dsl(
                 .fields
                 .iter()
                 .nth(0)
-                .expect("Struct should only have one Vec field");
+                .expect("Struct should only have one container field");
+            let container_full_ty = &f.ty;
             let first_generic = get_first_generic(&f.ty);
             let first_generic_ty = format_ident!("{}", first_generic.to_token_stream().to_string());
             let (is_container, container_ty) = is_container_type(&f.ty);
@@ -308,7 +309,8 @@ pub fn dsl(
                         #W::Decl::EgglogContainerTy {
                             name: <#name_egglogty_impl::<()> as #W::EgglogTy>::TY_NAME,
                             ele_ty_name: <<#name_egglogty_impl as #W::EgglogContainerTy>::EleTy as #W::EgglogTy>::TY_NAME,
-                            def_operator:"vec-of",
+                            constructor_str:<#container_full_ty as #W::BoxedContainer>::CONSTRUCTOR_STR,
+                            ty_str:<#container_full_ty as #W::BoxedContainer>::TY_STR,
                             term_to_node: #name::<(),()>::new_from_term_dyn
                         }
                     }

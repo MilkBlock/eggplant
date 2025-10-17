@@ -1,14 +1,19 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_fp;
 use eggplant::wrap::VecContainer;
-#[eggplant::dsl(container=Array)]
+#[eggplant::dsl(container=Array, container = VarSet)]
 pub enum Expr {
     Const { num: i64 },
     VecSum { exprs: Array },
+    VarSet { exprs: SetStruct },
 }
 #[eggplant::container]
 struct Array {
     inner: VecContainer<Expr>,
+}
+#[eggplant::container]
+struct SetStruct {
+    inner: SetContainer<Expr>,
 }
 #[eggplant::pat_vars]
 struct VecPat {
@@ -39,6 +44,11 @@ fn main() {
                 let mut v = VecContainer::new();
                 v.push(ctx.insert_const(3));
                 v
+            }));
+            ctx.insert_var_set(ctx.insert_set_struct({
+                let mut set = SetContainer::new();
+                set.insert(ctx.insert_const(4));
+                set
             }));
             let v = ctx.devalue(pat.vec_expr.exprs);
             for expr in v.iter() {

@@ -1,14 +1,11 @@
-use std::{any::type_name, mem};
+use std::any::type_name;
 
 use egglog::{
     ast::Literal,
     sort::{Boxed, OrderedFloat},
 };
 
-use crate::{
-    prelude::VecContainer,
-    wrap::{BoxedBase, BoxedContainer, BoxedValue, EgglogTy, RuleCtx},
-};
+use crate::wrap::{BoxedBase, BoxedValue, RuleCtx};
 
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;
@@ -200,17 +197,6 @@ impl BoxedValue for String {
     fn devalue(rule_ctx: &RuleCtx, value: egglog::Value) -> Self {
         let value = rule_ctx._devalue_base(value);
         Self::unbox(value, rule_ctx)
-    }
-}
-impl<T: EgglogTy> BoxedContainer for VecContainer<T> {
-    type Boxed = egglog::sort::VecContainer;
-
-    fn unbox(boxed: Self::Boxed, _ctx: &RuleCtx) -> Self {
-        unsafe { mem::transmute(boxed) }
-    }
-
-    fn box_it(self, _ctx: &RuleCtx) -> Self::Boxed {
-        unsafe { mem::transmute(self) }
     }
 }
 impl_simple_boxed_base_for!(i64);
