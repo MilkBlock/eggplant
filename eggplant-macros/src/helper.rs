@@ -545,11 +545,11 @@ pub fn variant_marker_names(data_enum: &DataEnum) -> (Vec<Ident>, Vec<Ident>) {
 
 pub fn variant2valued_struct_fields(variant: &Variant) -> Vec<TokenStream> {
     variant2mapped_ident_type_list_detailed(variant, |ident, ty, b_or_c| {
-        println!(
-            "{} {} is recognized as basic",
-            ident.to_string(),
-            ty.to_string()
-        );
+        // println!(
+        //     "{} {} is recognized as basic",
+        //     ident.to_string(),
+        //     ty.to_string()
+        // );
         match b_or_c {
             BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
                 Some(quote! {#ident: #W::Value<#ty>})

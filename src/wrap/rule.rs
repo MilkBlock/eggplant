@@ -221,18 +221,15 @@ impl FactsBuilder {
         vars: Vec<(VarName, SortName)>,
     ) -> Fact {
         let (output, inputs) = vars.split_last().unwrap();
-
-        Fact::Fact(
-            Expr::Call(
-                span!(),
-                table,
-                inputs
-                    .iter()
-                    .map(|(var_name, _sort_name)| Expr::Var(span!(), var_name.clone()))
-                    .collect(),
-            )
-            .eq_var(output.0.clone()),
+        Expr::Call(
+            span!(),
+            table,
+            inputs
+                .iter()
+                .map(|(var_name, _sort_name)| Expr::Var(span!(), var_name.clone()))
+                .collect(),
         )
+        .eq_var(output.0.clone())
     }
     pub fn build(self, egraph: &egglog::EGraph) -> Vec<Fact> {
         let mut v = Vec::new();
@@ -249,14 +246,10 @@ impl FactsBuilder {
 }
 
 trait ExprEq {
-    fn eq_var(self, var: VarName) -> Expr;
+    fn eq_var(self, var: VarName) -> Fact;
 }
 impl ExprEq for Expr {
-    fn eq_var(self, var: VarName) -> Expr {
-        Expr::Call(
-            span!(),
-            "=".to_string(),
-            vec![Expr::Var(span!(), var), self],
-        )
+    fn eq_var(self, var: VarName) -> Fact {
+        Fact::Eq(span!(), Expr::Var(span!(), var), self)
     }
 }
