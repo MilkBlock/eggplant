@@ -292,8 +292,9 @@ pub fn dsl(
                 .expect("Struct should only have one Vec field");
             let first_generic = get_first_generic(&f.ty);
             let first_generic_ty = format_ident!("{}", first_generic.to_token_stream().to_string());
-            if is_vec_type(&f.ty) {
-                let vec_expanded = quote! {
+            let (is_container, container_ty) = is_container_type(&f.ty);
+            if is_container {
+                let container_expanded = quote! {
                     impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                         const TY_NAME:&'static str = stringify!(#name);
                         const TY_NAME_LOWER:&'static str = stringify!(#name_snake_case);
@@ -313,9 +314,12 @@ pub fn dsl(
                     }
                     // #INVE::submit! { #W::UserContainerSort{ sort_insert_fn: |e| egglog::prelude::add_leaf_sort(e, #sort, #E::span!()).unwrap() }}
                 };
-                vec_expanded
+                container_expanded
             } else {
-                panic!("only support Vec for struct")
+                panic!(
+                    "only support VecContainer or SetContainer for Container, {} is not supported",
+                    container_ty
+                )
             }
         }
         _ => panic!("only support enum"),
@@ -333,6 +337,7 @@ pub fn dsl(
                 .nth(0)
                 .expect("Struct should only have one Vec field");
             let field_name = &f.ident.as_ref().unwrap();
+            let (_is_container, container_ty) = is_container_type(&f.ty);
             let first_generic = get_first_generic(&f.ty);
             // let field_sym_ty = get_sym_type(first_generic);
             let (field_node, is_basic_ty) =
@@ -381,13 +386,13 @@ pub fn dsl(
                                 #E::ast::GenericExpr::Call(self.node.span.to_span(),"vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
                             )
                         }
-                        fn native_egglog(&mut self, ctx: &#W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
                             let vec = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
                                 inner.into_iter().map(|x| ctx.intern_base(x)).collect()
                             }else {
                                 panic!()
                             };
-                            ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
+                            ctx.intern_container::<Self, #W::#container_ty<#name_node<(),()>>>(
                                     vec.into()
                             ).val
                         }
@@ -419,7 +424,7 @@ pub fn dsl(
                             }else {
                                 panic!()
                             };
-                            ctx.intern_container::<Self, #W::VecContainer<#name_node<(),()>>>(
+                            ctx.intern_container::<Self, #W::#container_ty<#name_node<(),()>>>(
                                 vec.into()
                             ).val
                         }
@@ -460,11 +465,11 @@ pub fn dsl(
                 quote! {
                     pub trait #ctx_trait_name {
                         #[track_caller]
-                        fn #insert_fn_name(&self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
+                        fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
                         #[track_caller]
-                        fn #insert_fn_name(&self, #field_name: #W::VecContainer<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
+                        fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
                             use #W::Value;
                             use #W::Insertable;
                             self.intern_container(#field_name)
@@ -497,218 +502,222 @@ pub fn dsl(
                     format_ident!("{}", first_generic).to_token_stream()
                 }
             };
-            if is_vec_type(&f.ty) {
-                // MARK: Struct Expanded
-                let vec_expanded = quote! {
-                    pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
-                    #[allow(unused)]
-                    pub struct #name_node<T: #W::NodeDropperSgl =(), V: #W::EgglogEnumVariantTy=()>
-                    where Self: #W::EgglogNode + #W::EgglogTy {
-                        node:#name_node_alias<T,V>
-                    }
-                    #[allow(unused)]
-                    #[derive(Clone, #ENM::EnumDiscriminants)]
-                    pub enum #name_inner {
-                        Inner {inner:#W::Syms<#field_ty> },
-                    }
-                    const _:() = {
-                        use #E::prelude::*;
-                        use #E::*;
-                        use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr};
-                        use #INVE;
-                        impl #W::NodeInner for #name_inner{
-                            fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
-                                self.iter_mut().map(|s| s.erase_mut()).collect()
-                            }
-                            fn succs(&self) -> Vec<#W::Sym>{
-                                self.iter().map(|s| s.erase()).collect()
-                            }
+            let (is_container, container_ty) = is_container_type(&f.ty);
+            let container_expanded = match (is_container, is_basic_ty) {
+                (true, false) => {
+                    // MARK: Struct Expanded
+                    quote! {
+                        pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
+                        #[allow(unused)]
+                        pub struct #name_node<T: #W::NodeDropperSgl =(), V: #W::EgglogEnumVariantTy=()>
+                        where Self: #W::EgglogNode + #W::EgglogTy {
+                            node:#name_node_alias<T,V>
                         }
-                        impl std::ops::Deref for #name_inner { type Target = #W::Syms<#field_ty> ; fn deref(&self) -> &Self::Target { let #name_inner::Inner { inner } = self; inner } }
-                        impl std::ops::DerefMut for #name_inner { fn deref_mut(&mut self) -> &mut Self::Target { let #name_inner::Inner { inner } = self; inner } }
-                        use std::marker::PhantomData;
-                        static #name_counter: #W::TyCounter<#name_egglogty_impl> = #W::TyCounter::new();
-                        impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
-                            #[track_caller]
-                            pub fn query_leaf() -> self::#name_node<T,()>{
-                                let node = #W::Node{
-                                    ty: #W::TyPH::PH,
-                                    span:Some(std::panic::Location::caller()),
-                                    sym: #name_counter.next_sym(),
-                                    _p: PhantomData, _s: PhantomData,
-                                    sgl_specific: T::OwnerSpecDataInNode::default()
-                                };
-                                let node = self::#name_node {node};
-                                T::on_new(&node);
-                                node
-                            }
-                            #[track_caller]
-                            pub fn query(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
-                                let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
-                                let node = #W::Node{
-                                    ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
-                                    span:Some(std::panic::Location::caller()),
-                                    sym: #name_counter.next_sym(),
-                                    _p: PhantomData, _s: PhantomData,
-                                    sgl_specific: T::OwnerSpecDataInNode::default()
-                                };
-                                let node = self::#name_node {node};
-                                T::on_new(&node);
-                                node
-                            }
+                        #[allow(unused)]
+                        #[derive(Clone, #ENM::EnumDiscriminants)]
+                        pub enum #name_inner {
+                            Inner {inner:#W::Syms<#field_ty> },
                         }
-                        impl<T:#W::TxSgl + #W::NonPatRecSgl> self::#name_node<T,()> {
-                            #[track_caller]
-                            pub fn new(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
-                                let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
-                                let node = #W::Node{
-                                    ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
-                                    span:Some(std::panic::Location::caller()),
-                                    sym: #name_counter.next_sym(),
-                                    _p: PhantomData, _s: PhantomData,
-                                    sgl_specific: T::OwnerSpecDataInNode::default()
-                                };
-                                let node = self::#name_node {node};
-                                T::on_new(&node);
-                                node
-                            }
-                            // /// with no side-effect (will not send command to EGraph or change node in WorkAreaGraph)
-                            // #[track_caller]
-                            // pub fn _new(#field_name:Vec<&#field_node>) -> #name_node<T,()>{
-                            //     let ty = #name_inner{ v: #field_name.into() };
-                            //     use std::panic::Location;
-                            //     let node = Node { ty, sym: #name_counter.next_sym(),span:Some(Location::caller()), _p:PhantomData, _s:PhantomData::<()>};
-                            //     let node = #name_node {node};
-                            //     node
-                            // }
-                            #[track_caller]
-                            pub fn new_from_term(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> self::#name_node<T,()>{
-                                let children = match term_dag.get(term_id){
-                                    #E::Term::App(app,v) => v,
-                                    _=> panic!()
-                                };
-                                let ty = #W::TyPH::Ty(#name_inner::Inner{inner:#field_assignment });
-                                let node = #W::Node {
-                                    ty,
-                                    sym: #name_counter.next_sym(),
-                                    span:Some(std::panic::Location::caller()),
-                                    _p:PhantomData,
-                                    _s:PhantomData,
-                                    sgl_specific:T::OwnerSpecDataInNode::default()
-                                };
-                                let node = self::#name_node {node};
-                                term2sym.insert(term_id, node.cur_sym());
-                                node
-                            }
-                            #[track_caller]
-                            pub fn new_from_term_dyn(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> Box<dyn #W::EgglogNode>{
-                                Box::new(Self::new_from_term(term_id, term_dag, term2sym))
-                            }
-                        }
-                        impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::EgglogNode for self::#name_node<T,V> {
-                            fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{ use #W::NodeInner;
-                                self.node.ty.map_ty_mut_or_else(||vec![],|_,x|x.iter_mut().collect(),|ty|ty.succs_mut())
-                            }
-                            fn succs(&self) -> Vec<#W::Sym>{ use #W::NodeInner;
-                                self.node.ty.map_ty_ref_or_else(||vec![],|_,x|x.clone(),|ty|ty.succs())
-                            }
-                            fn roll_sym(&mut self) -> #W::Sym{
-                                let next_sym = #name_counter.next_sym();
-                                self.node.sym = next_sym;
-                                next_sym.erase()
-                            }
-                            fn cur_sym(&self) -> #W::Sym{ self.node.sym.erase() }
-                            fn cur_sym_mut(&mut self) -> &mut #W::Sym{ self.node.sym.erase_mut() } fn clone_dyn(&self) -> Box<dyn #W::EgglogNode>{ Box::new(self.clone()) }
-                            fn ty_name(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME }
-                            fn ty_name_lower(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME_LOWER }
-                            fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
-                            fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
-                            fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
-                            fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
-                            fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
-                            #[track_caller]
-                            fn to_term(&self,term_dag: &mut #E::TermDag,
-                                sym2term: &mut std::collections::HashMap< #W::Sym, #E::TermId>,
-                                sym2ph_name: & std::collections::HashMap<#W::Sym, &'static str>) -> #E::TermId{
-                                panic!()
-                            }
-                            #[track_caller]
-                            fn add_table_fact( &self, query_builder:&mut #W::FactsBuilder) {
-                                use #W::EgglogTy;
-
-                            }
-                        }
-                        impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
-                            #[track_caller] fn collect_vars( &self, vars:&mut Vec<(#W::VarName, #W::SortName)>
-                            ) {
-                                use #W::EgglogTy;
-                                match &self.node.ty{
-                                    #W::TyPH::Ty(_) => {
-                                        panic!("can't call collect_var on non-pattern-def EgglogNode")
-                                    },
-                                    // with basic fields
-                                    #W::TyPH::VarPH(dis, succs) => {
-                                        // vars.push((self.cur_sym().to_string(), Self::TY_NAME.to_string()));
-                                        // match dis{
-                                        //     #(#collect_var_match_arms),*
-                                        // }
-                                        panic!("vec should not be VarPH")
-                                    },
-                                    // only itself as complex field
-                                    #W::TyPH::PH => {
-                                        vars.push((self.cur_sym().to_string(), <Self as #W::EgglogTy>::TY_NAME.to_string()));
-                                    }
-                                };
-                            }
-                        }
-                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
-                            fn as_ref(&self) -> &self::#name_node<T, ()> {
-                                unsafe {
-                                    &*(self as *const self::#name_node<T,V> as *const self::#name_node<T,()>)
+                        const _:() = {
+                            use #E::prelude::*;
+                            use #E::*;
+                            use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr};
+                            use #INVE;
+                            impl #W::NodeInner for #name_inner{
+                                fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
+                                    self.iter_mut().map(|s| s.erase_mut()).collect()
+                                }
+                                fn succs(&self) -> Vec<#W::Sym>{
+                                    self.iter().map(|s| s.erase()).collect()
                                 }
                             }
-                        }
-                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
-                            fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
-                                #W::Value::new(self.erase())
+                            impl std::ops::Deref for #name_inner { type Target = #W::Syms<#field_ty> ; fn deref(&self) -> &Self::Target { let #name_inner::Inner { inner } = self; inner } }
+                            impl std::ops::DerefMut for #name_inner { fn deref_mut(&mut self) -> &mut Self::Target { let #name_inner::Inner { inner } = self; inner } }
+                            use std::marker::PhantomData;
+                            static #name_counter: #W::TyCounter<#name_egglogty_impl> = #W::TyCounter::new();
+                            impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                                #[track_caller]
+                                pub fn query_leaf() -> self::#name_node<T,()>{
+                                    let node = #W::Node{
+                                        ty: #W::TyPH::PH,
+                                        span:Some(std::panic::Location::caller()),
+                                        sym: #name_counter.next_sym(),
+                                        _p: PhantomData, _s: PhantomData,
+                                        sgl_specific: T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    T::on_new(&node);
+                                    node
+                                }
+                                #[track_caller]
+                                pub fn query(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
+                                    let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
+                                    let node = #W::Node{
+                                        ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
+                                        span:Some(std::panic::Location::caller()),
+                                        sym: #name_counter.next_sym(),
+                                        _p: PhantomData, _s: PhantomData,
+                                        sgl_specific: T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    T::on_new(&node);
+                                    node
+                                }
                             }
-                        }
-                        impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
-                            fn clone(&self) -> Self {
-                                Self {
-                                    node:
-                                        #W::Node {
-                                            ty: self.node.ty.clone(),
-                                            span: self.node.span,
-                                            sym: self.node.sym.clone(),
-                                            _p:PhantomData,
-                                            _s:PhantomData,
-                                            sgl_specific: T::OwnerSpecDataInNode::default()
+                            impl<T:#W::TxSgl + #W::NonPatRecSgl> self::#name_node<T,()> {
+                                #[track_caller]
+                                pub fn new(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
+                                    let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
+                                    let node = #W::Node{
+                                        ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
+                                        span:Some(std::panic::Location::caller()),
+                                        sym: #name_counter.next_sym(),
+                                        _p: PhantomData, _s: PhantomData,
+                                        sgl_specific: T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    T::on_new(&node);
+                                    node
+                                }
+                                // /// with no side-effect (will not send command to EGraph or change node in WorkAreaGraph)
+                                // #[track_caller]
+                                // pub fn _new(#field_name:Vec<&#field_node>) -> #name_node<T,()>{
+                                //     let ty = #name_inner{ v: #field_name.into() };
+                                //     use std::panic::Location;
+                                //     let node = Node { ty, sym: #name_counter.next_sym(),span:Some(Location::caller()), _p:PhantomData, _s:PhantomData::<()>};
+                                //     let node = #name_node {node};
+                                //     node
+                                // }
+                                #[track_caller]
+                                pub fn new_from_term(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> self::#name_node<T,()>{
+                                    let children = match term_dag.get(term_id){
+                                        #E::Term::App(app,v) => v,
+                                        _=> panic!()
+                                    };
+                                    let ty = #W::TyPH::Ty(#name_inner::Inner{inner:#field_assignment });
+                                    let node = #W::Node {
+                                        ty,
+                                        sym: #name_counter.next_sym(),
+                                        span:Some(std::panic::Location::caller()),
+                                        _p:PhantomData,
+                                        _s:PhantomData,
+                                        sgl_specific:T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    term2sym.insert(term_id, node.cur_sym());
+                                    node
+                                }
+                                #[track_caller]
+                                pub fn new_from_term_dyn(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> Box<dyn #W::EgglogNode>{
+                                    Box::new(Self::new_from_term(term_id, term_dag, term2sym))
+                                }
+                            }
+                            impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::EgglogNode for self::#name_node<T,V> {
+                                fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{ use #W::NodeInner;
+                                    self.node.ty.map_ty_mut_or_else(||vec![],|_,x|x.iter_mut().collect(),|ty|ty.succs_mut())
+                                }
+                                fn succs(&self) -> Vec<#W::Sym>{ use #W::NodeInner;
+                                    self.node.ty.map_ty_ref_or_else(||vec![],|_,x|x.clone(),|ty|ty.succs())
+                                }
+                                fn roll_sym(&mut self) -> #W::Sym{
+                                    let next_sym = #name_counter.next_sym();
+                                    self.node.sym = next_sym;
+                                    next_sym.erase()
+                                }
+                                fn cur_sym(&self) -> #W::Sym{ self.node.sym.erase() }
+                                fn cur_sym_mut(&mut self) -> &mut #W::Sym{ self.node.sym.erase_mut() } fn clone_dyn(&self) -> Box<dyn #W::EgglogNode>{ Box::new(self.clone()) }
+                                fn ty_name(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME }
+                                fn ty_name_lower(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME_LOWER }
+                                fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
+                                fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
+                                fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
+                                fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
+                                fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
+                                #[track_caller]
+                                fn to_term(&self,term_dag: &mut #E::TermDag,
+                                    sym2term: &mut std::collections::HashMap< #W::Sym, #E::TermId>,
+                                    sym2ph_name: & std::collections::HashMap<#W::Sym, &'static str>) -> #E::TermId{
+                                    panic!()
+                                }
+                                #[track_caller]
+                                fn add_table_fact( &self, query_builder:&mut #W::FactsBuilder) {
+                                    use #W::EgglogTy;
+
+                                }
+                            }
+                            impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
+                                #[track_caller] fn collect_vars( &self, vars:&mut Vec<(#W::VarName, #W::SortName)>
+                                ) {
+                                    use #W::EgglogTy;
+                                    match &self.node.ty{
+                                        #W::TyPH::Ty(_) => {
+                                            panic!("can't call collect_var on non-pattern-def EgglogNode")
+                                        },
+                                        // with basic fields
+                                        #W::TyPH::VarPH(dis, succs) => {
+                                            // vars.push((self.cur_sym().to_string(), Self::TY_NAME.to_string()));
+                                            // match dis{
+                                            //     #(#collect_var_match_arms),*
+                                            // }
+                                            panic!("vec should not be VarPH")
+                                        },
+                                        // only itself as complex field
+                                        #W::TyPH::PH => {
+                                            vars.push((self.cur_sym().to_string(), <Self as #W::EgglogTy>::TY_NAME.to_string()));
                                         }
+                                    };
                                 }
                             }
-                        }
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
+                                fn as_ref(&self) -> &self::#name_node<T, ()> {
+                                    unsafe {
+                                        &*(self as *const self::#name_node<T,V> as *const self::#name_node<T,()>)
+                                    }
+                                }
+                            }
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
+                                    #W::Value::new(self.erase())
+                                }
+                            }
+                            impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
+                                fn clone(&self) -> Self {
+                                    Self {
+                                        node:
+                                            #W::Node {
+                                                ty: self.node.ty.clone(),
+                                                span: self.node.span,
+                                                sym: self.node.sym.clone(),
+                                                _p:PhantomData,
+                                                _s:PhantomData,
+                                                sgl_specific: T::OwnerSpecDataInNode::default()
+                                            }
+                                    }
+                                }
+                            }
 
-                        impl<T:#W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,V>
-                        {
-                            fn drop(&mut self) {
-                                T::on_drop(self);
+                            impl<T:#W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,V>
+                            {
+                                fn drop(&mut self) {
+                                    T::on_drop(self);
+                                }
                             }
-                        }
-                        impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
-                            type Target = #W::VecContainer<#first_generic>;
-                            fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
-                                #W::Value::new(val)
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
+                                type Target = #W::#container_ty<#first_generic>;
+                                fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
+                                    #W::Value::new(val)
+                                }
                             }
-                        }
-                        #to_egglog_impl
-                    };
-                    #rule_ctx_trait_and_impl
-                };
-                vec_expanded
-            } else {
-                panic!("only support Vec for struct")
-            }
+                            #to_egglog_impl
+                        };
+                        #rule_ctx_trait_and_impl
+                    }
+                }
+                _ => {
+                    panic!("only support complex type container");
+                }
+            };
+            container_expanded
         }
         Data::Enum(data_enum) => {
             let name_node_alias = format_ident!("{}NodeAlias", name);

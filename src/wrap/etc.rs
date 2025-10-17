@@ -2,7 +2,10 @@ use std::{
     fmt, fs::File, hash::Hash, io::Write, marker::PhantomData, mem::transmute, path::PathBuf,
 };
 
-use crate::wrap::{self, EgglogTy, VecContainer};
+use crate::{
+    prelude::VecContainer,
+    wrap::{self, EgglogTy},
+};
 use egglog::{Term, TermDag};
 use petgraph::{
     EdgeType,

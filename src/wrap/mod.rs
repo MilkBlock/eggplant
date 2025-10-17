@@ -25,7 +25,10 @@ pub mod tx_vt;
 
 pub mod rule;
 pub use rule::*;
+pub use sorts::set::SetContainer;
+pub use sorts::vec::VecContainer;
 mod etc;
+pub mod sorts;
 
 /// macro to quickly define a Transimitter with no version control
 #[macro_export]

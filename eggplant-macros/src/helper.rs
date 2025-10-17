@@ -235,15 +235,15 @@ pub fn get_ref_type(ty: &Type) -> proc_macro2::TokenStream {
         _ => panic!("Unsupported type for `WithSymNode`"),
     }
 }
-pub fn is_vec_type(ty: &Type) -> bool {
+pub fn is_container_type(ty: &Type) -> (bool, Ident) {
     if let Type::Path(type_path) = ty {
         if let Some(segment) = type_path.path.segments.last() {
-            if segment.ident == "Vec" {
-                return true;
+            if segment.ident == "VecContainer" || segment.ident == "SetContainer" {
+                return (true, segment.ident.clone());
             }
         }
     }
-    false
+    panic!()
 }
 pub fn is_box_type(ty: &Type) -> bool {
     if let Type::Path(type_path) = ty {

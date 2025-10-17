@@ -4,22 +4,22 @@ use std::path::PathBuf;
 // Type aliases for Vec types
 #[eggplant::dsl]
 struct VecCtl {
-    v: Vec<Ctl>,
+    v: VecContainer<Ctl>,
 }
 
 #[eggplant::dsl]
 struct VecWF {
-    v: Vec<WeightedFn>,
+    v: VecContainer<WeightedFn>,
 }
 
 #[eggplant::dsl]
 struct VecHitBox {
-    v: Vec<HitBox>,
+    v: VecContainer<HitBox>,
 }
 
 #[eggplant::dsl]
 struct Points {
-    v: Vec<Point>,
+    v: VecContainer<Point>,
 }
 
 #[eggplant::dsl]

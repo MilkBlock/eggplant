@@ -10,6 +10,7 @@ pub use eggplant_macros::*;
 #[cfg(feature = "viewer")]
 pub use eggplant_viewer;
 
+pub use dashmap;
 pub use inventory;
 pub use serde;
 pub use serde_json;

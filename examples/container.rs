@@ -1,14 +1,14 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr_fp;
 use eggplant::wrap::VecContainer;
-#[eggplant::dsl(container =Array)]
+#[eggplant::dsl(container=Array)]
 pub enum Expr {
     Const { num: i64 },
     VecSum { exprs: Array },
 }
 #[eggplant::container]
 struct Array {
-    inner: Vec<Expr>,
+    inner: VecContainer<Expr>,
 }
 #[eggplant::pat_vars]
 struct VecPat {

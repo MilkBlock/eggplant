@@ -10,7 +10,7 @@ enum Cons {
 
 #[eggplant::dsl]
 struct VecCon {
-    v: Vec<Cons>,
+    v: VecContainer<Cons>,
 }
 
 #[eggplant::dsl]

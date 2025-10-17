@@ -5,7 +5,10 @@ use egglog::{
     sort::{Boxed, OrderedFloat},
 };
 
-use crate::wrap::{BoxedBase, BoxedContainer, BoxedValue, EgglogTy, RuleCtx, VecContainer};
+use crate::{
+    prelude::VecContainer,
+    wrap::{BoxedBase, BoxedContainer, BoxedValue, EgglogTy, RuleCtx},
+};
 
 pub trait DeLiteral<T> {
     fn deliteral(&self) -> T;
