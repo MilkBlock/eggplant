@@ -131,10 +131,8 @@ fn main() {
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);
-    for _ in 0..4 {
-        let _ = MyTx::run_ruleset(ruleset, RunConfig::None);
-    }
-    MyTx::sgl().egraph_to_dot("egraph.dot".into());
+    MyTx::run_ruleset(ruleset, RunConfig::Sat);
+    MyTx::egraph_to_dot("egraph.dot".into());
 }
 ```
 
@@ -147,7 +145,7 @@ Note that the execution count of `run_ruleset` is not the number of matches, but
 Using eggplant requires three dependencies:
 
 ```toml
-eggplant = { git = "https://github.com/MilkBlock/eggplant" }
+eggplant = { git = "https://github.com/MilkBlock/eggplant" ,rev = "779d5bd"}
 derive_more = "2.0.1"
 strum = "0.27.2"
 ```
