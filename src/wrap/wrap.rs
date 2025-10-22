@@ -1,9 +1,9 @@
-use crate::wrap::RuleCtxHook;
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
     RuleCtx, SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
 };
+use crate::wrap::{RuleCtxHook, RuleRunnerSgl};
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::ast::{RustSpan, Span};
@@ -1065,5 +1065,5 @@ where
 pub trait NonPatRecSgl {}
 impl NonPatRecSgl for () {}
 
-pub trait G: TxSgl + NonPatRecSgl {}
-impl<T: TxSgl + NonPatRecSgl> G for T {}
+pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl {}
+impl<T: TxSgl + NonPatRecSgl + RuleRunnerSgl> G for T {}
