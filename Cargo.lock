@@ -596,7 +596,7 @@ name = "eggplant-macros"
 version = "0.2.0"
 dependencies = [
  "darling",
- "eggplant-transpiler",
+ "eggplant-transpiler 0.2.0 (registry+https://github.com/rust-lang/crates.io-index)",
  "heck",
  "proc-macro-crate",
  "proc-macro2",
@@ -609,6 +609,21 @@ dependencies = [
 [[package]]
 name = "eggplant-transpiler"
 version = "0.2.0"
+dependencies = [
+ "clap",
+ "env_logger",
+ "heck",
+ "log",
+ "ordered-float 4.6.0",
+ "tempfile",
+ "walkdir",
+]
+
+[[package]]
+name = "eggplant-transpiler"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "84e5d85fa86849baf5d635412021f351bfde3fe1ca1e39f55bb35ffd3e90aa21"
 dependencies = [
  "clap",
  "env_logger",

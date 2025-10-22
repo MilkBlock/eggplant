@@ -2,8 +2,10 @@
 name = "eggplant-macros"
 version.workspace = true
 edition.workspace = true
-license.workspace = true
 repository.workspace = true
+keywords.workspace = true
+license.workspace = true
+readme.workspace = true
 description = "macros of eggplant"
 
 [lib]
@@ -18,4 +20,4 @@ heck = "0.5.0"
 darling = "0.20.11"
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
-eggplant-transpiler.workspace = true
+eggplant-transpiler = { version = "0.2.0" }
