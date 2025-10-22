@@ -1670,3 +1670,44 @@ pub fn rule(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     proc_macro::TokenStream::from(expanded)
 }
+
+#[proc_macro]
+/// Transpile egglog Rewrite into Rust code
+/// ```rust
+/// egglog! {
+///     (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
+///     (rewrite (MAdd x y) (MAdd y x))
+/// }
+/// ```
+pub fn egglog(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let dsl_code = input.to_string();
+    // Use the actual transpiler from eggplant_transpiler
+    let transpiler = transpiler::Transpiler::with_options(CodeGenOptions {
+        omit_main: false,
+        omit_use_statements: false,
+        omit_ruleset_definitions: false,
+        omit_run_ruleset_calls: false,
+        omit_global_singleton_definitions: false,
+        omit_datatype: false,
+        omit_head_annotation: false,
+    });
+    let rust_code = transpiler.transpile(&dsl_code);
+    eprintln!("{}", rust_code);
+    if rust_code == "" {
+        panic!(
+            "no rule is generated, please check your dsl code: {}",
+            dsl_code
+        );
+    }
+    let rust_code = rust_code.parse::<TokenStream>().unwrap();
+    // let doc_dsl_code = format!("rule!({})", dsl_code);
+
+    let input = TokenStream::from(input);
+    let expanded = quote! {
+        rule(#input)
+        #[doc = "Rule Generated"]
+        #rust_code
+    };
+
+    proc_macro::TokenStream::from(expanded)
+}
