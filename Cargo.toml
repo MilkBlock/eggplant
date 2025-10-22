@@ -40,7 +40,7 @@ resolver = "2"                                       # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
-version = "0.2.0"
+version = "0.3.0"
 description = "eggplant is a High-Level Rust API crate for Egglog"
 repository = "https://github.com/MilkBlock/eggplant"
 keywords = ["e-graphs", "egglog", "datalog", "compiler", "equality"]
