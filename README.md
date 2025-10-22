@@ -1,5 +1,8 @@
 # eggplant
 
+<img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/72ced167-b2d1-4b9a-a116-d777ed4da9e5" />
+
+
 `eggplant` is the High-Level Rust API repo for the `egglog` tool accompanying the paper
   "Better Together: Unifying Datalog and Equality Saturation"
   ([ACM DL](https://dl.acm.org/doi/10.1145/3591239), [arXiv](https://arxiv.org/abs/2304.04332)).
@@ -142,15 +145,24 @@ Note that the execution count of `run_ruleset` is not the number of matches, but
 
 ## Dependencies
 
-Using eggplant requires three dependencies:
+Using eggplant requires
 
-```toml
-eggplant = { git = "https://github.com/MilkBlock/eggplant" ,rev = "779d5bd"}
-derive_more = "2.0.1"
-strum = "0.27.2"
+```bash
+cargo add eggplant
 ```
 
-Since egglog's database backend is not yet released on crate.io, I'm using git links to add dependencies here. This will be updated as egglog becomes stable and released.
+and then add this to toml
+
+```toml
+derive_more = { version = "2.0.1", features = [
+    "deref_mut",
+    "deref",
+    "into_iterator",
+    "debug",
+] }
+strum = { version = "0.27.2", features = ["strum_macros"] }
+strum_macros = "0.27.2"
+```
 
 ## Future Work
 
@@ -244,6 +256,5 @@ To view documentation, run `cargo doc --open`.
 
 Welcome to submit issues! Hope you have fun!
 
-GitHub repository: [https://github.com/MilkBlock/eggplant](https://github.com/MilkBlock/eggplant)
 
 
