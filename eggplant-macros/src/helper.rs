@@ -552,9 +552,9 @@ pub fn variant2valued_struct_fields(variant: &Variant) -> Vec<TokenStream> {
         // );
         match b_or_c {
             BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
-                Some(quote! {pub #ident: #W::Value<#ty>})
+                Some(quote! {#ident: #W::Value<#ty>})
             }
-            BasicOrComplex::UserDefinedContainerType => Some(quote! {pub #ident: #W::Value<#ty>}),
+            BasicOrComplex::UserDefinedContainerType => Some(quote! {#ident: #W::Value<#ty>}),
             BasicOrComplex::ComplexType => None,
         }
     })

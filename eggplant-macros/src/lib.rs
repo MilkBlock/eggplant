@@ -927,7 +927,7 @@ pub fn dsl(
                     #[derive(Debug,Clone,Copy)]
                     pub struct #valued_variant_name{
                         _itself: #W::Value<#name_node<(), #variant_marker>>,
-                        #(#values_with_types),*
+                        #(pub #values_with_types),*
                     }
                     impl #valued_variant_name{
                         pub fn new(_itself : #W::Value<#name_node<(), #variant_marker>>, #(#values_with_types),*) -> Self{
