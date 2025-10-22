@@ -49,8 +49,8 @@ readme = "README.md"
 authors = ["MilkBlock"]
 
 [workspace.dependencies]
-eggplant-macros = { path = "./eggplant-macros" }
-eggplant-transpiler = { path = "./eggplant-transpiler" }
+eggplant-macros = { path = "eggplant-macros" }
+eggplant-transpiler = { path = "eggplant-transpiler" }
 egglog = "1.0.0"
 itertools = "0.14.0"
 
