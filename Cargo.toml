@@ -40,7 +40,7 @@ resolver = "2"                                       # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
-version = "0.2.1"
+version = "0.2.2"
 description = "eggplant is a High-Level Rust API crate for Egglog"
 repository = "https://github.com/MilkBlock/eggplant"
 keywords = ["e-graphs", "egglog", "datalog", "compiler", "equality"]
@@ -49,8 +49,8 @@ readme = "README.md"
 authors = ["MilkBlock"]
 
 [workspace.dependencies]
-eggplant-macros = { path = "eggplant-macros", version = "0.2.1" }
-eggplant-transpiler = { path = "eggplant-transpiler", version = "0.2.1" }
+eggplant-macros = { path = "eggplant-macros", version = "0.2.2" }
+eggplant-transpiler = { path = "eggplant-transpiler", version = "0.2.2" }
 egglog = "1.0.0"
 itertools = "0.14.0"
 
