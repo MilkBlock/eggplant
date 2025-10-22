@@ -75,9 +75,9 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.98"
+version = "1.0.100"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e16d2d3311acee920a9eb8d33b8cbc1787ce4a264e85f964c2404b969bdcd487"
+checksum = "a23eb6b1614318a8071c9b2521f36b424b2c83db5eb3a0fead4a6c0809af6e61"
 
 [[package]]
 name = "arc-swap"
@@ -135,9 +135,9 @@ dependencies = [
 
 [[package]]
 name = "bumpalo"
-version = "3.18.1"
+version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "793db76d6187cd04dff33004d8e6c9cc4e05cd330500379d2394209271b4aeee"
+checksum = "46c5e41b57b8bba42a04676d81cb89e9ee8e859a1a66f80a5a72e1cb76b34d43"
 
 [[package]]
 name = "bytemuck"
@@ -147,10 +147,11 @@ checksum = "3995eaeebcdf32f91f980d360f78732ddc061097ab4e39991ae7a6ace9194677"
 
 [[package]]
 name = "cc"
-version = "1.2.33"
+version = "1.2.41"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3ee0f8803222ba5a7e2777dd72ca451868909b1ac410621b676adf07280e9b5f"
+checksum = "ac9fe6cdbb24b6ade63616c0a0688e45bb56732262c158df3c0c4bea4ca47cb7"
 dependencies = [
+ "find-msvc-tools",
  "shlex",
 ]
 
@@ -162,9 +163,9 @@ checksum = "9555578bc9e57714c812a1f84e4fc5b4d21fcb063490c624de019f7464c91268"
 
 [[package]]
 name = "chrono"
-version = "0.4.41"
+version = "0.4.42"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c469d952047f47f91b68d1cba3f10d63c11d73e4636f24f08daf0278abf01c4d"
+checksum = "145052bdd345b87320e369255277e3fb5152762ad123a901ef5c262dd38fe8d2"
 dependencies = [
  "num-traits",
 ]
@@ -310,21 +311,21 @@ dependencies = [
 
 [[package]]
 name = "csv"
-version = "1.3.1"
+version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "acdc4883a9c96732e4733212c01447ebd805833b7275a73ca3ee080fd77afdaf"
+checksum = "52cd9d68cf7efc6ddfaaee42e7288d3a99d613d4b50f76ce9827ae0c6e14f938"
 dependencies = [
  "csv-core",
  "itoa",
  "ryu",
- "serde",
+ "serde_core",
 ]
 
 [[package]]
 name = "csv-core"
-version = "0.1.12"
+version = "0.1.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7d02f3b0da4c6504f86e9cd789d8dbafab48c2321be74e9987593de5a894d93d"
+checksum = "704a3c26996a80471189265814dbc2c257598b96b8a7feae2d31ace646bb9782"
 dependencies = [
  "memchr",
 ]
@@ -439,7 +440,8 @@ checksum = "d0881ea181b1df73ff77ffaaf9c7544ecc11e82fba9b5f27b262a3c73a332555"
 [[package]]
 name = "egglog"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e5db59f6e51690dfcd2869f177de10f6da2dc136e9b445aa96c89e9eae1f3d3d"
 dependencies = [
  "chrono",
  "clap",
@@ -455,7 +457,6 @@ dependencies = [
  "hashbrown 0.16.0",
  "im-rc",
  "indexmap",
- "lazy_static",
  "log",
  "mimalloc",
  "num",
@@ -469,7 +470,8 @@ dependencies = [
 [[package]]
 name = "egglog-add-primitive"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4b068812fdaf5b6c0daee9c4718981bb8c38075eb13717b2c8d84c0b00036b71"
 dependencies = [
  "quote",
  "syn 2.0.104",
@@ -478,7 +480,8 @@ dependencies = [
 [[package]]
 name = "egglog-ast"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d128c74523e470c28d4442ea389872cbce21cc7a67579d3b8a985863a63de8f8"
 dependencies = [
  "ordered-float 5.1.0",
 ]
@@ -486,7 +489,8 @@ dependencies = [
 [[package]]
 name = "egglog-bridge"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbe731d8a2006e3bdc1b831e9db4899aaa095f0470e9d64b9c15fbe9419f42a4"
 dependencies = [
  "anyhow",
  "dyn-clone",
@@ -509,7 +513,8 @@ dependencies = [
 [[package]]
 name = "egglog-concurrency"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1d7462d094fd0d9da45a7bd2c4b09ab530b8935ba060cd15c181d94e480f9add"
 dependencies = [
  "arc-swap",
  "rayon",
@@ -518,7 +523,8 @@ dependencies = [
 [[package]]
 name = "egglog-core-relations"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "65216043dda610b3f6e791184c329910e1c6c94dde873150e9ca41bc507599b2"
 dependencies = [
  "anyhow",
  "bumpalo",
@@ -531,7 +537,6 @@ dependencies = [
  "fixedbitset 0.5.7",
  "hashbrown 0.16.0",
  "indexmap",
- "lazy_static",
  "log",
  "num",
  "once_cell",
@@ -547,16 +552,17 @@ dependencies = [
 [[package]]
 name = "egglog-numeric-id"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4f81100cddb02741105fe8c445f0f2dc66919dbf65aab380ff903ff54e458805"
 dependencies = [
- "lazy_static",
  "rayon",
 ]
 
 [[package]]
 name = "egglog-union-find"
 version = "1.0.0"
-source = "git+https://github.com/MilkBlock/egglog?rev=b2317b0#b2317b07312aa2a5b002d9d87cca40c1635808c5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3c4e41ab6ea1bec16de378bd2acaf374997a02ce7f88ef084f7b00f7d2be9e7b"
 dependencies = [
  "crossbeam",
  "egglog-concurrency",
@@ -615,8 +621,9 @@ dependencies = [
 
 [[package]]
 name = "egraph-serialize"
-version = "0.2.0"
-source = "git+https://github.com/egraphs-good/egraph-serialize.git?branch=main#0581da5d6ab6711beaffd1cb6dda5fd32a92d454"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0977732fb537ace6f8c15ce160ebdda78b6502b4866d3b904e4fe752e2be4702"
 dependencies = [
  "graphviz-rust",
  "indexmap",
@@ -685,6 +692,12 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "find-msvc-tools"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "52051878f80a721bb68ebfbc930e07b65ba72f2da88968ea5c06fd6ca3d3a127"
 
 [[package]]
 name = "fixedbitset"
@@ -944,9 +957,9 @@ dependencies = [
 
 [[package]]
 name = "js-sys"
-version = "0.3.77"
+version = "0.3.81"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1cfaf33c695fc6e08064efbc1f72ec937429614f25eef83af942d0e227c3a28f"
+checksum = "ec48937a97411dcb524a265206ccd4c90bb711fca92b2792c407f268825b9305"
 dependencies = [
  "once_cell",
  "wasm-bindgen",
@@ -964,12 +977,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "lazy_static"
-version = "1.5.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bbd2bcb4c963f2ddae06a2efc7e9f3591312473c50c6685e1f298068316e66fe"
-
-[[package]]
 name = "libc"
 version = "0.2.174"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -983,9 +990,9 @@ checksum = "f9fbbcab51052fe104eb5e5d351cf728d30a5be1fe14d9be8a3b097481fb97de"
 
 [[package]]
 name = "libmimalloc-sys"
-version = "0.1.43"
+version = "0.1.44"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "bf88cd67e9de251c1781dbe2f641a1a3ad66eaae831b8a2c38fbdc5ddae16d4d"
+checksum = "667f4fec20f29dfc6bc7357c582d91796c169ad7e2fce709468aefeb2c099870"
 dependencies = [
  "cc",
  "libc",
@@ -1030,9 +1037,9 @@ dependencies = [
 
 [[package]]
 name = "mimalloc"
-version = "0.1.47"
+version = "0.1.48"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b1791cbe101e95af5764f06f20f6760521f7158f69dbf9d6baf941ee1bf6bc40"
+checksum = "e1ee66a4b64c74f4ef288bcbb9192ad9c3feaad75193129ac8509af543894fd8"
 dependencies = [
  "libmimalloc-sys",
 ]
@@ -1365,9 +1372,9 @@ dependencies = [
 
 [[package]]
 name = "rayon"
-version = "1.10.0"
+version = "1.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b418a60154510ca1a002a752ca9714984e21e4241e804d32555251faf8b78ffa"
+checksum = "368f01d005bf8fd9b1206fb6fa653e6c4a81ceb1466406b81792d87c5677a58f"
 dependencies = [
  "either",
  "rayon-core",
@@ -1375,9 +1382,9 @@ dependencies = [
 
 [[package]]
 name = "rayon-core"
-version = "1.12.1"
+version = "1.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1465873a3dfdaa8ae7cb14b4383657caab0b3e8a0aa9ae8e04b044854c8dfce2"
+checksum = "22e18b0f0062d30d4230b2e85ff77fdfe4326feb054b9783a3460d8435c8ab91"
 dependencies = [
  "crossbeam-deque",
  "crossbeam-utils",
@@ -1882,20 +1889,22 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen"
-version = "0.2.100"
+version = "0.2.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1edc8929d7499fc4e8f0be2262a241556cfc54a0bea223790e71446f2aab1ef5"
+checksum = "c1da10c01ae9f1ae40cbfac0bac3b1e724b320abfcf52229f80b547c0d250e2d"
 dependencies = [
  "cfg-if",
  "once_cell",
+ "rustversion",
  "wasm-bindgen-macro",
+ "wasm-bindgen-shared",
 ]
 
 [[package]]
 name = "wasm-bindgen-backend"
-version = "0.2.100"
+version = "0.2.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2f0a0651a5c2bc21487bde11ee802ccaf4c51935d0d3d42a6101f98161700bc6"
+checksum = "671c9a5a66f49d8a47345ab942e2cb93c7d1d0339065d4f8139c486121b43b19"
 dependencies = [
  "bumpalo",
  "log",
@@ -1907,9 +1916,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro"
-version = "0.2.100"
+version = "0.2.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7fe63fc6d09ed3792bd0897b314f53de8e16568c2b3f7982f468c0bf9bd0b407"
+checksum = "7ca60477e4c59f5f2986c50191cd972e3a50d8a95603bc9434501cf156a9a119"
 dependencies = [
  "quote",
  "wasm-bindgen-macro-support",
@@ -1917,9 +1926,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-macro-support"
-version = "0.2.100"
+version = "0.2.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "8ae87ea40c9f689fc23f209965b6fb8a99ad69aeeb0231408be24920604395de"
+checksum = "9f07d2f20d4da7b26400c9f4a0511e6e0345b040694e8a75bd41d578fa4421d7"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -1930,9 +1939,9 @@ dependencies = [
 
 [[package]]
 name = "wasm-bindgen-shared"
-version = "0.2.100"
+version = "0.2.104"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1a05d73b933a847d6cccdda8f838a22ff101ad9bf93e33684f39c1f5f0eece3d"
+checksum = "bad67dc8b2a1a6e5448428adec4c3e84c43e561d8c9ee8a9e5aabeb193ec41d1"
 dependencies = [
  "unicode-ident",
 ]
