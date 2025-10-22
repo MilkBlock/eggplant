@@ -1510,6 +1510,37 @@ pub fn pat_vars(
 }
 
 #[proc_macro_attribute]
+/// pattern vars
+pub fn pat_vars_catch(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+    let expanded = match &input.data {
+        Data::Struct(data_struct) => {
+            let field_idents = data_struct
+                .fields
+                .iter()
+                .map(|f| f.ident.as_ref().unwrap())
+                .collect::<Vec<_>>();
+
+            let ident = &input.ident;
+            quote! {
+                #[#EP::pat_vars]
+                #input
+                #ident::new(
+                    #(#field_idents),*
+                )
+            }
+        }
+        _ => {
+            panic!("only struct is supported")
+        }
+    };
+    expanded.into()
+}
+
+#[proc_macro_attribute]
 /// base_ty define,
 ///
 /// # Mention

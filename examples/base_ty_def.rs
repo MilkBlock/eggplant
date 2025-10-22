@@ -29,12 +29,6 @@ fn main() {
     let expr: Expr<MyTx, _> = Binary::new(Op::Mul, &Const::new(3), &Const::new(2));
     expr.commit();
 
-    #[eggplant::pat_vars]
-    struct SubPat {
-        l: Expr,
-        r: Expr,
-        p: Binary,
-    }
     let ruleset = MyTx::new_ruleset("sss");
     MyTx::add_rule(
         stringify!(SubPat),
@@ -42,8 +36,13 @@ fn main() {
         || {
             let l = Expr::query_leaf();
             let r = Expr::query_leaf();
-            let b = Binary::query(&l, &r);
-            SubPat::new(l, r, b)
+            let p = Binary::query(&l, &r);
+            #[eggplant::pat_vars_catch]
+            struct SubPat {
+                l: Expr,
+                r: Expr,
+                p: Binary,
+            }
         },
         |ctx, pat| {
             let s = ctx.devalue(pat.p.op);
