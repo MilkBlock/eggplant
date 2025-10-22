@@ -687,7 +687,7 @@ impl Rx for TxRxVTPR {
                 sort,
                 egraph
                     // here we should get canno repr of specified value because egglog-backend will merge two equivalent e-node with one canno repr
-                    .get_canon_repr(value.val, egglog::sort::ColumnTy::Id),
+                    .get_canonical_value(value.val, sort),
             )
             .unwrap();
         log::debug!("pulled dag: {:?}", term_dag);

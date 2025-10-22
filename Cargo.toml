@@ -26,7 +26,6 @@ dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
-
 egglog.workspace = true
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
@@ -52,9 +51,7 @@ authors = ["MilkBlock"]
 [workspace.dependencies]
 eggplant-macros = { path = "./eggplant-macros" }
 eggplant-transpiler = { path = "./eggplant-transpiler" }
-egglog = { git = "https://github.com/MilkBlock/egglog", rev = "b2317b0" }
-# egglog = { path = "../stable/egglog" }
-# egglog = { package= "eggplant-egglog",path = "./eggplant-egglog", version = "0.5.0"}
+egglog = "1.0.0"
 itertools = "0.14.0"
 
 serde = "1.0.224"

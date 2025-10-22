@@ -33,13 +33,6 @@ impl<'a, T: EgglogTy + 'static> IntoIterator for &'a SetContainer<T> {
     }
 }
 impl<Ty: EgglogTy> SetContainer<Ty> {
-    //     fn rebuild_contents(&mut self, rebuilder: &dyn egglog::sort::Rebuilder) -> bool {
-    //         self.inner.rebuild_contents(rebuilder)
-    //     }
-
-    //     fn iter(&self) -> impl Iterator<Item = egglog::Value> + '_ {
-    //         self.inner.iter()
-    //     }
     pub fn insert<T: EgglogTy + RetypeValue<Target = Ty>>(&mut self, val: Value<T>) -> bool {
         self.inner.data.insert(val.erase())
     }
