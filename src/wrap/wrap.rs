@@ -14,6 +14,7 @@ use egglog::{
 };
 use egglog::{TermDag, TermId, ast::Literal};
 use smallvec::SmallVec;
+use std::sync::Mutex;
 use std::{
     any::Any,
     borrow::Borrow,
@@ -83,6 +84,7 @@ pub trait Rx: 'static {
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit;
     #[track_caller]
     fn on_pull_value<T: EgglogTy>(&self, value: Value<T>) -> SymLit;
+    fn egraph(&self) -> Arc<Mutex<EGraph>>;
 }
 
 pub trait SingletonGetter: 'static {
@@ -137,6 +139,7 @@ pub trait RxSgl: 'static + Sized + SingletonGetter + NodeDropperSgl + NodeOwnerS
     )>;
     #[track_caller]
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static));
+    fn egraph() -> Arc<std::sync::Mutex<EGraph>>;
 }
 
 impl<S: SingletonGetter> NodeDropperSgl for S
@@ -210,6 +213,10 @@ where
     }
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_pull::<T>(node)
+    }
+
+    fn egraph() -> Arc<std::sync::Mutex<EGraph>> {
+        Self::sgl().egraph()
     }
 }
 

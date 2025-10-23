@@ -17,11 +17,11 @@ use std::{
     fs::File,
     io::Write,
     path::{Path, PathBuf},
-    sync::Mutex,
+    sync::{Arc, Mutex},
 };
 
 pub struct TxRxVT {
-    pub egraph: Mutex<EGraph>,
+    pub egraph: Arc<Mutex<EGraph>>,
     pub map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
     pub staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
@@ -145,10 +145,10 @@ impl TxRxVT {
     }
     pub fn new() -> Self {
         let tx = Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let e = EGraph::default();
                 e
-            }),
+            })),
             registry: EgglogTypeRegistry::new_with_inventory(),
             map: DashMap::new(),
             staged_set_map: DashMap::new(),
@@ -635,6 +635,10 @@ impl Rx for TxRxVT {
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
         let value = sym.get_value_by_eval_string(&mut self.egraph.lock().unwrap());
         self.on_pull_value(Value::<T>::new(value))
+    }
+
+    fn egraph(&self) -> Arc<Mutex<EGraph>> {
+        self.egraph.clone()
     }
 }
 

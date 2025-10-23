@@ -748,6 +748,10 @@ impl Rx for TxRxVTPR {
             panic!("{}'s value not found in sym2value_map", sym)
         }
     }
+
+    fn egraph(&self) -> Arc<Mutex<EGraph>> {
+        self.egraph.clone()
+    }
 }
 
 impl NodeDropper for TxRxVTPR {}

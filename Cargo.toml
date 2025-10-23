@@ -32,7 +32,6 @@ strum_macros = "0.27.2"
 graphviz-rust = "0.9.5"
 serde.workspace = true
 serde_json.workspace = true
-usvg = "0.45.1"
 
 [workspace]
 members = ["eggplant-macros", "eggplant-transpiler"]
@@ -40,7 +39,7 @@ resolver = "2"                                       # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
-version = "0.2.6"
+version = "0.2.7"
 description = "eggplant is a High-Level Rust API crate for Egglog"
 repository = "https://github.com/MilkBlock/eggplant"
 keywords = ["e-graphs", "egglog", "datalog", "compiler", "equality"]
@@ -49,8 +48,8 @@ readme = "README.md"
 authors = ["MilkBlock"]
 
 [workspace.dependencies]
-eggplant-macros = { path = "eggplant-macros", version = "0.2.6" }
-eggplant-transpiler = { path = "eggplant-transpiler", version = "0.2.6" }
+eggplant-macros = { path = "eggplant-macros", version = "0.2.7" }
+eggplant-transpiler = { path = "eggplant-transpiler", version = "0.2.7" }
 egglog = "1.0.0"
 itertools = "0.14.0"
 
