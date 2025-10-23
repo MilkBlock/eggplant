@@ -1077,5 +1077,5 @@ where
 pub trait NonPatRecSgl {}
 impl NonPatRecSgl for () {}
 
-pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl {}
-impl<T: TxSgl + NonPatRecSgl + RuleRunnerSgl> G for T {}
+pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl {}
+impl<T: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl> G for T {}

@@ -135,8 +135,7 @@ fn main() {
     println!("{:#?}", report);
     MyTx::egraph_to_dot("egraph.dot");
 
-    let val = MyTx::value(&max);
-    MyTx::sgl().on_pull_value(val);
+    max.pull();
     MyTx::wag_to_dot("wag.dot");
     a::<MyTx>();
 }
