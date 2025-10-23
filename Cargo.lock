@@ -571,7 +571,7 @@ dependencies = [
 
 [[package]]
 name = "eggplant"
-version = "0.2.4"
+version = "0.2.6"
 dependencies = [
  "dashmap",
  "derive_more",
@@ -593,7 +593,7 @@ dependencies = [
 
 [[package]]
 name = "eggplant-macros"
-version = "0.2.4"
+version = "0.2.6"
 dependencies = [
  "darling",
  "eggplant-transpiler",
@@ -608,7 +608,7 @@ dependencies = [
 
 [[package]]
 name = "eggplant-transpiler"
-version = "0.2.4"
+version = "0.2.6"
 dependencies = [
  "clap",
  "env_logger",

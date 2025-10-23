@@ -48,6 +48,12 @@ fn main() {
     println!("{:#?}", report);
     MyTx::table_view();
 
+    let c: Expr<MyTx, ConstTy> = Const::new(10);
+    c.commit();
+    if MyTx::canonical_raw(&expr) != MyTx::canonical_raw(&c) {
+        panic!("should infer to 10");
+    }
+
     expr.pull();
     MyTx::egraph_to_dot("egraph.dot");
     MyTx::wag_to_dot("wag.dot");

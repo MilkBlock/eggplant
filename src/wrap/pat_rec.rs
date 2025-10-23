@@ -232,6 +232,9 @@ impl Tx for PatRecorder {
     fn on_union(&self, _: &(impl EgglogNode + 'static), _: &(impl EgglogNode + 'static)) {
         panic!("should not impl on_union");
     }
+    fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
+        todo!("not yet implemented");
+    }
 }
 
 impl NodeDropper for PatRecorder {

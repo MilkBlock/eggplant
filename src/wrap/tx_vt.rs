@@ -381,6 +381,9 @@ impl Tx for TxVT {
             command: format!("(union {} {})", node1.cur_sym(), node2.cur_sym()),
         });
     }
+    fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
+        todo!("not yet implemented");
+    }
 }
 
 impl TxCommit for TxVT {

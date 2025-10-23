@@ -507,6 +507,16 @@ impl Tx for TxRxVTPR {
     fn on_union(&self, _node1: &(impl EgglogNode + 'static), _node2: &(impl EgglogNode + 'static)) {
         todo!("top level union not implemented yet")
     }
+
+    fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value {
+        let egraph = self.egraph.lock().unwrap();
+        let val = *self
+            .sym2value_map
+            .get(&node1.cur_sym())
+            .expect("sym should be comitted before get value")
+            .value();
+        egraph.get_canonical_value(val, egraph.get_sort_by_name(node1.ty_name()).unwrap())
+    }
 }
 
 impl TxCommit for TxRxVTPR {

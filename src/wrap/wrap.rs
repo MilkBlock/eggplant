@@ -58,6 +58,7 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
     );
     #[track_caller]
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
+    fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value;
 }
 pub trait Rx: 'static {
     #[track_caller]
@@ -119,6 +120,7 @@ pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     );
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
+    fn canonical_raw(node1: &(impl EgglogNode + 'static)) -> egglog::Value;
 }
 pub trait RxSgl: 'static + Sized + SingletonGetter + NodeDropperSgl + NodeOwnerSgl {
     // delegate all functions from Rx
@@ -167,6 +169,9 @@ where
 
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
         Self::sgl().on_union(node1, node2);
+    }
+    fn canonical_raw(node1: &(impl EgglogNode + 'static)) -> egglog::Value {
+        Self::sgl().canonical_raw(node1)
     }
 }
 pub trait NodeSetterSgl {

@@ -160,11 +160,13 @@ impl Tx for TxNoVT {
             ),
         });
     }
-
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
         self.send(TxCommand::StringCommand {
             command: format!("(union {} {})", node1.cur_sym(), node2.cur_sym()),
         });
+    }
+    fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
+        todo!("not yet implemented");
     }
 }
 
