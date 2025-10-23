@@ -157,8 +157,8 @@ pub fn func(
                             output: &(stringify!(#output))
                         }
                     }
-                    #rule_ctx_trait_and_impl
                 };
+                #rule_ctx_trait_and_impl
             }
             .into()
         }

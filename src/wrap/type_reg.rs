@@ -78,10 +78,11 @@ impl EgglogTy for Q {
     type EnumVariantMarker = ();
 }
 
-#[derive(Deref)]
+#[derive(Deref, Debug)]
 pub struct TyConstructors(pub &'static [TyConstructor]);
 pub struct TySortString(pub &'static str);
 pub struct FuncSortString(pub &'static str);
+#[derive(Debug)]
 pub struct TyConstructor {
     pub cons_name: &'static str,
     pub input: &'static [&'static str],
@@ -102,6 +103,7 @@ inventory::collect!(Decl);
 inventory::collect!(UserBaseSort);
 inventory::collect!(UserContainerSort);
 
+#[derive(Debug)]
 pub enum Decl {
     EgglogMultiConTy {
         name: &'static str,

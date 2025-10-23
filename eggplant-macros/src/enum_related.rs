@@ -577,7 +577,7 @@ pub fn ctx_set_fn_ts(
                 let key = [
                         #(#field_idents.to_value(self).erase(),)* output.to_value(self).erase()
                     ];
-                self.insert(
+                self.insert_func_tbl(
                     #func_name::<()>::FUNC_NAME,
                     &key
                 );

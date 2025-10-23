@@ -77,6 +77,10 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).lookup(table, key).unwrap() }
     }
+    pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
+        self.hook.0.as_ref().map(|x| x.on_insert(table, key));
+        unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
+    }
     pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
         let x = x.to_value(self);
         let y = y.to_value(self);
