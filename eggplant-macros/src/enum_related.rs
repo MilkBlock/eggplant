@@ -554,3 +554,38 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
         // ref_node_list_leave_idents,
     )
 }
+
+pub fn ctx_set_fn_ts(
+    variant: &syn::Variant,
+    output: &TokenStream,
+    func_name: &Ident,
+) -> (TokenStream, TokenStream) {
+    let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let field_idents = variant2field_ident(&variant);
+
+    let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
+    let (_variant_marker, variant_name) = variant2marker_name(variant);
+    let set_fn_name = format_ident!("set_{}", variant_name.to_string().to_snake_case());
+    let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+    (
+        quote! {
+            #[track_caller]
+            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) {
+                use #W::EgglogFunc;
+                use #W::Value;
+                use #W::Insertable;
+                let key = [
+                        #(#field_idents.to_value(self).erase(),)* output.to_value(self).erase()
+                    ];
+                self.insert(
+                    #func_name::<()>::FUNC_NAME,
+                    &key
+                );
+            }
+        },
+        quote! {
+            #[track_caller]
+            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) ;
+        },
+    )
+}

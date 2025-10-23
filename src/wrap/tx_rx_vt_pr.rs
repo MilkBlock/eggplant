@@ -501,13 +501,11 @@ impl Tx for TxRxVTPR {
         //         output
         //     ),
         // });
-        todo!("proof not yet implemented")
+        todo!("func_set not yet implemented")
     }
 
-    fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
-        self.send(TxCommand::StringCommand {
-            command: format!("(union {} {})", node1.cur_sym(), node2.cur_sym()),
-        });
+    fn on_union(&self, _node1: &(impl EgglogNode + 'static), _node2: &(impl EgglogNode + 'static)) {
+        todo!("top level union not implemented yet")
     }
 }
 

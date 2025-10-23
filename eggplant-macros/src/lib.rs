@@ -69,6 +69,27 @@ pub fn func(
         Data::Struct(data_struct) => {
             let name_func = format_ident!("{}", name);
             // let derive_more_path  = derive_more_path();
+            let rule_ctx_trait_and_impl = {
+                let variant = syn::Variant {
+                    attrs: vec![],
+                    ident: name_func.clone(),
+                    fields: data_struct.fields.clone(),
+                    discriminant: None,
+                };
+                let (set_fn, set_fn_decl): (TokenStream, TokenStream) =
+                    ctx_set_fn_ts(&variant, &output, &name_func);
+                let ctx_trait_name = format_ident!("{}RuleCtx", name_func);
+
+                quote! {
+                    pub trait #ctx_trait_name {
+                        #set_fn_decl
+                    }
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
+                        #set_fn
+                    }
+                }
+            };
+
             let input_types = data_struct.fields.iter().map(|x| &x.ty).collect::<Vec<_>>();
             let input_types_with_generic = data_struct
                 .fields
@@ -136,6 +157,7 @@ pub fn func(
                             output: &(stringify!(#output))
                         }
                     }
+                    #rule_ctx_trait_and_impl
                 };
             }
             .into()
