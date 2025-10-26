@@ -16,12 +16,6 @@ fn main() {
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
-    #[eggplant::pat_vars]
-    struct AddPat {
-        l: Const,
-        r: Const,
-        p: Add,
-    }
     MyTx::add_rule(
         stringify!(AddPat),
         ruleset,
@@ -30,7 +24,15 @@ fn main() {
             let r = Const::query();
             let p = Add::query(&l, &r);
             let l_h_eq_r_h = l.handle().eq(&r.handle());
-            AddPat::new(l, r, p).assert(l_h_eq_r_h)
+            {
+                #[eggplant::pat_vars_catch]
+                struct AddPat {
+                    l: Const,
+                    r: Const,
+                    p: Add,
+                }
+            }
+            .assert(l_h_eq_r_h)
         },
         |ctx, pat| {
             let cal = ctx.devalue(pat.l.num) + ctx.devalue(pat.r.num);

@@ -160,6 +160,94 @@ impl<T1: EgglogTy> PEq for HandleToConstrain<T1> {
         }
     }
 }
+macro_rules! cartesian_ops {
+    (forall,($t1:ty, $t2:ty),$out:ty,$op:tt,$op_egglog:literal,$method:ident) => {
+        impl<T2: AsHandle<Target = $t2>> std::ops::$op<T2> for HandleToConstrain<$t1> {
+            type Output = HandleToConstrain<$out>;
+            fn $method(self, rhs: T2) -> Self::Output {
+                HandleToConstrain {
+                    handle: HandleTy::Expr {
+                        op: $op_egglog,
+                        operands: vec![Box::new(self.handle), Box::new(rhs.as_handle().handle)],
+                    },
+                    _p: PhantomData,
+                }
+            }
+        }
+    };
+    (plain,($t1:ty, $t2:ty),$out:ty,$op:tt,$op_egglog:literal,$method:ident) => {
+        impl std::ops::$op<HandleToConstrain<$t2>> for HandleToConstrain<$t1> {
+            type Output = HandleToConstrain<$out>;
+            fn $method(self, rhs: HandleToConstrain<$t2>) -> Self::Output {
+                HandleToConstrain {
+                    handle: HandleTy::Expr {
+                        op: $op_egglog,
+                        operands: vec![Box::new(self.handle), Box::new(rhs.handle)],
+                    },
+                    _p: PhantomData,
+                }
+            }
+        }
+    }; // // with commutative law
+       // (($t1:ty, $t2:ty, $($rest:ty),+),$out:ty,$op:tt,$op_egglog:literal,$method:ident) => {
+       //     cartesian_ops!(($t1, $t2),$out,$op,$op_egglog,$method);
+       //     cartesian_ops!(($t2, $t1),$out,$op,$op_egglog,$method);
+       //     cartesian_ops!(($t1, $t1),$out,$op,$op_egglog,$method);
+       //     $( cartesian_ops!(($t1, $rest),$out,$op,$op_egglog,$method);)*
+       //     $( cartesian_ops!(($rest, $t1),$out,$op,$op_egglog,$method);)*
+       //     cartesian_ops!(($t2, $($rest),*),$out,$op,$op_egglog,$method);
+       // };
+}
+macro_rules! batch_binary_ops_impl {
+    ($qualifier:ident,$t1:ty,$t2:ty,$(($out:ty,$op:tt,$op_egglog:literal,$method:ident)),+) => {
+        $(
+            cartesian_ops!(
+                $qualifier,
+                ($t1, $t2),
+                $out,
+                $op,
+                $op_egglog,
+                $method
+            );
+        )+
+    }
+}
+batch_binary_ops_impl!(
+    forall,
+    i64,
+    f64,
+    (f64, Add, "+", add),
+    (f64, Sub, "-", sub),
+    (f64, Mul, "*", mul),
+    (f64, Div, "/", div)
+);
+batch_binary_ops_impl!(
+    forall,
+    f64,
+    i64,
+    (f64, Add, "+", add),
+    (f64, Sub, "-", sub),
+    (f64, Mul, "*", mul),
+    (f64, Div, "/", div)
+);
+batch_binary_ops_impl!(
+    plain,
+    i64,
+    i64,
+    (i64, Add, "+", add),
+    (i64, Sub, "-", sub),
+    (i64, Mul, "*", mul),
+    (i64, Div, "/", div)
+);
+batch_binary_ops_impl!(
+    plain,
+    f64,
+    f64,
+    (f64, Add, "+", add),
+    (f64, Sub, "-", sub),
+    (f64, Mul, "*", mul),
+    (f64, Div, "/", div)
+);
 
 // Macro definition: generate Compare trait implementations
 macro_rules! impl_compare_for_type {
@@ -216,9 +304,20 @@ pub trait ConstrainClosure<T: EgglogTy, C: IntoConstraintFact>:
 
 #[derive(Clone, derive_more::Debug)]
 pub enum HandleTy {
-    Base { field_name: &'static str, sym: Sym },
-    Complex { sym: Sym },
-    Literal { lit: Literal },
+    Base {
+        field_name: &'static str,
+        sym: Sym,
+    },
+    Complex {
+        sym: Sym,
+    },
+    Literal {
+        lit: Literal,
+    },
+    Expr {
+        op: &'static str,
+        operands: Vec<Box<HandleTy>>,
+    },
 }
 /// Handle used to generate constraint fact
 #[derive(derive_more::Debug)]
@@ -226,22 +325,36 @@ pub struct HandleToConstrain<T: EgglogTy> {
     pub handle: HandleTy,
     pub _p: PhantomData<T>,
 }
+impl HandleTy {
+    pub fn to_resolved_expr(&self, egraph: &EGraph) -> GenericExpr<String, String> {
+        match &self {
+            HandleTy::Base { field_name, sym } => {
+                GenericExpr::Var(span!(), format!("{}{}", sym, field_name))
+            }
+            HandleTy::Complex { sym } => GenericExpr::Var(span!(), format!("{}", sym)),
+            HandleTy::Literal { lit } => GenericExpr::Lit(span!(), lit.clone()),
+            HandleTy::Expr { op, operands } => GenericExpr::Call(
+                span!(),
+                op.to_string(),
+                operands
+                    .iter()
+                    .map(|x| x.to_resolved_expr(egraph))
+                    .collect(),
+            ),
+        }
+    }
+}
 impl<T: EgglogTy> HandleToConstrain<T> {
     pub fn name(&self) -> String {
         match &self.handle {
             HandleTy::Base { field_name, sym } => format!("{}{}", sym, field_name),
             HandleTy::Complex { sym } => format!("{}", sym),
             HandleTy::Literal { lit } => format!("{}.literal.{lit:?}", T::TY_NAME_LOWER),
+            HandleTy::Expr { op, operands } => format!("{} {:?}", op, operands),
         }
     }
-    pub fn to_resolved_expr(&self, _egraph: &EGraph) -> GenericExpr<String, String> {
-        match &self.handle {
-            HandleTy::Base { field_name, sym } => {
-                GenericExpr::Var(span!(), format!("{}{}", sym, field_name))
-            }
-            HandleTy::Complex { sym } => GenericExpr::Var(span!(), format!("{}", sym)),
-            HandleTy::Literal { lit } => GenericExpr::Lit(span!(), lit.clone()),
-        }
+    pub fn to_resolved_expr(&self, egraph: &EGraph) -> GenericExpr<String, String> {
+        self.handle.to_resolved_expr(egraph)
     }
 }
 impl<T: EgglogTy> Clone for HandleToConstrain<T> {

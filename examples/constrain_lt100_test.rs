@@ -23,26 +23,29 @@ fn main() {
     let ruleset = MyTx::new_ruleset("constant_prop_with_constraint");
 
     // Define addition pattern with constraint less than 100
-    #[eggplant::pat_vars]
-    struct AddPat {
-        l: Const,
-        r: Const,
-        p: Add,
-    }
 
     MyTx::add_rule(
         stringify!(AddPat),
         ruleset,
         || {
+            use eggplant::wrap::AsHandle;
             let l = Const::query();
             let r = Const::query();
             let p = Add::query(&l, &r);
             let l_h = l.handle_num();
-            let r_h = r.handle_num();
+            let l_lt_100 = l_h.lt(&((&50i64).as_handle() * (&2i64).as_handle()));
+            let r_lt_100 = r.handle_num().lt(&100);
             // Constraint: both operands are less than 100
-            AddPat::new(l, r, p)
-                .assert(l_h.lt(&100))
-                .assert(r_h.lt(&100))
+            {
+                #[eggplant::pat_vars_catch]
+                struct AddPat {
+                    l: Const,
+                    r: Const,
+                    p: Add,
+                }
+            }
+            .assert(r_lt_100)
+            .assert(l_lt_100)
         },
         |ctx, pat| {
             let left_val = ctx.devalue(pat.l.num);

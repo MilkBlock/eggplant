@@ -11,13 +11,6 @@ pub enum Expr {
 
 tx_rx_vt_pr!(MyTx, MyPatRec);
 
-#[eggplant::pat_vars]
-struct AddPat {
-    l: Const,
-    r: Const,
-    p: Add,
-}
-
 fn main() {
     let ruleset = MyTx::new_ruleset("constant_prop");
     let expr: Expr<MyTx, _> = Add::new(&Add::new(&Const::new(3), &Const::new(2)), &Const::new(4));
@@ -29,7 +22,12 @@ fn main() {
             let l = Const::query().num(&3);
             let r = Const::query();
             let p = Add::query(&l, &r);
-            AddPat::new(l, r, p)
+            #[eggplant::pat_vars_catch]
+            struct AddPat {
+                l: Const,
+                r: Const,
+                p: Add,
+            }
         },
         |ctx, pat| {
             let cal = ctx.devalue(pat.l.num) + ctx.devalue(pat.r.num);
