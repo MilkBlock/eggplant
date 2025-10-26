@@ -1065,6 +1065,23 @@ pub fn dsl(
                             node
                         }
                     }
+                    // impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                    //     #(#query_leaf_fns)*
+                    //     #[track_caller]
+                    //     pub fn query_leaf() -> self::#name_node<T,()> {
+                    //         let node = #W::Node {
+                    //             ty: #W::TyPH::PH,
+                    //             sym: #name_counter.next_sym(),
+                    //             span:Some(std::panic::Location::caller()),
+                    //             _p:PhantomData,
+                    //             _s:PhantomData,
+                    //             sgl_specific: T::OwnerSpecDataInNode::default()
+                    //         };
+                    //         let node = #name_node {node};
+                    //         T::on_new_query_leaf(&node);
+                    //         node
+                    //     }
+                    // }
                     use #W::TxSgl;
                     use #W::NonPatRecSgl;
                     use #W::PatRecSgl;

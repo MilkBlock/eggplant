@@ -21,16 +21,16 @@ use wrap::Value;
 // it contains the Tx to which the rule is applied
 pub struct RuleCtx<'a, 'b, 'c> {
     pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b>>,
-    hook: RuleCtxObj,
+    hook: RuleHookObj,
 }
-unsafe impl Send for RuleCtxObj {}
-unsafe impl Sync for RuleCtxObj {}
-pub struct RuleCtxObj(pub Option<Box<dyn RuleCtxHook>>);
-impl Clone for RuleCtxObj {
+unsafe impl Send for RuleHookObj {}
+unsafe impl Sync for RuleHookObj {}
+pub struct RuleHookObj(pub Option<Box<dyn RuleCtxHook>>);
+impl Clone for RuleHookObj {
     fn clone(&self) -> Self {
         match &self.0 {
-            Some(hook) => RuleCtxObj(Some(hook.dyn_clone())),
-            None => RuleCtxObj(None),
+            Some(hook) => RuleHookObj(Some(hook.dyn_clone())),
+            None => RuleHookObj(None),
         }
     }
 }
@@ -43,7 +43,7 @@ pub trait RuleCtxHook {
 }
 
 impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
-    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleCtxObj) -> Self {
+    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
         Self {
             rule_ctx: UnsafeCell::new(egglog_ctx),
             hook,

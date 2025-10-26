@@ -31,7 +31,7 @@ use std::{
 /// 3. VersionCtl: version control for nodes
 /// 4. PR: Pattern recorder
 /// 5. generate proof (opt.)
-pub struct TxRxVTPR {
+pub struct SlottedTxRxVTPR {
     pub egraph: Arc<Mutex<EGraph>>,
     map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
@@ -54,7 +54,7 @@ pub struct CommitCheckPoint {
 }
 
 /// Tx with version ctl feature
-impl TxRxVTPR {
+impl SlottedTxRxVTPR {
     pub fn clear_egraph(&self) {
         let mut egraph = self.egraph.lock().unwrap();
         self.sym2value_map.clear();
@@ -116,9 +116,11 @@ impl TxRxVTPR {
         for (i, (in_degree, out_degree)) in ins.iter_mut().zip(outs.iter_mut()).enumerate() {
             let sym = index_set[i];
             let node = self.map.get(&sym).unwrap();
-            *in_degree =
-                TxRxVTPR::degree_in_subgraph(node.preds().into_iter().map(|x| *x), index_set);
-            *out_degree = TxRxVTPR::degree_in_subgraph(node.succs().into_iter(), index_set);
+            *in_degree = SlottedTxRxVTPR::degree_in_subgraph(
+                node.preds().into_iter().map(|x| *x),
+                index_set,
+            );
+            *out_degree = SlottedTxRxVTPR::degree_in_subgraph(node.succs().into_iter(), index_set);
         }
         let (mut _ins, mut outs) = match direction {
             TopoDirection::Up => (ins, outs),
@@ -414,9 +416,9 @@ impl TxRxVTPR {
     }
 }
 
-unsafe impl Send for TxRxVTPR {}
-unsafe impl Sync for TxRxVTPR {}
-impl VersionCtl for TxRxVTPR {
+unsafe impl Send for SlottedTxRxVTPR {}
+unsafe impl Sync for SlottedTxRxVTPR {}
+impl VersionCtl for SlottedTxRxVTPR {
     /// locate the lastest version of the symbol
     fn locate_latest(&self, old: Sym) -> Sym {
         let map = &self.map;
@@ -462,7 +464,7 @@ impl VersionCtl for TxRxVTPR {
 }
 
 // MARK: Tx
-impl Tx for TxRxVTPR {
+impl Tx for SlottedTxRxVTPR {
     fn send(&self, transmitted: TxCommand) {
         let mut egraph = self.egraph.lock().unwrap();
         match transmitted {
@@ -519,7 +521,7 @@ impl Tx for TxRxVTPR {
     }
 }
 
-impl TxCommit for TxRxVTPR {
+impl TxCommit for SlottedTxRxVTPR {
     /// commit behavior:
     /// 1. commit all descendants (if you also call set fn on subnodes they will also be committed)
     /// 2. commit basing on the latest ersion of the working graph (working graph records all versions)
@@ -653,7 +655,7 @@ impl TxCommit for TxRxVTPR {
 }
 
 // MARK: Rx
-impl Rx for TxRxVTPR {
+impl Rx for SlottedTxRxVTPR {
     fn on_func_get<'a, 'b, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -754,12 +756,12 @@ impl Rx for TxRxVTPR {
     }
 }
 
-impl NodeDropper for TxRxVTPR {}
-impl NodeOwner for TxRxVTPR {
+impl NodeDropper for SlottedTxRxVTPR {}
+impl NodeOwner for SlottedTxRxVTPR {
     type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 
-impl NodeSetter for TxRxVTPR {
+impl NodeSetter for SlottedTxRxVTPR {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
         // do nothing
         // the node may be set but we don't care
@@ -767,7 +769,7 @@ impl NodeSetter for TxRxVTPR {
     }
 }
 
-impl RuleRunner for TxRxVTPR {
+impl RuleRunner for SlottedTxRxVTPR {
     fn add_rule<PR: PatRecSgl, P: PatVars<PR>>(
         &self,
         rule_name: &str,
@@ -892,7 +894,7 @@ impl RuleRunner for TxRxVTPR {
     // }
 }
 
-impl ToDot for TxRxVTPR {
+impl ToDot for SlottedTxRxVTPR {
     /// transform EGraph into dot file
     fn egraph_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();

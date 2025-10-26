@@ -1079,3 +1079,23 @@ impl NonPatRecSgl for () {}
 
 pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl {}
 impl<T: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl> G for T {}
+
+pub type SlotVarID = &'static str;
+
+pub trait QuerySlot {
+    fn query_slot(name: SlotVarID) -> Self;
+}
+pub trait SlottedPatRecSgl: PatRecSgl {
+    fn on_new_query_slot(node: &(impl EgglogNode + 'static), var_id: SlotVarID);
+}
+pub trait SlottedPatRec: PatRec {
+    fn on_new_query_slot(&self, node: &(impl EgglogNode + 'static), var_id: SlotVarID);
+}
+impl<T: PatRecSgl> SlottedPatRecSgl for T
+where
+    T::RetTy: SlottedPatRec + PatRec,
+{
+    fn on_new_query_slot(node: &(impl EgglogNode + 'static), var_id: SlotVarID) {
+        Self::sgl().on_new_query_slot(node, var_id);
+    }
+}

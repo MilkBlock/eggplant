@@ -13,6 +13,8 @@ pub use wrap::*;
 
 pub mod pat_rec;
 pub use pat_rec::*;
+pub mod pat_rec_slot;
+pub use pat_rec_slot::*;
 
 pub mod constraint;
 pub use constraint::*;
@@ -21,6 +23,7 @@ pub mod tx;
 pub mod tx_minimal;
 pub mod tx_rx_vt;
 pub mod tx_rx_vt_pr;
+pub mod tx_rx_vt_pr_slot;
 pub mod tx_vt;
 
 pub mod rule;
@@ -158,6 +161,40 @@ macro_rules! tx_rx_vt_pr {
 }
 
 #[macro_export]
+macro_rules! basic_slotted_tx_rx_vt_pr {
+    ($name:ident) => {
+        pub struct $name {
+            tx: eggplant::wrap::tx_rx_vt_pr_slot::SlottedTxRxVTPR,
+        }
+        impl eggplant::prelude::SingletonGetter for $name {
+            type RetTy = eggplant::wrap::tx_rx_vt_pr_slot::SlottedTxRxVTPR;
+            fn sgl() -> &'static eggplant::wrap::tx_rx_vt_pr_slot::SlottedTxRxVTPR {
+                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
+                &INSTANCE
+                    .get_or_init(|| -> $name {
+                        Self {
+                            tx: eggplant::wrap::tx_rx_vt_pr_slot::SlottedTxRxVTPR::new(),
+                        }
+                    })
+                    .tx
+            }
+        }
+        impl eggplant::wrap::NonPatRecSgl for $name {}
+    };
+}
+
+#[macro_export]
+macro_rules! slotted_tx_rx_vt_pr {
+    ($tx_name:ident, $pat_rec_name:ident) => {
+        eggplant::basic_slotted_tx_rx_vt_pr!($tx_name);
+        eggplant::slotted_patttern_recorder!($pat_rec_name);
+        impl eggplant::wrap::WithPatRecSgl for $tx_name {
+            type PatRecSgl = $pat_rec_name;
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! basic_patttern_recorder {
     ($name:ident) => {
         #[derive(Debug)]
@@ -172,6 +209,29 @@ macro_rules! basic_patttern_recorder {
                     .get_or_init(|| -> $name {
                         Self {
                             tx: eggplant::wrap::pat_rec::PatRecorder::new(),
+                        }
+                    })
+                    .tx
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! slotted_patttern_recorder {
+    ($name:ident) => {
+        #[derive(Debug)]
+        pub struct $name {
+            tx: eggplant::wrap::SlottedPatRecorder,
+        }
+        impl eggplant::prelude::SingletonGetter for $name {
+            type RetTy = eggplant::wrap::SlottedPatRecorder;
+            fn sgl() -> &'static eggplant::wrap::pat_rec_slot::SlottedPatRecorder {
+                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
+                &INSTANCE
+                    .get_or_init(|| -> $name {
+                        Self {
+                            tx: eggplant::wrap::pat_rec_slot::SlottedPatRecorder::new(),
                         }
                     })
                     .tx
