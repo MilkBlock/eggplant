@@ -231,8 +231,14 @@ pub trait VersionCtl {
     fn set_prev(&self, node: &mut Sym);
 }
 
-pub trait Meta: Default + Clone + Send + Sync + fmt::Debug {}
-impl Meta for () {}
+pub trait Meta: Default + Clone + Send + Sync + fmt::Debug {
+    fn merge(metas: &mut impl Iterator<Item = Box<dyn Any>>) -> Self;
+}
+impl Meta for () {
+    fn merge(_metas: &mut impl Iterator<Item = Box<dyn Any>>) -> Self {
+        ()
+    }
+}
 /// pattern recorder triat
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
@@ -960,17 +966,24 @@ pub trait FromPlainValuesMetas<PR: PatRecSgl> {
 
 /// Insertable and RetypeValue are quite different, Insertable is used in Union or table insert
 /// while RetypeValueonly used when you want operational structure
-pub trait Insertable<T> {
+pub trait Insertable<T>: Clone {
     fn to_value(&self, ctx: &RuleCtx) -> Value<T>;
+    fn meta(&self) -> Box<dyn Any>;
 }
-impl<I: Insertable<T>, T, M> Insertable<T> for (I, M) {
+impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for (I, M) {
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
     }
+    fn meta(&self) -> Box<dyn std::any::Any> {
+        Box::new(self.1.clone())
+    }
 }
-impl<I: Insertable<T>, T, M> Insertable<T> for &(I, M) {
+impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for &(I, M) {
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
+    }
+    fn meta(&self) -> Box<dyn Any> {
+        Box::new(self.1.clone())
     }
 }
 pub trait RetypeValue {
@@ -1022,6 +1035,9 @@ pub trait SingleFieldVariant {}
 impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
     fn to_value(&self, ctx: &RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
+    }
+    fn meta(&self) -> Box<dyn std::any::Any> {
+        panic!("Boxed base don't have meta")
     }
 }
 
@@ -1165,15 +1181,6 @@ where
         Self::sgl().on_new_query_slot(node, var_id);
     }
 }
-pub trait FromMetas<PR: SlottedPatRecSgl> {
+pub trait FromMetas<PR: PatRecSgl> {
     fn from_metas(values: &mut impl Iterator<Item = SlotMeta<PR>>) -> Self;
-}
-
-pub trait BiTupleHelper {
-    type First;
-    type Second;
-}
-impl<T0, T1> BiTupleHelper for (T0, T1) {
-    type First = T0;
-    type Second = T1;
 }

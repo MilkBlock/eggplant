@@ -667,6 +667,9 @@ pub fn dsl(
                                 fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                                     #W::Value::new(self.erase())
                                 }
+                                fn meta(&self) -> Box<dyn std::any::Any>{
+                                    panic!("pure value don't have meta")
+                                }
                             }
                             impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
                                 fn clone(&self) -> Self {
@@ -940,6 +943,9 @@ pub fn dsl(
                     impl #W::Insertable<#name_node<(),()>> for #valued_variant_name {
                         fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
                             #W::Value::new(self._itself.val)
+                        }
+                        fn meta(&self) -> Box<dyn std::any::Any>{
+                            panic!("pure value don't have meta")
                         }
                     }
                     impl #W::EgglogEnumVariantTy for #variant_marker {
@@ -1292,6 +1298,9 @@ pub fn dsl(
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
                     fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                         #W::Value::new(self.erase())
+                    }
+                    fn meta(&self) -> Box<dyn std::any::Any>{
+                        panic!("pure value don't have any meta")
                     }
                 }
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {

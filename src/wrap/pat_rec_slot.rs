@@ -423,7 +423,11 @@ impl<PR: PatRecSgl> std::fmt::Debug for SlotMeta<PR> {
             .finish()
     }
 }
-impl<PR: PatRecSgl> Meta for SlotMeta<PR> {}
+impl<PR: PatRecSgl> Meta for SlotMeta<PR> {
+    fn merge(metas: &mut impl Iterator<Item = Box<dyn std::any::Any>>) -> Self {
+        Self::from_metas(&mut metas.map(|x| *x.downcast::<SlotMeta<PR>>().unwrap()))
+    }
+}
 unsafe impl<PR: PatRecSgl> Send for SlotMeta<PR> {}
 unsafe impl<PR: PatRecSgl> Sync for SlotMeta<PR> {}
 impl<PR: PatRecSgl> Clone for SlotMeta<PR> {
@@ -443,7 +447,7 @@ impl<PR: PatRecSgl> Default for SlotMeta<PR> {
     }
 }
 
-impl<PR: SlottedPatRecSgl> FromMetas<PR> for SlotMeta<PR> {
+impl<PR: PatRecSgl> FromMetas<PR> for SlotMeta<PR> {
     /// here we should merge mapping
     /// for example  
     ///    Add           Add(2) with mapping [x=>1, y=>2]

@@ -573,6 +573,11 @@ pub fn ctx_insert_fn_ts_with_pr(
     name_node: &Ident,
 ) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
     let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let complex_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| Some(quote!(#complex)),
+    );
     let field_idents = variant2field_ident(&variant);
 
     let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
@@ -606,7 +611,9 @@ pub fn ctx_insert_fn_ts_with_pr(
         quote! {
             #[track_caller]
             fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
-                (self.ctx.#insert_fn_name(#(#field_idents),*), Default::default())
+                use #W::Meta;
+                let __merged = PR::MetaTy::merge(&mut vec![#(#complex_field_idents.meta()),*].into_iter());
+                (self.ctx.#insert_fn_name(#(#field_idents),*),__merged)
             }
         },
         // pr insert decl

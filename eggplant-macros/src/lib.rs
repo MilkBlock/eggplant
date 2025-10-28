@@ -159,7 +159,6 @@ pub fn slotted_pat_vars_catch(
     expanded.into()
 }
 
-
 #[proc_macro_attribute]
 /// base_ty define,
 ///

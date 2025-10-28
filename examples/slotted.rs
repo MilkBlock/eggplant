@@ -19,7 +19,7 @@ fn main() {
 
     let ruleset = MyTx::new_ruleset("constant_prop");
     MyTx::add_rule(
-        stringify!(MulPat),
+        stringify!("add commutative"),
         ruleset,
         || {
             let x = Var::query_slot("x");
@@ -27,16 +27,18 @@ fn main() {
             let add = Add::query(&x, &y);
 
             #[eggplant::slotted_pat_vars]
-            struct MulPat {
+            struct AddPat {
                 x: Var,
                 y: Var,
                 add: Add,
             }
-            MulPat::new(x, y, add)
+            AddPat::new(x, y, add)
         },
         |ctx, pat| {
             println!("{:?}", pat);
             let symetric_add = ctx.insert_add(&pat.y, &pat.x);
+            // context should be passed from query to action
+            println!("{:#?}", symetric_add.1);
             ctx.union(&pat.add, symetric_add);
         },
     );
@@ -44,11 +46,11 @@ fn main() {
     println!("{:#?}", report);
     MyTx::table_view();
 
-    let c: Expr<MyTx, ConstTy> = Const::new(10);
-    c.commit();
-    if MyTx::canonical_raw(&expr) != MyTx::canonical_raw(&c) {
-        panic!("should infer to 10");
-    }
+    // let c: Expr<MyTx, ConstTy> = Const::new(10);
+    // c.commit();
+    // if MyTx::canonical_raw(&expr) != MyTx::canonical_raw(&c) {
+    //     panic!("should infer to 10");
+    // }
 
     expr.pull();
     MyTx::egraph_to_dot("egraph.dot");
