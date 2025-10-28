@@ -767,13 +767,13 @@ impl NodeSetter for TxRxVTPR {
     }
 }
 
-impl RuleRunner for TxRxVTPR {
-    fn add_rule<PR: PatRecSgl, P: PatVars<PR>>(
+impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
+    fn add_rule<P: PatVars<PR>>(
         &self,
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<PR>, &P::Valued) + Send + Sync + 'static + Clone,
         ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
@@ -797,7 +797,7 @@ impl RuleRunner for TxRxVTPR {
                 .collect::<Vec<_>>(),
             Facts(facts),
             move |ctx, values| {
-                let mut ctx = RuleCtx::new(ctx, hook.clone());
+                let mut ctx = PRRuleCtx::new(ctx, hook.clone());
                 let valued_pat_vars = P::Valued::from_plain_values_metas(
                     &mut values.iter().cloned(),
                     &mut std::iter::repeat(PR::MetaTy::default()),

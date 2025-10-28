@@ -1,9 +1,9 @@
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
-    RuleCtx, SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
+    SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
 };
-use crate::wrap::{RuleCtxHook, RuleRunnerSgl, SlotMeta};
+use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl, SlotMeta};
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::ast::{RustSpan, Span};
@@ -231,14 +231,8 @@ pub trait VersionCtl {
     fn set_prev(&self, node: &mut Sym);
 }
 
-pub trait Meta: Default + Clone + Send + Sync + fmt::Debug {
-    fn metas_iter(&self) -> impl Iterator<Item = &Self>;
-}
-impl Meta for () {
-    fn metas_iter(&self) -> impl Iterator<Item = &Self> {
-        std::iter::empty()
-    }
-}
+pub trait Meta: Default + Clone + Send + Sync + fmt::Debug {}
+impl Meta for () {}
 /// pattern recorder triat
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
@@ -913,7 +907,7 @@ impl<T: EgglogTy> fmt::Debug for Value<T> {
 /// we use [`PatVars`] trait to mark such patterns
 pub trait PatVars<PR: PatRecSgl>: ToStrArcSort {
     type Valued: FromPlainValuesMetas<PR>;
-    fn metas_iter(&self) -> impl Iterator<Item = &PR::MetaTy>;
+    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>;
 }
 impl<T, PV: ToStrArcSort> ToStrArcSort for (PV, T) {
     fn to_str_arcsort(&self, egraph: &EGraph) -> Vec<(VarName, ArcSort)> {
@@ -922,9 +916,8 @@ impl<T, PV: ToStrArcSort> ToStrArcSort for (PV, T) {
 }
 impl<PR: PatRecSgl, PV: PatVars<PR>> PatVars<PR> for (PV, PR::MetaTy) {
     type Valued = PV::Valued;
-
-    fn metas_iter(&self) -> impl Iterator<Item = &PR::MetaTy> {
-        self.1.metas_iter()
+    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
+        self.0.metas_iter().chain(std::iter::once(self.1.clone()))
     }
 }
 

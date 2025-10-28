@@ -411,16 +411,19 @@ impl ArcSlotMetaInner {
         }
     }
 }
-#[derive(Debug)]
 pub struct SlotMeta<PR: PatRecSgl> {
     inner: ArcSlotMetaInner,
     _p: PhantomData<PR>,
 }
-impl<PR: PatRecSgl> Meta for SlotMeta<PR> {
-    fn metas_iter(&self) -> impl Iterator<Item = &Self> {
-        std::iter::empty()
+impl<PR: PatRecSgl> std::fmt::Debug for SlotMeta<PR> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SlotMeta")
+            .field("vars", &self.inner.var_id_set)
+            .field("de Bruijn", &self.get_current_layer_de_bruijn())
+            .finish()
     }
 }
+impl<PR: PatRecSgl> Meta for SlotMeta<PR> {}
 unsafe impl<PR: PatRecSgl> Send for SlotMeta<PR> {}
 unsafe impl<PR: PatRecSgl> Sync for SlotMeta<PR> {}
 impl<PR: PatRecSgl> Clone for SlotMeta<PR> {
@@ -481,7 +484,7 @@ impl<PR: SlottedPatRecSgl> FromMetas<PR> for SlotMeta<PR> {
         }
     }
 }
-impl<PR: SlottedPatRecSgl> SlotMeta<PR> {
+impl<PR: PatRecSgl> SlotMeta<PR> {
     /// so that we can verify one eclass-enode pair whether it's the true one
     /// for example given two eclass
     ///   eclass A(x,y)     eclass A(x)

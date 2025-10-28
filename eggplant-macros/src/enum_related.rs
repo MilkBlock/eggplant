@@ -520,7 +520,10 @@ pub fn set_fns_tt(variant: &syn::Variant, name_inner: &Ident, name_node: &Ident)
     }
 }
 
-pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStream, TokenStream) {
+pub fn ctx_insert_fn_ts(
+    variant: &syn::Variant,
+    name_node: &Ident,
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
     let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
     let field_idents = variant2field_ident(&variant);
 
@@ -531,6 +534,7 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
 
     // MARK: Enum New Fns
     (
+        // insert fn
         quote! {
             #[track_caller]
             fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
@@ -545,13 +549,71 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
                 ))
             }
         },
+        // insert decl
         quote! {
             #[track_caller]
             fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
         },
-        // insert_fn_name,
-        // valued_ref_node_list,
-        // ref_node_list_leave_idents,
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+                self.ctx.#insert_fn_name(#(#field_idents),*)
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+        },
+    )
+}
+pub fn ctx_insert_fn_ts_with_pr(
+    variant: &syn::Variant,
+    name_node: &Ident,
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
+    let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let field_idents = variant2field_ident(&variant);
+
+    let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
+    let (variant_marker, variant_name) = variant2marker_name(variant);
+    let insert_fn_name = format_ident!("insert_{}", variant_name.to_string().to_snake_case());
+    let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+
+    // MARK: Enum New Fns
+    (
+        // insert fn
+        quote! {
+            #[track_caller]
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+                use #W::Value;
+                use #W::Insertable;
+                let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                #W::Value::new(self.insert(
+                    <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,
+                    &key
+                ))
+            }
+        },
+        // insert decl
+        quote! {
+            #[track_caller]
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+        },
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
+                (self.ctx.#insert_fn_name(#(#field_idents),*), Default::default())
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy);
+        },
     )
 }
 
@@ -559,7 +621,7 @@ pub fn ctx_set_fn_ts(
     variant: &syn::Variant,
     output: &TokenStream,
     func_name: &Ident,
-) -> (TokenStream, TokenStream) {
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
     let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
     let field_idents = variant2field_ident(&variant);
 
@@ -585,7 +647,19 @@ pub fn ctx_set_fn_ts(
         },
         quote! {
             #[track_caller]
-            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) ;
+            fn #set_fn_name(&self, #(#valued_ref_node_list,)*output:impl eggplant::wrap::Insertable<#output>) ;
+        },
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>){
+                self.ctx.#set_fn_name(#(#field_idents,)* output)
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>);
         },
     )
 }

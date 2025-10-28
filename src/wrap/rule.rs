@@ -13,12 +13,17 @@ use egglog::{
 };
 use egglog::{ContainerValue, RunReport};
 use std::cell::UnsafeCell;
+use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 use wrap::Value;
 
 // eggplant rule context is a wrapper of egglog rule context.
 // it contains the Tx to which the rule is applied
+pub struct PRRuleCtx<'a, 'b, 'c, PR: PatRecSgl> {
+    pub ctx: RuleCtx<'a, 'b, 'c>,
+    _p: PhantomData<PR>,
+}
 pub struct RuleCtx<'a, 'b, 'c> {
     pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b>>,
     hook: RuleHookObj,
@@ -42,9 +47,59 @@ pub trait RuleCtxHook {
     fn dyn_clone(&self) -> Box<dyn RuleCtxHook>;
 }
 
+impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
+    pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
+        Self {
+            _p: PhantomData::default(),
+            ctx: RuleCtx::new(rule_ctx, hook),
+        }
+    }
+    pub fn devalue<'d, B: BoxedValue, D: RetypeValue<Target = B>>(
+        &'d self,
+        val: Value<D>,
+    ) -> B::Output<'d> {
+        self.ctx.devalue(val)
+    }
+    pub fn intern_base<T: EgglogTy, B: BoxedBase>(&self, base: B) -> wrap::Value<T> {
+        self.ctx.intern_base(base)
+    }
+    pub fn intern_container<T: EgglogContainerTy, C: BoxedContainer>(
+        &self,
+        container: C,
+    ) -> wrap::Value<T> {
+        self.ctx.intern_container(container)
+    }
+    pub fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
+        self.ctx._intern_base::<T, B>(base)
+    }
+    pub fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
+        self.ctx._intern_container(container)
+    }
+    pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+        self.ctx.insert(table, key)
+    }
+    pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
+        self.ctx.insert_func_tbl(table, key);
+    }
+    pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
+        self.ctx.union(x, y);
+    }
+    pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
+        self.ctx.subsume(table, key);
+    }
+    pub fn _devalue_container<T: ContainerValue>(
+        &self,
+        val: egglog::Value,
+    ) -> Option<impl Deref<Target = T>> {
+        self.ctx._devalue_container(val)
+    }
+    pub fn _devalue_base<T: BaseValue>(&self, val: egglog::Value) -> T {
+        self.ctx._devalue_base(val)
+    }
+}
 impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
-        Self {
+        RuleCtx {
             rule_ctx: UnsafeCell::new(egglog_ctx),
             hook,
         }
@@ -54,17 +109,17 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         val: Value<D>,
     ) -> B::Output<'d> {
         let val = D::retype_value(val.val);
-        B::devalue(self, val.val)
+        B::devalue(&self, val.val)
     }
     pub fn intern_base<T: EgglogTy, B: BoxedBase>(&self, base: B) -> wrap::Value<T> {
-        let boxed = base.box_it(self);
+        let boxed = base.box_it(&self);
         wrap::Value::new(self._intern_base::<T, B::Boxed>(boxed))
     }
     pub fn intern_container<T: EgglogContainerTy, C: BoxedContainer>(
         &self,
         container: C,
     ) -> wrap::Value<T> {
-        let boxed_container = BoxedContainer::box_it(container, self);
+        let boxed_container = BoxedContainer::box_it(container, &self);
         wrap::Value::new(self._intern_container::<C::Boxed>(boxed_container))
     }
     pub fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
@@ -82,8 +137,8 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
     }
     pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
-        let x = x.to_value(self);
-        let y = y.to_value(self);
+        let x = x.to_value(&self);
+        let y = y.to_value(&self);
         self.hook.0.as_ref().map(|hook| hook.on_union(x.val, y.val));
         unsafe {
             (*self.rule_ctx.get()).union(x.val, y.val);
@@ -103,14 +158,14 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         unsafe { (*self.rule_ctx.get()).value_to_base(val) }
     }
 }
-pub trait RuleRunner {
+pub trait RuleRunner<PR: PatRecSgl> {
     /// pass info from query pattern variables to valued pattern variables in action
-    fn add_rule<T: PatRecSgl, P: PatVars<T>>(
+    fn add_rule<P: PatVars<PR>>(
         &self,
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<PR>, &P::Valued) + Send + Sync + 'static + Clone,
         ctx_hook: Option<Box<dyn RuleCtxHook>>,
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
@@ -122,7 +177,7 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<Self::PatRecSgl>, &P::Valued) + Send + Sync + 'static + Clone,
     ) {
         Self::add_rule_op_hook(rule_name, rule_set, pat, action, None);
     }
@@ -130,7 +185,7 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<Self::PatRecSgl>, &P::Valued) + Send + Sync + 'static + Clone,
         hook: Box<dyn RuleCtxHook>,
     ) {
         Self::add_rule_op_hook(rule_name, rule_set, pat, action, Some(hook));
@@ -139,7 +194,7 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<Self::PatRecSgl>, &P::Valued) + Send + Sync + 'static + Clone,
         ctx_hook: Option<Box<dyn RuleCtxHook>>,
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
@@ -148,16 +203,16 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
 }
 impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
 where
-    T::RetTy: RuleRunner,
+    T::RetTy: RuleRunner<Self::PatRecSgl>,
 {
     fn add_rule_op_hook<P: PatVars<T::PatRecSgl>>(
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<Self::PatRecSgl>, &P::Valued) + Send + Sync + 'static + Clone,
         ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
-        Self::sgl().add_rule::<T::PatRecSgl, P>(rule_name, rule_set, pat, action, ctx_hook);
+        Self::sgl().add_rule::<P>(rule_name, rule_set, pat, action, ctx_hook);
     }
     fn new_ruleset(rule_set: &'static str) -> RuleSetId {
         Self::sgl().new_ruleset(rule_set)

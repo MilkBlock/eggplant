@@ -65,7 +65,7 @@ pub trait EgglogTy: 'static {
 }
 impl<T: EgglogTy + ToStrArcSort, PR: PatRecSgl> PatVars<PR> for T {
     type Valued = T::Valued;
-    fn metas_iter(&self) -> impl Iterator<Item = &PR::MetaTy> {
+    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
         std::iter::empty()
     }
 }

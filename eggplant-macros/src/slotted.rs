@@ -844,18 +844,30 @@ pub fn slotted_dsl(
 
             let (variant_markers, variant_names) = variant_marker_names(data_enum);
             let rule_ctx_trait_and_impl = {
-                let (insert_fns, insert_fn_decls): (Vec<TokenStream>, Vec<TokenStream>) = data_enum
+                let (insert_fns, insert_fn_decls, pr_insert_fns, pr_insert_fn_decls): (
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                ) = data_enum
                     .variants
                     .iter()
-                    .map(|x| ctx_insert_fn_ts(x, &name_node))
+                    .map(|x| ctx_insert_fn_ts_with_pr(x, &name_node))
                     .collect();
                 let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
+                let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_node);
                 quote! {
                     pub trait #ctx_trait_name {
                         #(#insert_fn_decls)*
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
                         #(#insert_fns)*
+                    }
+                    pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
+                        #(#pr_insert_fn_decls)*
+                    }
+                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,PR> {
+                        #(#pr_insert_fns)*
                     }
                 }
             };
@@ -1246,6 +1258,11 @@ pub fn slotted_pat_vars(
                     }
                 })
                 .collect::<Vec<_>>();
+            let tuple_field_types = data_struct
+                .fields
+                .iter()
+                .map(|f| f.ty.clone())
+                .collect::<Vec<_>>();
             let (impl_generics, ty_generics, where_clause) = out.generics.split_for_impl();
 
             let ident = &out.ident;
@@ -1295,11 +1312,11 @@ pub fn slotted_pat_vars(
                 }
                 impl #impl_generics #W::PatVars<PR> for #ident #ty_generics #where_clause {
                     type Valued = #valued_ident<PR>;
-                    fn metas_iter(&self) -> impl Iterator<Item = &<PR as #W::PatRecSgl>::MetaTy>{
-                        use #W::Meta;
+                    fn metas_iter(&self) -> impl Iterator<Item = <PR as #W::PatRecSgl>::MetaTy>{
+                        use #W::PatVars;
                         let mut acc = std::iter::empty();
                         #(
-                            let acc = acc.chain(self.#field_idents.1.metas_iter());
+                            let acc = acc.chain(<#tuple_field_types as PatVars<PR>>::metas_iter(&self.#field_idents));
                         )*
                         acc
                     }

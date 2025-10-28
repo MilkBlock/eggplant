@@ -13,7 +13,8 @@ pub enum Expr {
 slotted_tx_rx_vt_pr!(MyTx, MyPatRec);
 fn main() {
     env_logger::init();
-    let expr: Expr<MyTx, _> = Add::new(&Mul::new(&Const::new(3), &Const::new(2)), &Const::new(4));
+    // let expr: Expr<MyTx, _> = Add::new(&Mul::new(&Var::new(), &Var::new()), &Const::new(4));
+    let expr: Expr<MyTx, _> = Add::new(&Var::new(), &Var::new());
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
@@ -34,6 +35,7 @@ fn main() {
             MulPat::new(x, y, add)
         },
         |ctx, pat| {
+            println!("{:?}", pat);
             let symetric_add = ctx.insert_add(&pat.y, &pat.x);
             ctx.union(&pat.add, symetric_add);
         },

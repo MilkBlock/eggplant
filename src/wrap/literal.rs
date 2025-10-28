@@ -185,10 +185,10 @@ macro_rules! impl_simple_boxed_value_for_boxed_base {
 }
 impl BoxedBase for String {
     type Boxed = Boxed<String>;
-    fn unbox(boxed: Self::Boxed, _ctx: &super::RuleCtx) -> Self {
+    fn unbox(boxed: Self::Boxed, _ctx: &RuleCtx) -> Self {
         boxed.0
     }
-    fn box_it(self, _ctx: &super::RuleCtx) -> Self::Boxed {
+    fn box_it(self, _ctx: &RuleCtx) -> Self::Boxed {
         Boxed::new(self)
     }
 }

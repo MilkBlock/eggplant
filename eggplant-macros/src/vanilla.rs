@@ -71,9 +71,10 @@ pub fn func(
                     fields: data_struct.fields.clone(),
                     discriminant: None,
                 };
-                let (set_fn, set_fn_decl): (TokenStream, TokenStream) =
+                let (set_fn, set_fn_decl, set_fn_pr, set_fn_decl_pr) =
                     ctx_set_fn_ts(&variant, &output, &name_func);
                 let ctx_trait_name = format_ident!("{}RuleCtx", name_func);
+                let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_func);
 
                 quote! {
                     pub trait #ctx_trait_name {
@@ -81,6 +82,12 @@ pub fn func(
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
                         #set_fn
+                    }
+                    pub trait #pr_ctx_trait_name {
+                        #set_fn_decl_pr
+                    }
+                    impl<PR:PatRecSgl> #pr_ctx_trait_name for #W::PRRuleCtx<'_,'_,'_, PR> {
+                        #set_fn_pr
                     }
                 }
             };
@@ -430,6 +437,7 @@ pub fn dsl(
             };
             let rule_ctx_trait_and_impl = {
                 let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
+                let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_node);
                 let insert_fn_name =
                     format_ident!("insert_{}", name_node.to_string().to_snake_case());
                 quote! {
@@ -443,6 +451,16 @@ pub fn dsl(
                             use #W::Value;
                             use #W::Insertable;
                             self.intern_container(#field_name)
+                        }
+                    }
+                    pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
+                        #[track_caller]
+                        fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
+                    }
+                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,PR> {
+                        #[track_caller]
+                        fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
+                            self.ctx.intern_container(#field_name)
                         }
                     }
                 }
@@ -950,18 +968,30 @@ pub fn dsl(
 
             let (variant_markers, variant_names) = variant_marker_names(data_enum);
             let rule_ctx_trait_and_impl = {
-                let (insert_fns, insert_fn_decls): (Vec<TokenStream>, Vec<TokenStream>) = data_enum
+                let (insert_fns, insert_fn_decls, pr_insert_fns, pr_insert_fn_decls): (
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                ) = data_enum
                     .variants
                     .iter()
                     .map(|x| ctx_insert_fn_ts(x, &name_node))
                     .collect();
                 let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
+                let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_node);
                 quote! {
                     pub trait #ctx_trait_name {
                         #(#insert_fn_decls)*
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
                         #(#insert_fns)*
+                    }
+                    pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
+                        #(#pr_insert_fn_decls)*
+                    }
+                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,PR> {
+                        #(#pr_insert_fns)*
                     }
                 }
             };
@@ -1390,7 +1420,7 @@ pub fn pat_vars(
                 }
                 impl #impl_generics #W::PatVars<PR> for #ident #ty_generics #where_clause {
                     type Valued = #valued_ident<PR>;
-                    fn metas_iter(&self) -> impl Iterator<Item = &PR::MetaTy>{
+                    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>{
                         std::iter::empty()
                     }
                 }

@@ -769,20 +769,21 @@ impl NodeSetter for SlottedTxRxVTPR {
     }
 }
 
-impl RuleRunner for SlottedTxRxVTPR {
-    fn add_rule<PR: PatRecSgl, P: PatVars<PR>>(
+impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
+    fn add_rule<P: PatVars<PR>>(
         &self,
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<PR>, &P::Valued) + Send + Sync + 'static + Clone,
         ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
         PR::on_record_start();
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
-        let metas = pat_vars.metas_iter().cloned().collect::<Vec<_>>();
+        let metas = pat_vars.metas_iter().collect::<Vec<_>>();
+        println!("metas got {:#?}", metas);
 
         let facts = PR::pat2fact_builder(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
@@ -800,7 +801,7 @@ impl RuleRunner for SlottedTxRxVTPR {
                 .collect::<Vec<_>>(),
             Facts(facts),
             move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_>, values| {
-                let mut ctx = RuleCtx::new(ctx, hook.clone());
+                let mut ctx = PRRuleCtx::new(ctx, hook.clone());
                 let valued_pat_vars = P::Valued::from_plain_values_metas(
                     &mut values.iter().cloned(),
                     &mut metas.clone().into_iter(),
