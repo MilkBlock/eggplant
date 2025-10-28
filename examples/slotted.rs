@@ -2,7 +2,7 @@ use eggplant::prelude::*;
 use eggplant::slotted_tx_rx_vt_pr;
 use eggplant::wrap::NodeDropperSgl;
 use eggplant::wrap::RuleCtxHook;
-#[eggplant::dsl]
+#[eggplant::slotted_dsl]
 pub enum Expr {
     Var {},
     Const { num: i64 },
@@ -24,16 +24,18 @@ fn main() {
             let x = Var::query_slot("x");
             let y = Var::query_slot("y");
             let add = Add::query(&x, &y);
-            #[eggplant::pat_vars_catch]
+
+            #[eggplant::slotted_pat_vars]
             struct MulPat {
                 x: Var,
                 y: Var,
                 add: Add,
             }
+            MulPat::new(x, y, add)
         },
         |ctx, pat| {
-            let symetric_add = ctx.insert_add(pat.y, pat.x);
-            ctx.union(pat.add, symetric_add);
+            let symetric_add = ctx.insert_add(&pat.y, &pat.x);
+            ctx.union(&pat.add, symetric_add);
         },
     );
     let report = MyTx::run_ruleset(ruleset, RunConfig::Sat);

@@ -5,19 +5,20 @@ use crate::wrap::{
 
 use super::*;
 use dashmap::DashMap;
-use derive_more::Debug;
+use derive_more::{Debug, Deref};
 use egglog::util::IndexSet;
 use petgraph::prelude::StableDiGraph;
 use std::{
     collections::HashMap,
+    marker::PhantomData,
     path::Path,
-    sync::{Mutex, atomic::AtomicU32},
+    sync::{Arc, Mutex, atomic::AtomicU32},
 };
 
 #[derive(Debug)]
 pub struct SlottedPatRecorder {
     #[debug(skip)]
-    map: DashMap<Sym, SlottedPatRecordNode>,
+    map: DashMap<Sym, SlottedPatRecNode>,
     /// place_holders field records current building pattern's all place holders
     pub patterns: Mutex<HashMap<PatId, HashMap<Sym, &'static str>>>,
     /// one pattern may have multiple root nodes
@@ -29,15 +30,18 @@ pub struct SlottedPatRecorder {
     /// next_pat_id increment when on_record_end is called
     next_pat_id: AtomicU32,
 }
-struct SlottedPatRecordNode {
+struct SlottedPatRecNode {
     work_node: WorkAreaNode,
     pat_id: PatId,
+
+    slot_meta: ArcSlotMetaInner,
+
     /// if one node dropped in pattern defining function then it is not selected as action args
     selected: bool,
 }
 
-impl SlottedPatRecordNode {
-    pub fn new(node: Box<dyn EgglogNode>, pat_id: u32) -> Self {
+impl SlottedPatRecNode {
+    pub fn new(node: Box<dyn EgglogNode>, pat_id: u32, slot_meta: ArcSlotMetaInner) -> Self {
         Self {
             work_node: WorkAreaNode {
                 preds: Syms::default(),
@@ -48,6 +52,7 @@ impl SlottedPatRecordNode {
             },
             pat_id: PatId(pat_id),
             selected: true,
+            slot_meta,
         }
     }
     pub fn succs_mut(&mut self) -> impl Iterator<Item = &mut Sym> {
@@ -185,11 +190,16 @@ impl SlottedPatRecorder {
         })
     }
 
-    fn add_node(&self, node: &(impl EgglogNode + 'static)) {
+    fn add_node_with_slot_meta(
+        &self,
+        node: &(impl EgglogNode + 'static),
+        slot_meta: ArcSlotMetaInner,
+    ) {
         let node = node.clone_dyn();
-        let mut node = SlottedPatRecordNode::new(
+        let mut node = SlottedPatRecNode::new(
             node,
             self.next_pat_id.load(std::sync::atomic::Ordering::Acquire),
+            slot_meta,
         );
         let sym = node.work_node.cur_sym();
         for succ_node in node.succs_mut() {
@@ -216,8 +226,40 @@ impl Tx for SlottedPatRecorder {
         panic!("should not impl send")
     }
 
-    fn on_new(&self, symnode: &(impl EgglogNode + 'static)) {
-        self.add_node(symnode);
+    fn on_new(&self, node: &(impl EgglogNode + 'static)) {
+        let sub_metas: Vec<ArcSlotMetaInner> = {
+            node.succs()
+                .iter()
+                .map(|sub| {
+                    self.map
+                        .get(sub)
+                        .unwrap_or_else(|| panic!("slot node not found"))
+                        .slot_meta
+                        .clone()
+                })
+                .collect()
+        };
+        let var_id_set = {
+            node.succs()
+                .iter()
+                .map(|sub| {
+                    self.map
+                        .get_mut(sub)
+                        .unwrap_or_else(|| panic!("slot node not found"))
+                        .slot_meta
+                        .var_id_set
+                        .clone()
+                })
+                .flat_map(|x| x.into_iter())
+                .collect()
+        };
+        self.add_node_with_slot_meta(
+            node,
+            ArcSlotMetaInner::new(SlotMetaInner {
+                sub_metas,
+                var_id_set,
+            }),
+        );
     }
 
     #[track_caller]
@@ -255,8 +297,15 @@ impl NodeSetter for SlottedPatRecorder {
 }
 
 impl PatRec for SlottedPatRecorder {
+    type MetaTy<PR: PatRecSgl> = SlotMeta<PR>;
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
-        self.add_node(node);
+        self.add_node_with_slot_meta(
+            node,
+            ArcSlotMetaInner::new(SlotMetaInner {
+                sub_metas: Default::default(),
+                var_id_set: Default::default(),
+            }),
+        );
     }
     fn on_new_constraint(&self, constraint: impl IntoConstraintFact) {
         log::debug!("constraint: {:?}", constraint);
@@ -317,10 +366,157 @@ impl PatRec for SlottedPatRecorder {
         }
         facts_builder
     }
+
+    fn meta_of<PR: PatRecSgl>(&self, node: &(impl EgglogNode + 'static)) -> Self::MetaTy<PR> {
+        let inner = self
+            .map
+            .get(&node.cur_sym())
+            .unwrap_or_else(|| panic!("meta of {} not found", node.cur_sym()))
+            .slot_meta
+            .clone();
+        SlotMeta {
+            inner,
+            _p: PhantomData,
+        }
+    }
 }
 
 impl SlottedPatRec for SlottedPatRecorder {
-    fn on_new_query_slot(&self, node: &(impl EgglogNode + 'static), var_id: SlotVarID) {
-        self.add_node(node);
+    fn on_new_query_slot(&self, node: &(impl EgglogNode + 'static), slot_id: SlotVarID) {
+        let slot_meta = SlotMetaInner {
+            sub_metas: Default::default(),
+            var_id_set: {
+                let mut set = IndexSet::default();
+                set.insert(slot_id);
+                set
+            },
+        };
+        self.add_node_with_slot_meta(node, ArcSlotMetaInner::new(slot_meta));
+    }
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct SlotMetaInner {
+    sub_metas: Vec<ArcSlotMetaInner>,
+    var_id_set: IndexSet<crate::wrap::SlotVarID>,
+}
+#[derive(Clone, Debug, Deref, Default)]
+pub struct ArcSlotMetaInner {
+    inner: Arc<SlotMetaInner>,
+}
+impl ArcSlotMetaInner {
+    fn new(inner: SlotMetaInner) -> Self {
+        Self {
+            inner: Arc::new(inner),
+        }
+    }
+}
+#[derive(Debug)]
+pub struct SlotMeta<PR: PatRecSgl> {
+    inner: ArcSlotMetaInner,
+    _p: PhantomData<PR>,
+}
+impl<PR: PatRecSgl> Meta for SlotMeta<PR> {
+    fn metas_iter(&self) -> impl Iterator<Item = &Self> {
+        std::iter::empty()
+    }
+}
+unsafe impl<PR: PatRecSgl> Send for SlotMeta<PR> {}
+unsafe impl<PR: PatRecSgl> Sync for SlotMeta<PR> {}
+impl<PR: PatRecSgl> Clone for SlotMeta<PR> {
+    fn clone(&self) -> Self {
+        Self {
+            inner: self.inner.clone(),
+            _p: self._p.clone(),
+        }
+    }
+}
+impl<PR: PatRecSgl> Default for SlotMeta<PR> {
+    fn default() -> Self {
+        Self {
+            inner: Default::default(),
+            _p: Default::default(),
+        }
+    }
+}
+
+impl<PR: SlottedPatRecSgl> FromMetas<PR> for SlotMeta<PR> {
+    /// here we should merge mapping
+    /// for example  
+    ///    Add           Add(2) with mapping [x=>1, y=>2]
+    ///   x    y    =>  [1]  [2]
+    ///
+    ///      Sub                 Sub                         Sub(2)
+    ///      /\                  / \                         {x,y} detected y in both mapping
+    ///     /  \                /   \                       /   \
+    ///    Add  Var y         Add(2)  Var(1)            Add(2)  Var(1)
+    ///   /  \                {x,y}   {y}                {x,y}   {y}
+    ///  /    \                /   \                    /   \
+    /// Var  Var       =>  Var(1) Var(1)          => Var(1)  Var(1)
+    ///  x     y             {x}   {y}                {x}     {y}
+    ///              
+    ///      Sub                 Sub                         Sub(2)
+    ///      /\                  / \                         {x,y,z}
+    ///     /  \                /   \                       /   \
+    ///    Add  Var z         Add(2)  Var(1)            Add(2)   Var(1)
+    ///   /  \                {x,y}     {z}             {x,y}     {z}
+    ///  /    \                /   \                    /   \
+    /// Var  Var       =>  Var(1) Var(1)          => Var(1)  Var(1)
+    ///  x     y             {x}   {y}                 {x}    {y}
+    ///
+    fn from_metas(sub_metas: &mut impl Iterator<Item = SlotMeta<PR>>) -> Self {
+        let sub_metas: Vec<_> = sub_metas.map(|x| x.inner).collect();
+        let var_id_set = sub_metas
+            .iter()
+            .map(|meta| &meta.inner.var_id_set)
+            .flat_map(|x| x.iter().copied())
+            .collect();
+        // length of sub_metas should be same to merged mapping length
+        Self {
+            inner: ArcSlotMetaInner::new(SlotMetaInner {
+                sub_metas,
+                var_id_set,
+            }),
+            _p: PhantomData,
+        }
+    }
+}
+impl<PR: SlottedPatRecSgl> SlotMeta<PR> {
+    /// so that we can verify one eclass-enode pair whether it's the true one
+    /// for example given two eclass
+    ///   eclass A(x,y)     eclass A(x)
+    ///    add(self)         add            
+    ///  (x),(y)           (x),(x)         <= ret value of this function
+    ///   /   \             /   \
+    /// Var x Var y       Var x Var x  (these two should be same eclass)
+    ///
+    /// After de Bruijn:
+    ///   eclass A{x,y}     eclass A{x}
+    ///    add(self)         add            
+    ///  (0),(1)           (0),(0)         <= ret value of this function
+    ///   /   \             /   \
+    /// Var x Var y       Var x Var x  (these two should be same eclass)
+    ///
+    /// Or more complex:
+    /// After de Bruijn:
+    ///   eclass A{x,y}     eclass A{x,y}
+    ///    add(self)         add            
+    ///  (0,1),(1,0)       (0,1),(0,1)     <= ret value of this function  还需要调用 f eclass 的 canonicalize
+    ///   /   \             /   \
+    /// f      f          f      f
+    ///
+    ///  they have different de Bruijn form so we can distinguish them
+    pub fn get_current_layer_de_bruijn(&self) -> Vec<Vec<usize>> {
+        let mut a = vec![];
+        for meta in self.inner.inner.sub_metas.iter() {
+            a.push(
+                meta.var_id_set
+                    .iter()
+                    .map(|x| self.inner.var_id_set.get_index_of(x))
+                    .map(Option::unwrap)
+                    .collect(),
+            );
+        }
+        a
     }
 }

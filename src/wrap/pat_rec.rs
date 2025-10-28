@@ -255,6 +255,7 @@ impl NodeSetter for PatRecorder {
 }
 
 impl PatRec for PatRecorder {
+    type MetaTy<T: PatRecSgl> = ();
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
         self.add_node(node);
     }
@@ -316,5 +317,9 @@ impl PatRec for PatRecorder {
             None => {}
         }
         facts_builder
+    }
+
+    fn meta_of<PR: PatRecSgl>(&self, _node: &(impl EgglogNode + 'static)) -> Self::MetaTy<PR> {
+        // in vanilla egraph we don't need meta
     }
 }

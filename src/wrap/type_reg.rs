@@ -65,6 +65,9 @@ pub trait EgglogTy: 'static {
 }
 impl<T: EgglogTy + ToStrArcSort, PR: PatRecSgl> PatVars<PR> for T {
     type Valued = T::Valued;
+    fn metas_iter(&self) -> impl Iterator<Item = &PR::MetaTy> {
+        std::iter::empty()
+    }
 }
 impl<T: EgglogTy> ToStrArcSort for T {
     fn to_str_arcsort(&self, _egraph: &egglog::EGraph) -> Vec<(super::VarName, egglog::ArcSort)> {

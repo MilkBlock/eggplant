@@ -104,6 +104,7 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     }
 }
 pub trait RuleRunner {
+    /// pass info from query pattern variables to valued pattern variables in action
     fn add_rule<T: PatRecSgl, P: PatVars<T>>(
         &self,
         rule_name: &str,

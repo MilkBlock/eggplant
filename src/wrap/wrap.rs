@@ -3,7 +3,7 @@ use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
     RuleCtx, SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
 };
-use crate::wrap::{RuleCtxHook, RuleRunnerSgl};
+use crate::wrap::{RuleCtxHook, RuleRunnerSgl, SlotMeta};
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::ast::{RustSpan, Span};
@@ -231,10 +231,19 @@ pub trait VersionCtl {
     fn set_prev(&self, node: &mut Sym);
 }
 
+pub trait Meta: Default + Clone + Send + Sync + fmt::Debug {
+    fn metas_iter(&self) -> impl Iterator<Item = &Self>;
+}
+impl Meta for () {
+    fn metas_iter(&self) -> impl Iterator<Item = &Self> {
+        std::iter::empty()
+    }
+}
 /// pattern recorder triat
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
 pub trait PatRec: NodeDropper + Tx {
+    type MetaTy<T: PatRecSgl>: Meta;
     #[track_caller]
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
@@ -242,11 +251,13 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
+    fn meta_of<PR: PatRecSgl>(&self, node: &(impl EgglogNode + 'static)) -> Self::MetaTy<PR>;
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PatId(pub u32);
 
 pub trait PatRecSgl: NodeDropperSgl + TxSgl {
+    type MetaTy: Meta;
     #[track_caller]
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static));
     #[track_caller]
@@ -254,11 +265,13 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
+    fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy;
 }
 impl<T: SingletonGetter> PatRecSgl for T
 where
     T::RetTy: PatRec + NodeSetter,
 {
+    type MetaTy = <T::RetTy as PatRec>::MetaTy<Self>;
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_new_query_leaf(node);
     }
@@ -275,6 +288,10 @@ where
 
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder {
         Self::sgl().pat2fact_builder(pat_id)
+    }
+
+    fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy {
+        Self::sgl().meta_of::<Self>(node)
     }
 }
 
@@ -398,6 +415,11 @@ pub trait VarsCollector {
     /// 2. if self is a typed placeholder [`TyPH::PH`], only collect itself
     /// 3. if self is a [`PatVars`] collect recursively
     fn collect_vars(&self, vars: &mut Vec<(VarName, SortName)>);
+}
+impl<T: VarsCollector, M> VarsCollector for (T, M) {
+    fn collect_vars(&self, vars: &mut Vec<(VarName, SortName)>) {
+        self.0.collect_vars(vars);
+    }
 }
 
 pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
@@ -889,8 +911,21 @@ impl<T: EgglogTy> fmt::Debug for Value<T> {
 /// a pattern may extract values in EGraph, for example
 /// if you record pattern (fib x) then x will be extracted
 /// we use [`PatVars`] trait to mark such patterns
-pub trait PatVars<T: PatRecSgl>: ToStrArcSort {
-    type Valued: FromPlainValues;
+pub trait PatVars<PR: PatRecSgl>: ToStrArcSort {
+    type Valued: FromPlainValuesMetas<PR>;
+    fn metas_iter(&self) -> impl Iterator<Item = &PR::MetaTy>;
+}
+impl<T, PV: ToStrArcSort> ToStrArcSort for (PV, T) {
+    fn to_str_arcsort(&self, egraph: &EGraph) -> Vec<(VarName, ArcSort)> {
+        PV::to_str_arcsort(&self.0, egraph)
+    }
+}
+impl<PR: PatRecSgl, PV: PatVars<PR>> PatVars<PR> for (PV, PR::MetaTy) {
+    type Valued = PV::Valued;
+
+    fn metas_iter(&self) -> impl Iterator<Item = &PR::MetaTy> {
+        self.1.metas_iter()
+    }
 }
 
 /// a pattern should be transformed into [(str,Arcsort)] when registering rules
@@ -898,14 +933,52 @@ pub trait ToStrArcSort {
     fn to_str_arcsort(&self, egraph: &EGraph) -> Vec<(VarName, ArcSort)>;
 }
 
+/// This trait is stronger then FromPlainValuesMetas so auto impl that if this is implmented
 pub trait FromPlainValues {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self;
+}
+
+impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for (T, PR::MetaTy) {
+    fn from_plain_values_metas(
+        values: &mut impl Iterator<Item = egglog::Value>,
+        metas: &mut impl Iterator<Item = PR::MetaTy>,
+    ) -> Self {
+        (
+            <T as FromPlainValues>::from_plain_values(values),
+            metas.next().unwrap(),
+        )
+    }
+}
+impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for T {
+    fn from_plain_values_metas(
+        values: &mut impl Iterator<Item = egglog::Value>,
+        _metas: &mut impl Iterator<Item = PR::MetaTy>,
+    ) -> Self {
+        <T as FromPlainValues>::from_plain_values(values)
+    }
+}
+
+pub trait FromPlainValuesMetas<PR: PatRecSgl> {
+    fn from_plain_values_metas(
+        values: &mut impl Iterator<Item = egglog::Value>,
+        metas: &mut impl Iterator<Item = PR::MetaTy>,
+    ) -> Self;
 }
 
 /// Insertable and RetypeValue are quite different, Insertable is used in Union or table insert
 /// while RetypeValueonly used when you want operational structure
 pub trait Insertable<T> {
     fn to_value(&self, ctx: &RuleCtx) -> Value<T>;
+}
+impl<I: Insertable<T>, T, M> Insertable<T> for (I, M) {
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        self.0.to_value(ctx)
+    }
+}
+impl<I: Insertable<T>, T, M> Insertable<T> for &(I, M) {
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        self.0.to_value(ctx)
+    }
 }
 pub trait RetypeValue {
     type Target;
@@ -1098,4 +1171,16 @@ where
     fn on_new_query_slot(node: &(impl EgglogNode + 'static), var_id: SlotVarID) {
         Self::sgl().on_new_query_slot(node, var_id);
     }
+}
+pub trait FromMetas<PR: SlottedPatRecSgl> {
+    fn from_metas(values: &mut impl Iterator<Item = SlotMeta<PR>>) -> Self;
+}
+
+pub trait BiTupleHelper {
+    type First;
+    type Second;
+}
+impl<T0, T1> BiTupleHelper for (T0, T1) {
+    type First = T0;
+    type Second = T1;
 }

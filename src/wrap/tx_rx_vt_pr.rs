@@ -798,7 +798,10 @@ impl RuleRunner for TxRxVTPR {
             Facts(facts),
             move |ctx, values| {
                 let mut ctx = RuleCtx::new(ctx, hook.clone());
-                let valued_pat_vars = P::Valued::from_plain_values(&mut values.iter().cloned());
+                let valued_pat_vars = P::Valued::from_plain_values_metas(
+                    &mut values.iter().cloned(),
+                    &mut std::iter::repeat(PR::MetaTy::default()),
+                );
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },

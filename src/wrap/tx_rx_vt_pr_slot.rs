@@ -782,6 +782,7 @@ impl RuleRunner for SlottedTxRxVTPR {
         PR::on_record_start();
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
+        let metas = pat_vars.metas_iter().cloned().collect::<Vec<_>>();
 
         let facts = PR::pat2fact_builder(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
@@ -798,9 +799,12 @@ impl RuleRunner for SlottedTxRxVTPR {
                 .map(|x| (x.0.as_str(), x.1.clone()))
                 .collect::<Vec<_>>(),
             Facts(facts),
-            move |ctx, values| {
+            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_>, values| {
                 let mut ctx = RuleCtx::new(ctx, hook.clone());
-                let valued_pat_vars = P::Valued::from_plain_values(&mut values.iter().cloned());
+                let valued_pat_vars = P::Valued::from_plain_values_metas(
+                    &mut values.iter().cloned(),
+                    &mut metas.clone().into_iter(),
+                );
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },
