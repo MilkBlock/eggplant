@@ -25,14 +25,12 @@ fn main() {
             let x = Var::query_slot("x");
             let y = Var::query_slot("y");
             let add = Add::query(&x, &y);
-
-            #[eggplant::slotted_pat_vars]
+            #[eggplant::slotted_pat_vars_catch]
             struct AddPat {
                 x: Var,
                 y: Var,
                 add: Add,
             }
-            AddPat::new(x, y, add)
         },
         |ctx, pat| {
             println!("{:?}", pat);

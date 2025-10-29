@@ -1,0 +1,41 @@
+[package]
+name = "eggplant-egui_graphs"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+# homepage.workspace = true
+repository.workspace = true
+authors.workspace = true
+description = "Interactive graph visualization widget for rust powered by egui"
+keywords = ["egui", "ui", "graph", "node-graph"]
+categories = ["gui", "visualization"]
+
+[dependencies]
+egui.workspace = true
+rand.workspace = true
+petgraph.workspace = true
+serde.workspace = true
+instant.workspace = true
+
+crossbeam = { version = "0.8", optional = true }
+
+[features]
+default = ["events"]
+events = ["crossbeam"]
+
+
+[dev-dependencies]
+eframe.workspace = true
+serde_json.workspace = true
+ureq.workspace = true
+criterion.workspace = true
+# demo-core = { path = "../demo-core" }
+
+
+[[bench]]
+name = "fruchterman_reingold"
+harness = false
+
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+# Enable JS RNG source for all wasm dependents via feature unification.
+getrandom = { version = "0.2", features = ["js"] }

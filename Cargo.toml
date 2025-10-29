@@ -9,7 +9,8 @@ license.workspace = true
 readme.workspace = true
 
 [features]
-default = []
+default = ["viewer"]
+viewer = ["eggplant-viewer"]
 
 [dependencies]
 derive_more = { version = "2.0.1", features = [
@@ -26,6 +27,8 @@ dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
+eggplant-viewer = { workspace = true, optional = true }
+eggplant-egui_graphs = { workspace = true, optional = true }
 egglog.workspace = true
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
@@ -33,9 +36,14 @@ graphviz-rust = "0.9.5"
 serde.workspace = true
 serde_json.workspace = true
 
+[[bin]]
+name = "viewer_example"
+path = "src/viewer_example.rs"
+required-features = ["viewer"]
+
 [workspace]
-members = ["eggplant-macros", "eggplant-transpiler"]
-resolver = "2"                                       # recommended 2021 Edition
+members = ["eggplant-macros", "eggplant-transpiler", "eggplant-egui_graphs"]
+resolver = "2"                                                               # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
@@ -49,9 +57,19 @@ authors = ["MilkBlock"]
 
 [workspace.dependencies]
 eggplant-macros = { path = "eggplant-macros", version = "0.2.7" }
+eggplant-viewer = { path = "eggplant-viewer" }
+eggplant-egui_graphs = { path = "eggplant-egui_graphs" }
 eggplant-transpiler = { path = "eggplant-transpiler", version = "0.2.7" }
-egglog = "1.0.0"
+egglog = { path = "../stable/serialize_raw" }
 itertools = "0.14.0"
 
 serde = "1.0.224"
 serde_json = "1.0.145"
+egui = { version = "0.32", features = ["serde"] }
+rand = "0.9"
+petgraph = { version = "0.8", features = ["serde-1"] }
+instant = "0.1"
+crossbeam = "0.8"
+eframe = "0.32"
+ureq = "2.10"
+criterion = { version = "0.5", features = ["html_reports"] }
