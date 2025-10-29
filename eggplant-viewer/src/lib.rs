@@ -3,9 +3,8 @@ use eframe::App;
 pub use eframe::Error;
 use eggplant_egui_graphs::events;
 use eggplant_egui_graphs::{
-    DefaultEdgeShape, DefaultNodeShape, Graph, GraphView, LayoutHierarchical,
-    LayoutHierarchicalOrientation, LayoutHierarchicalState, Metadata, SettingsInteraction,
-    SettingsNavigation, SettingsStyle,
+    Graph, GraphView, LayoutHierarchical, LayoutHierarchicalOrientation, LayoutHierarchicalState,
+    Metadata, SettingsInteraction, SettingsNavigation, SettingsStyle,
 };
 use egui::{self, Align2, CollapsingHeader, Color32, Pos2, Rect, ScrollArea, Ui};
 // use graphlib_rust::graph::Graph as DagvizGraph;
@@ -29,6 +28,7 @@ mod tabs;
 #[cfg(all(target_arch = "wasm32", not(feature = "events")))]
 use std::{cell::RefCell, rc::Rc};
 use tabs::import_load::UserUpload;
+mod flex_edge;
 mod flex_node;
 pub mod start;
 pub use start::*;
@@ -47,6 +47,7 @@ use ui_consts::{
 
 #[cfg(feature = "events")]
 use crate::event_filters::EventFilters;
+use crate::flex_edge::RainbowEdgeShape;
 use crate::flex_node::NodeShapeFlex;
 use crate::graph_ops::GraphActions;
 use crate::keybindings::{Command, dispatch as dispatch_keybindings};
@@ -77,8 +78,9 @@ mod drawers;
 //     },
 // }
 
-type PetEGraph = Graph<flex_node::NodeShapeFlex, DefaultEdgeShape>;
-#[derive(Debug)]
+type NS = NodeShapeFlex;
+type ES = RainbowEdgeShape;
+type PetEGraph = Graph<NS, ES>;
 pub enum DemoGraph {
     Directed(PetEGraph),
 }
@@ -246,8 +248,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             match self.selected_layout {
                 DemoLayout::Hierarchical => {
                     let mut state = GraphView::<
-                        NodeShapeFlex, DefaultEdgeShape,
-                         LayoutHierarchicalState,LayoutHierarchical,
+                        NS, ES, LayoutHierarchicalState,LayoutHierarchical,
                     >::get_layout_state(ui);
 
                     ui.horizontal(|ui| {
@@ -274,15 +275,15 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                     });
 
                     GraphView::<
-                        DefaultNodeShape, DefaultEdgeShape, LayoutHierarchicalState, LayoutHierarchical
+                        NS, ES, LayoutHierarchicalState, LayoutHierarchical
                     >::set_layout_state(ui, state);
                 }
                 DemoLayout::Force => {
                     let state = GraphView::<
-                        NodeShapeFlex, DefaultEdgeShape,
+                        NS, ES,
                     >::get_layout_state(ui);
                     GraphView::<
-                        NodeShapeFlex, DefaultEdgeShape,
+                        NS, ES,
                     >::set_layout_state(ui, state);
                 },
             }
@@ -290,12 +291,8 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
     }
 
     pub fn ui_layout_hierarchical(&mut self, ui: &mut Ui) {
-        let mut state = GraphView::<
-            DefaultNodeShape,
-            DefaultEdgeShape,
-            LayoutHierarchicalState,
-            LayoutHierarchical,
-        >::get_layout_state(ui);
+        let mut state =
+            GraphView::<NS, ES, LayoutHierarchicalState, LayoutHierarchical>::get_layout_state(ui);
 
         CollapsingHeader::new("Hierarchical Layout")
             .default_open(true)
@@ -348,12 +345,9 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 });
             });
 
-        GraphView::<
-            DefaultNodeShape,
-            DefaultEdgeShape,
-            LayoutHierarchicalState,
-            LayoutHierarchical,
-        >::set_layout_state(ui, state);
+        GraphView::<NS, ES, LayoutHierarchicalState, LayoutHierarchical>::set_layout_state(
+            ui, state,
+        );
     }
 
     pub fn ui_interaction(&mut self, ui: &mut Ui) {
@@ -838,8 +832,8 @@ impl<T: EGraphViewerSgl> App for EGraphApp<T> {
                 (DemoGraph::Directed(g), DemoLayout::Hierarchical) => {
                     if let Some(spec::PendingLayout::Hier(st)) = self.pending_layout.take() {
                         GraphView::<
-                            DefaultNodeShape,
-                            DefaultEdgeShape,
+                            NS,
+                            ES,
                             LayoutHierarchicalState,
                             LayoutHierarchical,
                         >::set_layout_state(ui, st);
@@ -864,9 +858,9 @@ impl<T: EGraphViewerSgl> App for EGraphApp<T> {
                 }
                 (DemoGraph::Directed(g), DemoLayout::Force) => {
                     if let Some(spec::PendingLayout::Force(st)) = self.pending_layout.take() {
-                        GraphView::<DefaultNodeShape, DefaultEdgeShape>::set_layout_state(ui, st);
+                        GraphView::<NS, ES>::set_layout_state(ui, st);
                     }
-                    let mut view = GraphView::<NodeShapeFlex, DefaultEdgeShape>::new(g)
+                    let mut view = GraphView::<NS, ES>::new(g)
                         .with_interactions(settings_interaction)
                         .with_navigations(settings_navigation)
                         .with_styles(settings_style);

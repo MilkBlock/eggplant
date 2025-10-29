@@ -41,8 +41,8 @@ impl DisplayNode<Directed> for NodeShapeFlex {
         let galley = ctx.ctx.fonts(|f| {
             f.layout_no_wrap(
                 // self.label.clone(),
-                self.label.clone(),
-                FontId::new(ctx.meta.canvas_to_screen_size(10.), FontFamily::Monospace),
+                "A".to_string(),
+                FontId::new(ctx.meta.canvas_to_screen_size(40.), FontFamily::Monospace),
                 color,
             )
         });
@@ -55,7 +55,7 @@ impl DisplayNode<Directed> for NodeShapeFlex {
 
         let rect = shape_label.visual_bounding_rect();
         let points = rect_to_points(rect);
-        let shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(1., color));
+        let shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(5., color));
 
         // update self size
         self.size_x = rect.size().x;
