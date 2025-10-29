@@ -3,12 +3,12 @@ use std::marker::PhantomData;
 use petgraph::{Directed, EdgeType, stable_graph::EdgeIndex};
 use serde::{Deserialize, Serialize};
 
-use crate::{DefaultEdgeShape, DefaultNodeShape, DisplayEdge, DisplayNode, ElkEdge};
+use crate::{DefaultEdgeShape, DefaultNodeShape, DisplayEdge, DisplayNode, ViewEdge};
 
 /// Stores properties of an [Edge]
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct EdgeProps {
-    pub payload: ElkEdge,
+    pub payload: ViewEdge,
     pub order: usize,
     pub selected: bool,
     pub label: String,
@@ -30,7 +30,7 @@ pub struct Edge<
 }
 
 impl<Ty: EdgeType, Dn: DisplayNode<Ty>, D: DisplayEdge<Ty, Dn>> Edge<Ty, Dn, D> {
-    pub fn new(payload: ElkEdge) -> Self {
+    pub fn new(payload: ViewEdge) -> Self {
         let props = EdgeProps {
             payload,
 
@@ -78,11 +78,11 @@ impl<Ty: EdgeType, Dn: DisplayNode<Ty>, D: DisplayEdge<Ty, Dn>> Edge<Ty, Dn, D> 
         self.props.order = order;
     }
 
-    pub fn payload(&self) -> &ElkEdge {
+    pub fn payload(&self) -> &ViewEdge {
         &self.props.payload
     }
 
-    pub fn payload_mut(&mut self) -> &mut ElkEdge {
+    pub fn payload_mut(&mut self) -> &mut ViewEdge {
         &mut self.props.payload
     }
 

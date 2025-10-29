@@ -1,7 +1,7 @@
 use eframe::{App, CreationContext, run_native};
 use eggplant_egui_graphs::{
-    DefaultEdgeShape, ElkEdge, Graph, GraphView, SettingsInteraction, SettingsNavigation, ViewNode,
-    default_edge_transform, default_node_transform, to_graph_custom,
+    DefaultEdgeShape, Graph, GraphView, SettingsInteraction, SettingsNavigation, ViewEdge,
+    ViewNode, default_edge_transform, default_node_transform, to_graph_custom,
 };
 use egui::Context;
 use node::NodeShapeAnimated;
@@ -56,16 +56,16 @@ impl App for AnimatedNodesApp {
     }
 }
 
-fn generate_graph() -> StableGraph<ViewNode, ElkEdge> {
+fn generate_graph() -> StableGraph<ViewNode, ViewEdge> {
     let mut g = StableGraph::new();
 
     let a = g.add_node(ViewNode::default());
     let b = g.add_node(ViewNode::default());
     let c = g.add_node(ViewNode::default());
 
-    g.add_edge(a, b, ElkEdge::default());
-    g.add_edge(b, c, ElkEdge::default());
-    g.add_edge(c, a, ElkEdge::default());
+    g.add_edge(a, b, ViewEdge::default());
+    g.add_edge(b, c, ViewEdge::default());
+    g.add_edge(c, a, ViewEdge::default());
 
     g
 }

@@ -118,7 +118,10 @@ where
     pub fn new(payload: ViewNode) -> Self {
         let props = NodeProps {
             payload,
-            location: Pos2::default(),
+            location: Pos2 {
+                x: rand::random::<f32>() * 3.,
+                y: rand::random::<f32>() * 3.,
+            },
             color: Option::default(),
             label: String::default(),
             selected: bool::default(),

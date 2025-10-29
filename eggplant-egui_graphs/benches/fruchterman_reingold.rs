@@ -1,5 +1,5 @@
 use criterion::{BatchSize, Criterion, black_box, criterion_group, criterion_main};
-use eggplant_egui_graphs::{ElkEdge, ViewNode};
+use eggplant_egui_graphs::{ViewEdge, ViewNode};
 use eggplant_egui_graphs::{Graph, to_graph};
 use egui::{Pos2, Rect};
 use petgraph::stable_graph::StableGraph;
@@ -19,7 +19,7 @@ fn make_graph(num_nodes: usize, num_edges: usize) -> Graph {
         g.add_edge(
             petgraph::prelude::NodeIndex::new(i - 1),
             petgraph::prelude::NodeIndex::new(i),
-            ElkEdge::default(),
+            ViewEdge::default(),
         );
     }
     // sprinkle some extra edges up to num_edges
@@ -32,7 +32,7 @@ fn make_graph(num_nodes: usize, num_edges: usize) -> Graph {
             g.add_edge(
                 petgraph::prelude::NodeIndex::new(a),
                 petgraph::prelude::NodeIndex::new(b),
-                ElkEdge::default(),
+                ViewEdge::default(),
             );
             extra -= 1;
         }

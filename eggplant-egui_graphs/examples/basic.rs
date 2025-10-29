@@ -1,6 +1,6 @@
 use eframe::{App, CreationContext, NativeOptions, run_native};
 use eggplant_egui_graphs::{
-    DefaultEdgeShape, DefaultNodeShape, ElkEdge, Graph, GraphView, LayoutHierarchical,
+    DefaultEdgeShape, DefaultNodeShape, ViewEdge, Graph, GraphView, LayoutHierarchical,
     LayoutHierarchicalState, ViewNode, to_graph,
 };
 use egui::Context;
@@ -30,16 +30,16 @@ impl App for BasicApp {
     }
 }
 
-fn generate_graph() -> StableGraph<ViewNode, ElkEdge> {
+fn generate_graph() -> StableGraph<ViewNode, ViewEdge> {
     let mut g = StableGraph::new();
 
     let a = g.add_node(ViewNode::new());
     let b = g.add_node(ViewNode::new());
     let c = g.add_node(ViewNode::new());
 
-    g.add_edge(a, b, ElkEdge::default());
-    g.add_edge(b, c, ElkEdge::default());
-    g.add_edge(c, a, ElkEdge::default());
+    g.add_edge(a, b, ViewEdge::default());
+    g.add_edge(b, c, ViewEdge::default());
+    g.add_edge(c, a, ViewEdge::default());
 
     g
 }

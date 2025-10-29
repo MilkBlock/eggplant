@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::draw::{DisplayEdge, DisplayNode};
 use crate::elements::IndexTy;
-use crate::elk_types::{ElkEdge, ViewNode};
+use crate::view_types::{ViewEdge, ViewNode};
 use crate::{
     DefaultEdgeShape, DefaultNodeShape, Node, default_edge_transform, default_node_transform,
     to_graph,
@@ -23,12 +23,12 @@ use crate::{Edge, metadata::Metadata};
 type StableGraphType<Dn, De> =
     StableGraph<Node<Directed, Dn>, Edge<Directed, Dn, De>, Directed, IndexTy>;
 
-impl<Dn, De> From<&StableGraph<ViewNode, ElkEdge, Directed, IndexTy>> for Graph<Dn, De>
+impl<Dn, De> From<&StableGraph<ViewNode, ViewEdge, Directed, IndexTy>> for Graph<Dn, De>
 where
     Dn: DisplayNode<Directed>,
     De: DisplayEdge<Directed, Dn>,
 {
-    fn from(g: &StableGraph<ViewNode, ElkEdge, Directed, IndexTy>) -> Self {
+    fn from(g: &StableGraph<ViewNode, ViewEdge, Directed, IndexTy>) -> Self {
         to_graph(g)
     }
 }
@@ -213,7 +213,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
         &mut self,
         start: NodeIndex<IndexTy>,
         end: NodeIndex<IndexTy>,
-        payload: ElkEdge,
+        payload: ViewEdge,
     ) -> EdgeIndex<IndexTy> {
         self.add_edge_custom(start, end, payload, default_edge_transform)
     }
@@ -224,7 +224,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
         &mut self,
         start: NodeIndex<IndexTy>,
         end: NodeIndex<IndexTy>,
-        payload: ElkEdge,
+        payload: ViewEdge,
         label: String,
     ) -> EdgeIndex<IndexTy> {
         self.add_edge_custom(start, end, payload, |e: &mut Edge<Directed, Nd, Ed>| {
@@ -237,7 +237,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
         &mut self,
         start: NodeIndex<DefaultIx>,
         end: NodeIndex<DefaultIx>,
-        payload: ElkEdge,
+        payload: ViewEdge,
         edge_transform: impl FnOnce(&mut Edge<Directed, Nd, Ed>),
     ) -> EdgeIndex<DefaultIx> {
         // Choose the smallest non-negative order not yet used by edges in the SAME direction
@@ -450,13 +450,13 @@ mod tests {
         let a = sg.add_node(());
         let b = sg.add_node(());
         let mut g: Graph = Graph::new(sg.map(
-            |_, ()| crate::Node::new(crate::elk_types::ViewNode::new()),
-            |_, ()| crate::Edge::new(crate::elk_types::ElkEdge::default()),
+            |_, ()| crate::Node::new(crate::view_types::ViewNode::new()),
+            |_, ()| crate::Edge::new(crate::view_types::ViewEdge::default()),
         ));
 
         // Add opposite-direction edges; both initially 0, then logic bumps them to 1.
-        let e1 = g.add_edge(a, b, crate::elk_types::ElkEdge::default());
-        let e2 = g.add_edge(b, a, crate::elk_types::ElkEdge::default());
+        let e1 = g.add_edge(a, b, crate::view_types::ViewEdge::default());
+        let e2 = g.add_edge(b, a, crate::view_types::ViewEdge::default());
         let o1 = g.edge(e1).unwrap().order();
         let o2 = g.edge(e2).unwrap().order();
         assert_eq!(
@@ -469,7 +469,7 @@ mod tests {
         );
 
         // Now add a second A->B edge; it should pick smallest unused (0), not duplicate 1.
-        let e3 = g.add_edge(a, b, crate::elk_types::ElkEdge::default());
+        let e3 = g.add_edge(a, b, crate::view_types::ViewEdge::default());
         let o3 = g.edge(e3).unwrap().order();
         assert_eq!(
             o3, 0,
@@ -477,7 +477,7 @@ mod tests {
         );
 
         // Add third A->B; orders used are {0,1}, expect 2.
-        let e4 = g.add_edge(a, b, crate::elk_types::ElkEdge::default());
+        let e4 = g.add_edge(a, b, crate::view_types::ViewEdge::default());
         let o4 = g.edge(e4).unwrap().order();
         assert_eq!(o4, 2, "Third A->B edge should get order 2");
     }

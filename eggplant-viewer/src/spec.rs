@@ -1,7 +1,7 @@
 //! Demo-only import specs for layout and extras.
 //! This keeps serde DTOs out of the public egui_graphs crate.
 use eggplant_egui_graphs::{
-    DefaultEdgeShape, DefaultNodeShape, GraphView, LayoutHierarchicalOrientation,
+    DefaultEdgeShape, DefaultNodeShape, GraphView, LayoutForceState, LayoutHierarchicalOrientation,
     LayoutHierarchicalState,
 };
 use serde::{Deserialize, Serialize};
@@ -57,6 +57,7 @@ pub struct DemoImportSpec {
 #[derive(Debug, Clone)]
 pub enum PendingLayout {
     Hier(LayoutHierarchicalState),
+    Force(LayoutForceState),
 }
 
 impl LayoutSpec {
@@ -127,6 +128,7 @@ pub fn build_export_spec(
     let layout = if include_layout {
         Some(match selected_layout {
             crate::DemoLayout::Hierarchical => PendingLayout::from_ui_hier_state(ui),
+            crate::DemoLayout::Force => todo!(),
         })
     } else {
         None

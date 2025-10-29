@@ -1,16 +1,15 @@
 mod draw;
 mod elements;
-mod elk_types;
 mod graph;
 mod graph_view;
 mod helpers;
 mod layouts;
 mod metadata;
 mod settings;
+mod view_types;
 
 pub use draw::{DefaultEdgeShape, DefaultNodeShape, DisplayEdge, DisplayNode, DrawContext};
 pub use elements::{Edge, EdgeProps, Node, NodeProps};
-pub use elk_types::*;
 pub use graph::Graph;
 pub use graph_view::{DefaultGraphView, GraphView};
 #[allow(deprecated)]
@@ -19,7 +18,9 @@ pub use helpers::{
     generate_simple_ungraph, node_size, to_graph, to_graph_custom,
 };
 pub use metadata::Metadata;
+pub use view_types::*;
 
+pub use graph_view::{LayoutForce, LayoutForceState};
 pub use layouts::force_directed::{
     CenterGravity, CenterGravityParams, Extra, ForceAlgorithm,
     ForceDirected as LayoutForceDirected, FruchtermanReingold, FruchtermanReingoldState,

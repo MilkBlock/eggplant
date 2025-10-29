@@ -1,6 +1,6 @@
 use eframe::{App, CreationContext, NativeOptions, run_native};
 use eggplant_egui_graphs::{
-    DefaultEdgeShape, DefaultGraphView, ElkEdge, Graph, SettingsStyle, ViewNode,
+    DefaultEdgeShape, DefaultGraphView, Graph, SettingsStyle, ViewEdge, ViewNode,
 };
 use egui::{Context, Pos2};
 use petgraph::stable_graph::StableGraph;
@@ -22,9 +22,9 @@ impl BasicCustomApp {
             idxs.push(idx);
         }
 
-        g.add_edge(idxs[0], idxs[1], ElkEdge::default());
-        g.add_edge(idxs[1], idxs[2], ElkEdge::default());
-        g.add_edge(idxs[2], idxs[0], ElkEdge::default());
+        g.add_edge(idxs[0], idxs[1], ViewEdge::default());
+        g.add_edge(idxs[1], idxs[2], ViewEdge::default());
+        g.add_edge(idxs[2], idxs[0], ViewEdge::default());
 
         Self { g }
     }

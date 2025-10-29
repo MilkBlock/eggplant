@@ -164,6 +164,8 @@ struct EffectiveInteraction {
     edge_selection_multi: bool,
 }
 
+pub type LayoutForceState = layouts::force_directed::FruchtermanReingoldState;
+pub type LayoutForce = layouts::force_directed::ForceDirected<FruchtermanReingold>;
 /// Widget for visualizing and interacting with graphs.
 ///
 /// It implements [`egui::Widget`] and can be used like any other widget.
@@ -183,8 +185,8 @@ pub struct GraphView<
     'a,
     Nd: DisplayNode<Directed>,
     Ed: DisplayEdge<Directed, Nd>,
-    S = layouts::force_directed::FruchtermanReingoldState,
-    L = layouts::force_directed::ForceDirected<FruchtermanReingold>,
+    S = LayoutForceState,
+    L = LayoutForce,
 > where
     S: LayoutState,
     L: Layout<S>,

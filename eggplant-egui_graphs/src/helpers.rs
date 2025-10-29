@@ -1,5 +1,5 @@
 use crate::elements::IndexTy;
-use crate::elk_types::{ElkEdge, ViewNode};
+use crate::view_types::{ViewEdge, ViewNode};
 use crate::{DisplayEdge, DisplayNode, Edge, Graph, Node};
 use egui::Vec2;
 use petgraph::{
@@ -43,14 +43,14 @@ use std::collections::HashMap;
 /// assert_eq!(*result.g().node_weight(result_node2).unwrap().label().clone(), format!("node {}", result_node2.index()));
 /// ```
 pub fn to_graph<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>>(
-    g: &StableGraph<ViewNode, ElkEdge, Directed, IndexTy>,
+    g: &StableGraph<ViewNode, ViewEdge, Directed, IndexTy>,
 ) -> Graph<Nd, Ed> {
     transform(g, &mut default_node_transform, &mut default_edge_transform)
 }
 
 /// The same as [`to_graph`], but allows to define custom transformation procedures for nodes and edges.
 pub fn to_graph_custom<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>>(
-    g: &StableGraph<ViewNode, ElkEdge, Directed, IndexTy>,
+    g: &StableGraph<ViewNode, ViewEdge, Directed, IndexTy>,
     mut node_transform: impl FnMut(&mut Node<Directed, Nd>),
     mut edge_transform: impl FnMut(&mut Edge<Directed, Nd, Ed>),
 ) -> Graph<Nd, Ed> {
@@ -58,7 +58,7 @@ pub fn to_graph_custom<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>>
 }
 
 fn transform<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>>(
-    input: &StableGraph<ViewNode, ElkEdge, Directed, DefaultIx>,
+    input: &StableGraph<ViewNode, ViewEdge, Directed, DefaultIx>,
     node_transform: &mut impl FnMut(&mut Node<Directed, Nd>),
     edge_transform: &mut impl FnMut(&mut Edge<Directed, Nd, Ed>),
 ) -> Graph<Nd, Ed> {
@@ -119,31 +119,31 @@ pub fn default_node_transform<Nd: DisplayNode<Directed>>(node: &mut Node<Directe
 }
 
 /// Simple digraph for usage in examples and tests.
-pub fn generate_simple_digraph() -> StableGraph<ViewNode, ElkEdge, Directed> {
+pub fn generate_simple_digraph() -> StableGraph<ViewNode, ViewEdge, Directed> {
     let mut g = StableGraph::new();
 
     let a = g.add_node(ViewNode::new());
     let b = g.add_node(ViewNode::new());
     let c = g.add_node(ViewNode::new());
 
-    g.add_edge(a, b, ElkEdge::default());
-    g.add_edge(b, c, ElkEdge::default());
-    g.add_edge(c, a, ElkEdge::default());
+    g.add_edge(a, b, ViewEdge::default());
+    g.add_edge(b, c, ViewEdge::default());
+    g.add_edge(c, a, ViewEdge::default());
 
     g
 }
 
 /// Simple ungraph for usage in examples and tests.
-pub fn generate_simple_ungraph() -> StableGraph<ViewNode, ElkEdge, Directed> {
+pub fn generate_simple_ungraph() -> StableGraph<ViewNode, ViewEdge, Directed> {
     let mut g = StableGraph::<_, _, Directed>::default();
 
     let a = g.add_node(ViewNode::new());
     let b = g.add_node(ViewNode::new());
     let c = g.add_node(ViewNode::new());
 
-    g.add_edge(a, b, ElkEdge::default());
-    g.add_edge(b, c, ElkEdge::default());
-    g.add_edge(c, a, ElkEdge::default());
+    g.add_edge(a, b, ViewEdge::default());
+    g.add_edge(b, c, ViewEdge::default());
+    g.add_edge(c, a, ViewEdge::default());
 
     g
 }
@@ -158,14 +158,14 @@ mod tests {
 
     #[test]
     fn test_to_graph_directed() {
-        let mut user_g: StableGraph<ViewNode, ElkEdge, Directed> = StableGraph::new();
+        let mut user_g: StableGraph<ViewNode, ViewEdge, Directed> = StableGraph::new();
         let mut node1 = ViewNode::new();
         node1.set_identifier("Node1".to_string());
         let mut node2 = ViewNode::new();
         node2.set_identifier("Node2".to_string());
         let n1 = user_g.add_node(node1);
         let n2 = user_g.add_node(node2);
-        user_g.add_edge(n1, n2, ElkEdge::default());
+        user_g.add_edge(n1, n2, ViewEdge::default());
 
         let input_g: Graph<DefaultNodeShape, DefaultEdgeShape> = to_graph(&user_g);
 
@@ -187,14 +187,14 @@ mod tests {
 
     #[test]
     fn test_to_graph_undirected() {
-        let mut user_g: StableGraph<ViewNode, ElkEdge, Directed> = StableGraph::default();
+        let mut user_g: StableGraph<ViewNode, ViewEdge, Directed> = StableGraph::default();
         let mut node1 = ViewNode::new();
         node1.set_identifier("Node1".to_string());
         let mut node2 = ViewNode::new();
         node2.set_identifier("Node2".to_string());
         let n1 = user_g.add_node(node1);
         let n2 = user_g.add_node(node2);
-        user_g.add_edge(n1, n2, ElkEdge::default());
+        user_g.add_edge(n1, n2, ViewEdge::default());
 
         // For undirected graphs, we need to use to_graph_custom with proper type handling
         let input_g: Graph<DefaultNodeShape, DefaultEdgeShape> =

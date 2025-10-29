@@ -1,5 +1,5 @@
 use crate::{DemoGraph, MAX_EDGE_COUNT};
-use eggplant_egui_graphs::ElkEdge;
+use eggplant_egui_graphs::ViewEdge;
 use petgraph::stable_graph::NodeIndex;
 
 pub struct GraphActions<'a> {
@@ -15,7 +15,7 @@ impl GraphActions<'_> {
             return;
         }
         match self.g {
-            DemoGraph::Directed(g) => g.add_edge(a, b, ElkEdge::default()),
+            DemoGraph::Directed(g) => g.add_edge(a, b, ViewEdge::default()),
         };
     }
     pub fn remove_edge(&mut self, a: NodeIndex, b: NodeIndex) {
