@@ -122,9 +122,9 @@ pub fn default_node_transform<Nd: DisplayNode<Directed>>(node: &mut Node<Directe
 pub fn generate_simple_digraph() -> StableGraph<ViewNode, ViewEdge, Directed> {
     let mut g = StableGraph::new();
 
-    let a = g.add_node(ViewNode::new());
-    let b = g.add_node(ViewNode::new());
-    let c = g.add_node(ViewNode::new());
+    let a = g.add_node(ViewNode::default());
+    let b = g.add_node(ViewNode::default());
+    let c = g.add_node(ViewNode::default());
 
     g.add_edge(a, b, ViewEdge::default());
     g.add_edge(b, c, ViewEdge::default());
@@ -137,9 +137,9 @@ pub fn generate_simple_digraph() -> StableGraph<ViewNode, ViewEdge, Directed> {
 pub fn generate_simple_ungraph() -> StableGraph<ViewNode, ViewEdge, Directed> {
     let mut g = StableGraph::<_, _, Directed>::default();
 
-    let a = g.add_node(ViewNode::new());
-    let b = g.add_node(ViewNode::new());
-    let c = g.add_node(ViewNode::new());
+    let a = g.add_node(ViewNode::default());
+    let b = g.add_node(ViewNode::default());
+    let c = g.add_node(ViewNode::default());
 
     g.add_edge(a, b, ViewEdge::default());
     g.add_edge(b, c, ViewEdge::default());
@@ -159,9 +159,9 @@ mod tests {
     #[test]
     fn test_to_graph_directed() {
         let mut user_g: StableGraph<ViewNode, ViewEdge, Directed> = StableGraph::new();
-        let mut node1 = ViewNode::new();
+        let mut node1 = ViewNode::default();
         node1.set_identifier("Node1".to_string());
-        let mut node2 = ViewNode::new();
+        let mut node2 = ViewNode::default();
         node2.set_identifier("Node2".to_string());
         let n1 = user_g.add_node(node1);
         let n2 = user_g.add_node(node2);
@@ -180,7 +180,7 @@ mod tests {
             assert_eq!(input_n.payload().identifier(), user_n.identifier());
             assert_eq!(*input_n.label(), format!("node {}", user_idx.index()));
 
-            assert!(!input_n.selected());
+            assert!(!input_n.selected().is_some());
             assert!(!input_n.dragged());
         }
     }
@@ -188,9 +188,9 @@ mod tests {
     #[test]
     fn test_to_graph_undirected() {
         let mut user_g: StableGraph<ViewNode, ViewEdge, Directed> = StableGraph::default();
-        let mut node1 = ViewNode::new();
+        let mut node1 = ViewNode::default();
         node1.set_identifier("Node1".to_string());
-        let mut node2 = ViewNode::new();
+        let mut node2 = ViewNode::default();
         node2.set_identifier("Node2".to_string());
         let n1 = user_g.add_node(node1);
         let n2 = user_g.add_node(node2);
@@ -211,7 +211,7 @@ mod tests {
             assert_eq!(input_n.payload().identifier(), user_n.identifier());
             assert_eq!(*input_n.label(), format!("node {}", user_idx.index()));
 
-            assert!(!input_n.selected());
+            assert!(!input_n.selected().is_some());
             assert!(!input_n.dragged());
         }
     }

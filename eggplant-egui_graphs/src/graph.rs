@@ -11,7 +11,7 @@ use petgraph::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::draw::{DisplayEdge, DisplayNode};
+use crate::draw::{DisplayEdge, DisplayNode, MaybeInner};
 use crate::elements::IndexTy;
 use crate::view_types::{ViewEdge, ViewNode};
 use crate::{
@@ -450,7 +450,7 @@ mod tests {
         let a = sg.add_node(());
         let b = sg.add_node(());
         let mut g: Graph = Graph::new(sg.map(
-            |_, ()| crate::Node::new(crate::view_types::ViewNode::new()),
+            |_, ()| crate::Node::new(crate::view_types::ViewNode::default()),
             |_, ()| crate::Edge::new(crate::view_types::ViewEdge::default()),
         ));
 

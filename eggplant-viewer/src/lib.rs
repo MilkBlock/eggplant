@@ -28,8 +28,8 @@ mod tabs;
 #[cfg(all(target_arch = "wasm32", not(feature = "events")))]
 use std::{cell::RefCell, rc::Rc};
 use tabs::import_load::UserUpload;
-mod flex_edge;
-mod flex_node;
+mod plant_edge;
+mod plant_node;
 pub mod start;
 pub use start::*;
 mod ui_consts;
@@ -47,11 +47,11 @@ use ui_consts::{
 
 #[cfg(feature = "events")]
 use crate::event_filters::EventFilters;
-use crate::flex_edge::RainbowEdgeShape;
-use crate::flex_node::NodeShapeFlex;
 use crate::graph_ops::GraphActions;
 use crate::keybindings::{Command, dispatch as dispatch_keybindings};
 use crate::metrics::MetricsRecorder;
+use crate::plant_edge::PlantEdgeShape;
+use crate::plant_node::FlexNodeShape;
 use crate::status::{StatusKind, StatusQueue};
 #[cfg(feature = "events")]
 pub use crossbeam::channel::{Receiver, Sender, unbounded};
@@ -78,8 +78,8 @@ mod drawers;
 //     },
 // }
 
-type NS = NodeShapeFlex;
-type ES = RainbowEdgeShape;
+type NS = FlexNodeShape;
+type ES = PlantEdgeShape;
 type PetEGraph = Graph<NS, ES>;
 pub enum DemoGraph {
     Directed(PetEGraph),

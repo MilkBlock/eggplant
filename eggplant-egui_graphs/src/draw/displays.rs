@@ -1,6 +1,7 @@
 use crate::{Node, NodeProps, draw::drawer::DrawContext, elements::EdgeProps};
 use egui::{Pos2, Shape, Vec2};
 use petgraph::EdgeType;
+use serde::{Deserialize, Serialize};
 
 pub trait DisplayNode<Ty>: Clone + From<NodeProps>
 where
@@ -33,6 +34,15 @@ where
     fn is_inside(&self, pos: Pos2) -> bool;
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub enum MaybeInner {
+    Itself,
+    Inner {
+        ty: String,
+        enode_id: u32,
+        operand_idx: usize,
+    },
+}
 pub trait DisplayEdge<Ty, D>: Clone + From<EdgeProps>
 where
     Ty: EdgeType,
@@ -47,7 +57,13 @@ where
     ///
     /// Use `ctx.meta` to properly scale and translate the shape.
     /// Use `ctx.painter` to have low level access to egui painting process.
-    fn shapes(&mut self, start: &Node<Ty, D>, end: &Node<Ty, D>, ctx: &DrawContext) -> Vec<Shape>;
+    fn shapes(
+        &mut self,
+        start: &Node<Ty, D>,
+        start_mayber_inner: MaybeInner,
+        end: &Node<Ty, D>,
+        ctx: &DrawContext,
+    ) -> Vec<Shape>;
 
     /// Is called on every frame. Can be used for updating state of the implementation of [`DisplayNode`]
     fn update(&mut self, state: &EdgeProps);

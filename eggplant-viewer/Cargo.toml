@@ -31,6 +31,7 @@ chrono = { version = "0.4", default-features = false, features = [
 ] }
 egglog.workspace = true
 itertools.workspace = true
+indexmap.workspace = true
 
 graphlib_rust = "0.0.2"
 

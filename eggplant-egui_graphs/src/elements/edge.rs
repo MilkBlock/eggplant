@@ -3,7 +3,9 @@ use std::marker::PhantomData;
 use petgraph::{Directed, EdgeType, stable_graph::EdgeIndex};
 use serde::{Deserialize, Serialize};
 
-use crate::{DefaultEdgeShape, DefaultNodeShape, DisplayEdge, DisplayNode, ViewEdge};
+use crate::{
+    DefaultEdgeShape, DefaultNodeShape, DisplayEdge, DisplayNode, ViewEdge, draw::MaybeInner,
+};
 
 /// Stores properties of an [Edge]
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -100,5 +102,9 @@ impl<Ty: EdgeType, Dn: DisplayNode<Ty>, D: DisplayEdge<Ty, Dn>> Edge<Ty, Dn, D> 
 
     pub fn label(&self) -> String {
         self.props.label.clone()
+    }
+
+    pub fn start_maybe_inner(&self) -> MaybeInner {
+        self.props.payload.start_maybe_inner.clone()
     }
 }

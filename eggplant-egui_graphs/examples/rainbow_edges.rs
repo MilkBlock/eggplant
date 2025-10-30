@@ -40,7 +40,7 @@ fn main() {
 
 mod edge {
     use eggplant_egui_graphs::{
-        DefaultEdgeShape, DisplayEdge, DisplayNode, DrawContext, EdgeProps, Node,
+        DefaultEdgeShape, DisplayEdge, DisplayNode, DrawContext, EdgeProps, MaybeInner, Node,
     };
     use egui::{Color32, Pos2, Shape, Stroke, Vec2};
     use petgraph::Directed;
@@ -74,9 +74,11 @@ mod edge {
         fn shapes(
             &mut self,
             start: &Node<Directed, Nd>,
+            start_maybe_inner: MaybeInner,
             end: &Node<Directed, Nd>,
             ctx: &DrawContext,
         ) -> Vec<egui::Shape> {
+            let _ = start_maybe_inner;
             let mut res = vec![];
             let (start, end) = (start.location(), end.location());
             let (x_dist, y_dist) = (end.x - start.x, end.y - start.y);

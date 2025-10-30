@@ -16,8 +16,11 @@ impl BasicCustomApp {
         let positions = vec![Pos2::new(0., 0.), Pos2::new(50., 0.), Pos2::new(0., 50.)];
         let mut idxs = Vec::with_capacity(positions.len());
         for position in positions {
-            let idx =
-                g.add_node_with_label_and_location(ViewNode::new(), position.to_string(), position);
+            let idx = g.add_node_with_label_and_location(
+                ViewNode::default(),
+                position.to_string(),
+                position,
+            );
 
             idxs.push(idx);
         }

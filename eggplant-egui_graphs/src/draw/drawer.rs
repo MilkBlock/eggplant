@@ -99,7 +99,7 @@ where
                 let n = self.g.node_mut(idx).unwrap();
                 let shapes = <Nd as DisplayNode<Directed>>::shapes(n.display_mut(), self.ctx);
 
-                if n.selected() || n.dragged() {
+                if n.selected().is_some() || n.dragged() {
                     for s in shapes {
                         self.delayed.push(s);
                     }
@@ -125,12 +125,18 @@ where
                 let end = self.g.node(idx_end).cloned().unwrap();
 
                 let e = self.g.edge_mut(idx).unwrap();
+                let start_maybe_inner = e.start_maybe_inner();
                 let props = e.props().clone();
 
                 let display = e.display_mut();
                 display.update(&props);
-                let shapes =
-                    <Ed as DisplayEdge<Directed, Nd>>::shapes(display, &start, &end, self.ctx);
+                let shapes = <Ed as DisplayEdge<Directed, Nd>>::shapes(
+                    display,
+                    &start,
+                    start_maybe_inner,
+                    &end,
+                    self.ctx,
+                );
 
                 if e.selected() {
                     for s in shapes {

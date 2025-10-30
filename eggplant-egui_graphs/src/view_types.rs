@@ -1,9 +1,10 @@
-use std::collections::HashMap;
+use crate::draw::MaybeInner;
+use indexmap::IndexMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ViewNode {
     pub identifier: Option<String>,
-    // pub children: Vec<ViewNode>,
+    pub enodes: IndexMap<String, Vec<ENode>>,
     // pub contained_edges: Vec<ViewEdge>,
     // pub labels: Vec<ViewLabel>,
     // pub position: (f64, f64),
@@ -11,11 +12,18 @@ pub struct ViewNode {
     // pub properties: HashMap<String, String>,
 }
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ENode {
+    pub func: String,
+    pub id: u32,
+    pub operands_num: usize,
+}
+
 impl ViewNode {
-    pub fn new() -> Self {
+    pub fn new(ident: Option<String>, enodes: IndexMap<String, Vec<ENode>>) -> Self {
         Self {
-            identifier: None,
-            // children: Vec::new(),
+            identifier: ident,
+            enodes,
             // contained_edges: Vec::new(),
             // labels: Vec::new(),
             // position: (0.0, 0.0),
@@ -81,15 +89,17 @@ impl ViewNode {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ViewEdge {
     pub identifier: Option<String>,
+    pub start_maybe_inner: MaybeInner,
     // pub sections: Vec<ElkEdgeSection>,
     // pub labels: Vec<ViewLabel>,
     // pub properties: HashMap<String, String>,
 }
 
 impl ViewEdge {
-    pub fn new() -> Self {
+    pub fn new(maybe_inner: MaybeInner) -> Self {
         Self {
             identifier: None,
+            start_maybe_inner: maybe_inner,
             // sections: Vec::new(),
             // labels: Vec::new(),
             // properties: HashMap::new(),
@@ -151,13 +161,16 @@ impl ViewLabel {
 
 impl Default for ViewNode {
     fn default() -> Self {
-        Self::new()
+        Self {
+            identifier: None,
+            enodes: Default::default(),
+        }
     }
 }
 
 impl Default for ViewEdge {
     fn default() -> Self {
-        Self::new()
+        Self::new(MaybeInner::Itself)
     }
 }
 

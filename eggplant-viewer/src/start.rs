@@ -1,11 +1,9 @@
 use eframe::CreationContext;
 use egglog::{EGraph, SerializeConfig, Value};
-use eggplant_egui_graphs::{ViewEdge, Graph, ViewNode};
+use eggplant_egui_graphs::{ENode, Graph, ViewNode};
+use indexmap::IndexMap;
 use petgraph::prelude::StableGraph;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::sync::{Arc, Mutex};
 
 #[cfg(feature = "events")]
 use crate::event_filters::EventFilters;
@@ -13,54 +11,98 @@ use crate::*;
 
 impl<T: EGraphViewerSgl> EGraphApp<T> {
     pub fn new(cc: &CreationContext<'_>) -> Self {
-        let settings_graph = settings::SettingsGraph::default();
-        let tables = T::egraph()
-            .lock()
-            .unwrap()
-            .serialize_tracing_raw(SerializeConfig::default());
-        let _class2nodes: HashMap<Value, Vec<TblOffset>> =
+        let mut g = Graph::new(StableGraph::default());
+        let tables = {
+            let egraph = T::egraph().clone();
+            let egraph = egraph.lock().unwrap();
+            let mut tables = egraph.serialize_raw(SerializeConfig::default());
+            tables.iter_mut().for_each(|(k, v)| {
+                v.iter_mut().for_each(|node| {
+                    node.output = egraph.get_canonical_value(
+                        node.output,
+                        &egraph
+                            .get_function(&k)
+                            .unwrap_or_else(|| panic!("can't find func {}", k))
+                            .schema()
+                            .output,
+                    );
+                });
+            });
+            tables
+        };
+        let class2nodes: IndexMap<Value, Vec<(String, TblOffset)>> =
             tables
                 .iter()
-                .fold(HashMap::default(), |mut acc, (_func, rows)| {
+                .fold(IndexMap::default(), |mut acc, (func, rows)| {
                     rows.iter().enumerate().for_each(|(tbl_offset, row)| {
-                        acc.entry(row.output).or_default().push(tbl_offset)
+                        acc.entry(row.output)
+                            .or_default()
+                            .push((func.clone(), tbl_offset))
                     });
                     acc
                 });
+        println!("{:?}", class2nodes);
 
-        let mut g = Graph::new(StableGraph::default());
+        // add nodes
+        class2nodes.iter().for_each(|(k, v)| {
+            g.add_node({
+                let ty_enode_list: Vec<(String, ENode)> = v
+                    .iter()
+                    .map(|(func, offset)| {
+                        let rows = tables
+                            .get(func)
+                            .unwrap_or_else(|| panic!("func {} not found", func));
+                        let row = rows
+                            .get(*offset)
+                            .unwrap_or_else(|| panic!("row {} in func {} not found", offset, func));
+                        let enode = trans_raw_egraph_node(func.to_string(), row);
+                        (enode.func.to_string(), enode)
+                    })
+                    .collect();
+                let mut enodes_of_one_eclass: IndexMap<String, Vec<ENode>> = IndexMap::default();
+                for (ty, enode) in ty_enode_list {
+                    enodes_of_one_eclass.entry(ty).or_default().push(enode);
+                }
+                let view_node = ViewNode::new(Some(format!("c{:?}", k)), enodes_of_one_eclass);
+                println!("{:?}", view_node);
+                view_node
+            });
+        });
+        // add edges
+        // table.iter().for_each(|(k, v)| {}
 
         // Create 10 nodes
-        let nodes: Vec<_> = (0..10).map(|i| g.add_node(ViewNode::default())).collect();
+        // let nodes: Vec<_> = (0..10).map(|i| g.add_node(ViewNode::default())).collect();
 
-        // Create 20 edges to build a complex connection pattern
-        let edges = vec![
-            (0, 1),
-            (0, 2),
-            (1, 3),
-            (2, 4),
-            (3, 5),
-            (4, 6),
-            (5, 7),
-            (6, 8),
-            (7, 9),
-            (8, 9),
-            (0, 5),
-            (1, 6),
-            (2, 7),
-            (3, 8),
-            (4, 9),
-            (0, 8),
-            (1, 9),
-            (2, 5),
-            (3, 6),
-            (7, 8),
-        ];
+        // // Create 20 edges to build a complex connection pattern
+        // let edges = vec![
+        //     (0, 1),
+        //     (0, 2),
+        //     (1, 3),
+        //     (2, 4),
+        //     (3, 5),
+        //     (4, 6),
+        //     (5, 7),
+        //     (6, 8),
+        //     (7, 9),
+        //     (8, 9),
+        //     (0, 5),
+        //     (1, 6),
+        //     (2, 7),
+        //     (3, 8),
+        //     (4, 9),
+        //     (0, 8),
+        //     (1, 9),
+        //     (2, 5),
+        //     (3, 6),
+        //     (7, 8),
+        // ];
 
-        for (from_idx, to_idx) in edges {
-            g.add_edge(nodes[from_idx], nodes[to_idx], ViewEdge::default());
-        }
+        // for (from_idx, to_idx) in edges {
+        //     g.add_edge(nodes[from_idx], nodes[to_idx], ViewEdge::default());
+        // }
 
+        let settings_graph = settings::SettingsGraph::default();
         #[cfg(all(feature = "events", not(target_arch = "wasm32")))]
         let (event_publisher, event_consumer) = crate::unbounded();
         #[cfg(all(feature = "events", target_arch = "wasm32"))]
@@ -134,6 +176,15 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
         app
     }
 }
+
+fn trans_raw_egraph_node(func: String, row: &egglog::RawEGraphNode) -> ENode {
+    ENode {
+        func: func,
+        id: row.output.rep(),
+        operands_num: row.inputs.len(),
+    }
+}
+use egglog::NumericId;
 
 pub fn view<T: EGraphViewerSgl>() -> Result<(), eframe::Error> {
     let native_options = eframe::NativeOptions::default();

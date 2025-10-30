@@ -2,7 +2,7 @@ use std::marker::PhantomData;
 
 use crate::{
     DisplayEdge, DisplayNode, FruchtermanReingold, Graph,
-    draw::{DefaultEdgeShape, DefaultNodeShape, DrawContext},
+    draw::{DefaultEdgeShape, DefaultNodeShape, DrawContext, MaybeInner},
     elements::IndexTy,
     layouts::{self, Layout, LayoutState},
     metadata::Metadata,
@@ -575,7 +575,7 @@ where
             if n.dragged() {
                 dragged = Some(idx);
             }
-            if n.selected() {
+            if n.selected().is_some() {
                 selected_nodes.push(idx);
             }
 
@@ -687,7 +687,7 @@ where
         }
 
         let n = self.g.node(idx).unwrap();
-        if n.selected() {
+        if n.selected().is_some() {
             self.deselect_node(idx);
             return;
         }
@@ -696,7 +696,8 @@ where
             self.deselect_all();
         }
 
-        self.select_node(idx);
+        self.select_node(idx, MaybeInner::Itself);
+        // TODO
     }
 
     fn handle_edge_click(&mut self, idx: EdgeIndex<IndexTy>, eff: EffectiveInteraction) {
@@ -900,9 +901,9 @@ where
         self.set_zoom(new_zoom, meta);
     }
 
-    fn select_node(&mut self, idx: NodeIndex<DefaultIx>) {
+    fn select_node(&mut self, idx: NodeIndex<DefaultIx>, maybe_inner: MaybeInner) {
         let n = self.g.node_mut(idx).unwrap();
-        n.set_selected(true);
+        n.set_selected(Some(maybe_inner));
 
         #[cfg(feature = "events")]
         self.publish_event(Event::NodeSelect(PayloadNodeSelect { id: idx.index() }));
@@ -910,7 +911,7 @@ where
 
     fn deselect_node(&mut self, idx: NodeIndex<DefaultIx>) {
         let n = self.g.node_mut(idx).unwrap();
-        n.set_selected(false);
+        n.set_selected(None);
 
         #[cfg(feature = "events")]
         self.publish_event(Event::NodeDeselect(PayloadNodeDeselect { id: idx.index() }));

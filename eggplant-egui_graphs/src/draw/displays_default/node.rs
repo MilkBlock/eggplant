@@ -4,7 +4,10 @@ use egui::{
 };
 use petgraph::Directed;
 
-use crate::{DisplayNode, NodeProps, draw::drawer::DrawContext};
+use crate::{
+    DisplayNode, NodeProps,
+    draw::{MaybeInner, drawer::DrawContext},
+};
 
 /// This is the default node shape which is used to display nodes in the graph.
 ///
@@ -13,7 +16,7 @@ use crate::{DisplayNode, NodeProps, draw::drawer::DrawContext};
 pub struct DefaultNodeShape {
     pub pos: Pos2,
 
-    pub selected: bool,
+    pub selected: Option<MaybeInner>,
     pub dragged: bool,
     pub hovered: bool,
     pub color: Option<Color32>,
@@ -28,7 +31,7 @@ impl From<NodeProps> for DefaultNodeShape {
     fn from(node_props: NodeProps) -> Self {
         DefaultNodeShape {
             pos: node_props.location(),
-            selected: node_props.selected,
+            selected: node_props.selected.clone(),
             dragged: node_props.dragged,
             hovered: node_props.hovered,
             label_text: node_props.label.to_string(),
@@ -115,7 +118,7 @@ impl DisplayNode<Directed> for DefaultNodeShape {
             .into(),
         );
 
-        if !(ctx.style.labels_always || self.selected || self.dragged || self.hovered) {
+        if !(ctx.style.labels_always || self.selected.is_some() || self.dragged || self.hovered) {
             return res;
         }
 
@@ -131,7 +134,7 @@ impl DisplayNode<Directed> for DefaultNodeShape {
 
     fn update(&mut self, state: &NodeProps) {
         self.pos = state.location();
-        self.selected = state.selected;
+        self.selected = state.selected.clone();
         self.dragged = state.dragged;
         self.hovered = state.hovered;
         self.label_text = state.label.to_string();
@@ -150,7 +153,7 @@ fn is_inside_circle(center: Pos2, radius: f32, pos: Pos2) -> bool {
 
 impl DefaultNodeShape {
     fn is_interacted(&self) -> bool {
-        self.selected || self.dragged || self.hovered
+        self.selected.is_some() || self.dragged || self.hovered
     }
 
     fn effective_color(&self, ctx: &DrawContext) -> Color32 {
@@ -169,7 +172,13 @@ impl DefaultNodeShape {
         let base = Stroke::default();
         if let Some(hook) = &ctx.style.node_stroke_hook {
             let style_ref: &egui::Style = &ctx.ctx.style();
-            (hook)(self.selected, self.dragged, self.color, base, style_ref)
+            (hook)(
+                self.selected.clone(),
+                self.dragged,
+                self.color,
+                base,
+                style_ref,
+            )
         } else {
             base
         }

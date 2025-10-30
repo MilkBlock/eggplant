@@ -1,3 +1,5 @@
+use crate::draw::MaybeInner;
+
 /// Represents graph interaction settings.
 ///
 /// Master-child semantics:
@@ -242,7 +244,13 @@ impl SettingsStyle {
     /// ```
     pub fn with_node_stroke_hook<F>(mut self, f: F) -> Self
     where
-        F: Fn(bool, bool, Option<egui::Color32>, egui::Stroke, &egui::Style) -> egui::Stroke
+        F: Fn(
+                Option<MaybeInner>,
+                bool,
+                Option<egui::Color32>,
+                egui::Stroke,
+                &egui::Style,
+            ) -> egui::Stroke
             + Send
             + Sync
             + 'static,
@@ -264,7 +272,13 @@ impl SettingsStyle {
 
 /// Type alias for the node stroke hook closure to keep type signatures concise.
 pub type NodeStrokeHook = std::sync::Arc<
-    dyn Fn(bool, bool, Option<egui::Color32>, egui::Stroke, &egui::Style) -> egui::Stroke
+    dyn Fn(
+            Option<MaybeInner>,
+            bool,
+            Option<egui::Color32>,
+            egui::Stroke,
+            &egui::Style,
+        ) -> egui::Stroke
         + Send
         + Sync,
 >;

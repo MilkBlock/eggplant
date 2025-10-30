@@ -5,7 +5,7 @@ use egui::{Color32, Pos2};
 use petgraph::{Directed, EdgeType, stable_graph::NodeIndex};
 use serde::{Deserialize, Serialize};
 
-use crate::{DefaultNodeShape, DisplayNode, ViewNode};
+use crate::{DefaultNodeShape, DisplayNode, ViewNode, draw::MaybeInner};
 
 pub type IndexTy = u32;
 /// Stores properties of a [Node]
@@ -13,7 +13,7 @@ pub type IndexTy = u32;
 pub struct NodeProps {
     pub payload: ViewNode,
     pub label: String,
-    pub selected: bool,
+    pub selected: Option<MaybeInner>,
     pub dragged: bool,
     pub hovered: bool,
 
@@ -124,7 +124,7 @@ where
             },
             color: Option::default(),
             label: String::default(),
-            selected: bool::default(),
+            selected: None,
             dragged: bool::default(),
             hovered: bool::default(),
             parent: None,
@@ -224,11 +224,11 @@ where
         self.props.is_hierarchical()
     }
 
-    pub fn selected(&self) -> bool {
-        self.props.selected
+    pub fn selected(&self) -> Option<MaybeInner> {
+        self.props.selected.clone()
     }
 
-    pub fn set_selected(&mut self, selected: bool) {
+    pub fn set_selected(&mut self, selected: Option<MaybeInner>) {
         self.props.selected = selected;
     }
 

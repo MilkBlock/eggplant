@@ -1,27 +1,27 @@
-use eggplant_egui_graphs::{DisplayNode, NodeProps};
+use eggplant_egui_graphs::{DisplayNode, NodeProps, ViewNode};
 use egui::{Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, Vec2, epaint::TextShape};
 use petgraph::Directed;
 
 #[derive(Clone, Debug)]
-pub struct NodeShapeFlex {
-    label: String,
+pub struct FlexNodeShape {
+    payload: ViewNode,
     loc: Pos2,
     size_x: f32,
     size_y: f32,
 }
 
-impl From<NodeProps> for NodeShapeFlex {
+impl From<NodeProps> for FlexNodeShape {
     fn from(node_props: NodeProps) -> Self {
         Self {
-            label: format!("{:?}", node_props.payload),
             loc: node_props.location(),
             size_x: 0.,
             size_y: 0.,
+            payload: node_props.payload,
         }
     }
 }
 
-impl DisplayNode<Directed> for NodeShapeFlex {
+impl DisplayNode<Directed> for FlexNodeShape {
     fn is_inside(&self, pos: Pos2) -> bool {
         let rect = Rect::from_center_size(self.loc, Vec2::new(self.size_x, self.size_y));
 
@@ -46,15 +46,51 @@ impl DisplayNode<Directed> for NodeShapeFlex {
                 color,
             )
         });
-
+        let painter = ctx.painter;
+        // ctx.painter.text(pos, anchor, text, font_id, text_color)
+        // let panel = egui::CentralPanel::default();
+        // panel.show(&ctx.ctx, |ui| {
+        //     for (func, enodes) in &self.payload.enodes {
+        //         ui.label(format!("{}", func));
+        //         for enode in enodes {
+        //             ui.label(format!("{}{}", enode.ty, enode.id));
+        //         }
+        //     }
+        // });
         // we need to offset label by half its size to place it in the center of the rect
         let offset = Vec2::new(-galley.size().x / 2., -galley.size().y / 2.);
-
         // create the shape and add it to the layers
         let shape_label = TextShape::new(center + offset, galley, color);
-
         let rect = shape_label.visual_bounding_rect();
-        let points = rect_to_points(rect);
+        let mut points = rect_to_points(rect);
+        let mut current_y = center.y;
+        for (func, enodes) in &self.payload.enodes {
+            let _func_text = format!("{}", func);
+            // painter.text(
+            //     egui::pos2(center.x, current_y),
+            //     egui::Align2::LEFT_TOP,
+            //     func_text,
+            //     FontId::new(ctx.meta.canvas_to_screen_size(40.), FontFamily::Monospace),
+            //     COLORS[func.len() % 7], // 使用UI的文本颜色
+            // );
+            current_y += 5.;
+            for enode in enodes {
+                let enode_text = format!("{}{}", enode.func, enode.id);
+                let rect = painter.text(
+                    egui::pos2(center.x, current_y), // 缩进20像素
+                    egui::Align2::LEFT_TOP,
+                    enode_text,
+                    FontId::new(ctx.meta.canvas_to_screen_size(40.), FontFamily::Monospace),
+                    COLORS[func.len() % 7], // 使用UI的文本颜色
+                );
+                points.extend(rect_to_points(rect));
+                current_y += 10.0;
+            }
+
+            // 在函数之间添加额外间距
+            current_y += 8.0;
+        }
+
         let shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(5., color));
 
         // update self size

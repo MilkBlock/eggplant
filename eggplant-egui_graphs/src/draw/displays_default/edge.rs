@@ -7,7 +7,9 @@ use egui::{
 use petgraph::{Directed, EdgeType};
 
 use crate::{
-    DefaultNodeShape, DisplayEdge, DisplayNode, Node, draw::DrawContext, elements::EdgeProps,
+    DefaultNodeShape, DisplayEdge, DisplayNode, Node,
+    draw::{DrawContext, displays::MaybeInner},
+    elements::EdgeProps,
     node_size,
 };
 
@@ -109,6 +111,7 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
     fn shapes(
         &mut self,
         start: &Node<Directed, Nd>,
+        start_maybe_inner: MaybeInner,
         end: &Node<Directed, Nd>,
         ctx: &DrawContext,
     ) -> Vec<egui::Shape> {
