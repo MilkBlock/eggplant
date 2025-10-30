@@ -1,7 +1,8 @@
 use eggplant_egui_graphs::{
-    DefaultEdgeShape, DisplayEdge, DisplayNode, DrawContext, EdgeProps, MaybeInner, Node,
+    DefaultEdgeShape, DisplayEdge, DisplayNode, DrawContext, EdgeProps, InnerPos, MaybeInner, Node,
 };
-use egui::{Color32, Pos2, Shape, Stroke, Vec2};
+use egui::{Color32, Pos2, Shape, Stroke, Vec2, epaint::CircleShape};
+use itertools::Itertools;
 use petgraph::Directed;
 
 const TIP_ANGLE: f32 = std::f32::consts::TAU / 20.;
@@ -33,23 +34,41 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
         let start = match start_maybe_inner {
             MaybeInner::Itself => start.location(),
             MaybeInner::Inner {
-                ty,
-                enode_id,
-                operand_idx,
+                inner_pos:
+                    InnerPos {
+                        ty,
+                        cano_value,
+                        value,
+                        operand_idx,
+                    },
             } => {
-                match start.payload().enodes.get(&ty) {
+                let enodes = &start.payload().enodes;
+                match enodes.get(&ty) {
                     Some(type_specified_enodes) => {
-                        let m = type_specified_enodes
+                        // coordinate y = reduce all nodes number before + i
+                        let (i, _enode) = type_specified_enodes
                             .iter()
-                            .find(|x| x.id == enode_id)
-                            .unwrap_or_else(|| panic!("{:?} {} enode not found ", ty, enode_id));
-                        println!("start: {:?} ", m)
+                            .find_position(|x| x.cano_value == cano_value)
+                            .unwrap_or_else(|| panic!("{:?} {} enode not found ", ty, cano_value));
+                        let s = start.payload().enodes.get_index_of(&ty).unwrap();
+                        // println!("inner ty {}", ty);
+                        let reduced_nodes_num =
+                            enodes.iter().take(s).fold(usize::default(), |m, (k, v)| {
+                                // println!("added {k} with len {}", v.len());
+                                m + v.len()
+                            });
+                        let y = reduced_nodes_num + i + 1;
+                        // println!("y = {}", y);
+                        start.location()
+                            + Vec2::new(
+                                ctx.meta.canvas_to_screen_size(50.),
+                                ctx.meta.canvas_to_screen_size(50.0),
+                            ) * y as f32
                     }
                     None => {
                         panic!("type {} not found ", ty)
                     }
                 }
-                start.location() - Vec2::new(0., 10.0)
             }
         };
         let end = end.location();
@@ -70,6 +89,12 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
             [points_line[0], points_line[1]],
             stroke,
         ));
+        // dot it so that we can see which enode as start
+        res.push(Shape::Circle(CircleShape::filled(
+            points_line[0],
+            ctx.meta.canvas_to_screen_size(self.default_impl.width * 5.),
+            Color32::GOLD,
+        )));
 
         let tip_dir = (end - start).normalized();
 

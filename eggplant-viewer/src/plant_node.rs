@@ -41,8 +41,8 @@ impl DisplayNode<Directed> for FlexNodeShape {
         let galley = ctx.ctx.fonts(|f| {
             f.layout_no_wrap(
                 // self.label.clone(),
-                "A".to_string(),
-                FontId::new(ctx.meta.canvas_to_screen_size(40.), FontFamily::Monospace),
+                "CLASS".to_string(),
+                FontId::new(40., FontFamily::Monospace),
                 color,
             )
         });
@@ -64,6 +64,7 @@ impl DisplayNode<Directed> for FlexNodeShape {
         let rect = shape_label.visual_bounding_rect();
         let mut points = rect_to_points(rect);
         let mut current_y = center.y;
+        let mut enode_rect = vec![];
         for (func, enodes) in &self.payload.enodes {
             let _func_text = format!("{}", func);
             // painter.text(
@@ -75,29 +76,57 @@ impl DisplayNode<Directed> for FlexNodeShape {
             // );
             current_y += 5.;
             for enode in enodes {
-                let enode_text = format!("{}{}", enode.func, enode.id);
+                let enode_text = format!("{}{}", enode.func, enode.value);
                 let rect = painter.text(
                     egui::pos2(center.x, current_y), // 缩进20像素
                     egui::Align2::LEFT_TOP,
                     enode_text,
-                    FontId::new(ctx.meta.canvas_to_screen_size(40.), FontFamily::Monospace),
+                    FontId::new(40., FontFamily::Monospace),
                     COLORS[func.len() % 7], // 使用UI的文本颜色
                 );
+                enode_rect.push(rect.clone());
                 points.extend(rect_to_points(rect));
-                current_y += 10.0;
+                current_y += rect.height();
             }
 
             // 在函数之间添加额外间距
             current_y += 8.0;
         }
 
-        let shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(5., color));
+        let shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(1., color));
+        // current_y = center.y;
+        // for (func, enodes) in &self.payload.enodes {
+        //     let _func_text = format!("{}", func);
+        //     // painter.text(
+        //     //     egui::pos2(center.x, current_y),
+        //     //     egui::Align2::LEFT_TOP,
+        //     //     func_text,
+        //     //     FontId::new(ctx.meta.canvas_to_screen_size(40.), FontFamily::Monospace),
+        //     //     COLORS[func.len() % 7], // 使用UI的文本颜色
+        //     // );
+        //     current_y += 5.;
+        //     for enode in enodes {
+        //         let enode_text = format!("{}{}", enode.func, enode.cano_value);
+        //         let rect = painter.text(
+        //             egui::pos2(center.x + 20., current_y),
+        //             egui::Align2::LEFT_TOP,
+        //             enode_text,
+        //             FontId::new(ctx.meta.canvas_to_screen_size(40.), FontFamily::Monospace),
+        //             COLORS[func.len() % 7],
+        //         );
+        //         enode_rect.push(rect.clone());
+        //         current_y += 10.0;
+        //     }
+
+        //     // 在函数之间添加额外间距
+        //     current_y += 8.0;
+        // }
 
         // update self size
         self.size_x = rect.size().x;
         self.size_y = rect.size().y;
 
-        vec![shape_rect, shape_label.into()]
+        vec![shape_rect, shape_label.into()] //.extend(enode_rect.iter().map(|rect| Shape::rect);
     }
 
     fn update(&mut self, state: &NodeProps) {
@@ -139,13 +168,13 @@ fn rect_to_points(rect: Rect) -> Vec<Pos2> {
 
 const TIP_ANGLE: f32 = std::f32::consts::TAU / 30.;
 const TIP_SIZE: f32 = 15.;
-const COLORS: [Color32; 7] = [
+const COLORS: [Color32; 6] = [
     Color32::RED,
     Color32::from_rgb(255, 102, 0),
     Color32::YELLOW,
     Color32::GREEN,
     Color32::from_rgb(2, 216, 233),
-    Color32::BLUE,
+    // Color32::BLUE,
     Color32::from_rgb(91, 10, 145),
 ];
 

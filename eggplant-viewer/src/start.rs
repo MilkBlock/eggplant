@@ -1,13 +1,26 @@
 use eframe::CreationContext;
-use egglog::{EGraph, SerializeConfig, Value};
-use eggplant_egui_graphs::{ENode, Graph, ViewNode};
+use egglog::{EGraph, RawEGraphNode, SerializeConfig, Value};
+use eggplant_egui_graphs::{ENode, Graph, InnerPos, MaybeInner, ViewEdge, ViewNode};
 use indexmap::IndexMap;
 use petgraph::prelude::StableGraph;
-use std::sync::{Arc, Mutex};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+};
 
 #[cfg(feature = "events")]
 use crate::event_filters::EventFilters;
 use crate::*;
+
+struct ValueWithCanno {
+    value: Value,
+    cano_value: Value,
+}
+struct ValueMeta {
+    input: Value,
+    cano_input: Value,
+    inner_pos: InnerPos,
+}
 
 impl<T: EGraphViewerSgl> EGraphApp<T> {
     pub fn new(cc: &CreationContext<'_>) -> Self {
@@ -15,19 +28,64 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
         let tables = {
             let egraph = T::egraph().clone();
             let egraph = egraph.lock().unwrap();
-            let mut tables = egraph.serialize_raw(SerializeConfig::default());
-            tables.iter_mut().for_each(|(k, v)| {
-                v.iter_mut().for_each(|node| {
-                    node.output = egraph.get_canonical_value(
-                        node.output,
-                        &egraph
-                            .get_function(&k)
-                            .unwrap_or_else(|| panic!("can't find func {}", k))
-                            .schema()
-                            .output,
-                    );
-                });
-            });
+            let tables = egraph.serialize_raw(SerializeConfig::default());
+            let tables = tables
+                .iter()
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        v.iter()
+                            .map(|node| RawEGraphNode {
+                                inputs: node
+                                    .inputs
+                                    .iter()
+                                    .enumerate()
+                                    .filter_map(|(i, value)| {
+                                        let sort = &egraph
+                                            .get_function(&k)
+                                            .unwrap_or_else(|| panic!("can't find func {}", k))
+                                            .schema()
+                                            .input
+                                            .get(i)
+                                            .unwrap();
+                                        if egraph.is_base_sort(sort) {
+                                            None
+                                        } else {
+                                            let cano_value =
+                                                egraph.get_canonical_value(*value, sort);
+                                            println!(
+                                                "canno value of {}{} is {}",
+                                                k,
+                                                value.rep(),
+                                                cano_value.rep()
+                                            );
+                                            Some(ValueWithCanno {
+                                                value: *value,
+                                                cano_value,
+                                            })
+                                        }
+                                    })
+                                    .collect(),
+                                output: ValueWithCanno {
+                                    value: node.output,
+                                    cano_value: egraph.get_canonical_value(
+                                        node.output,
+                                        &egraph
+                                            .get_function(&k)
+                                            .unwrap_or_else(|| panic!("can't find func {}", k))
+                                            .schema()
+                                            .output,
+                                    ),
+                                },
+                                term: node.term,
+                                subsumed: node.subsumed,
+                                class_name: node.class_name.clone(),
+                                node_name: node.node_name.clone(),
+                            })
+                            .collect::<Vec<RawEGraphNode<_, _>>>(),
+                    )
+                })
+                .collect::<HashMap<String, Vec<_>>>();
             tables
         };
         let class2nodes: IndexMap<Value, Vec<(String, TblOffset)>> =
@@ -35,7 +93,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 .iter()
                 .fold(IndexMap::default(), |mut acc, (func, rows)| {
                     rows.iter().enumerate().for_each(|(tbl_offset, row)| {
-                        acc.entry(row.output)
+                        acc.entry(row.output.cano_value)
                             .or_default()
                             .push((func.clone(), tbl_offset))
                     });
@@ -44,8 +102,11 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
         println!("{:?}", class2nodes);
 
         // add nodes
+        let mut cano_value2node_idx = IndexMap::new();
+        let mut value2cano_value_and_maybe_inner = IndexMap::new();
         class2nodes.iter().for_each(|(k, v)| {
-            g.add_node({
+            let mut cano_value = None;
+            let node_idx = g.add_node({
                 let ty_enode_list: Vec<(String, ENode)> = v
                     .iter()
                     .map(|(func, offset)| {
@@ -55,7 +116,22 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                         let row = rows
                             .get(*offset)
                             .unwrap_or_else(|| panic!("row {} in func {} not found", offset, func));
+                        cano_value = Some(row.output.cano_value);
                         let enode = trans_raw_egraph_node(func.to_string(), row);
+                        value2cano_value_and_maybe_inner.insert(
+                            row.output.value.rep(),
+                            (
+                                row.output.cano_value.rep(),
+                                MaybeInner::Inner {
+                                    inner_pos: InnerPos {
+                                        ty: func.clone(),
+                                        cano_value: row.output.cano_value.rep(),
+                                        value: row.output.value.rep(),
+                                        operand_idx: 0,
+                                    },
+                                },
+                            ),
+                        );
                         (enode.func.to_string(), enode)
                     })
                     .collect();
@@ -63,44 +139,38 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 for (ty, enode) in ty_enode_list {
                     enodes_of_one_eclass.entry(ty).or_default().push(enode);
                 }
-                let view_node = ViewNode::new(Some(format!("c{:?}", k)), enodes_of_one_eclass);
+                let view_node = ViewNode::new(
+                    Some(format!("c{:?}", k)),
+                    enodes_of_one_eclass,
+                    cano_value.expect("no node in this class").rep(),
+                );
                 println!("{:?}", view_node);
                 view_node
             });
+            cano_value2node_idx.insert(cano_value.unwrap().rep(), node_idx);
         });
         // add edges
-        // table.iter().for_each(|(k, v)| {}
-
-        // Create 10 nodes
-        // let nodes: Vec<_> = (0..10).map(|i| g.add_node(ViewNode::default())).collect();
-
-        // // Create 20 edges to build a complex connection pattern
-        // let edges = vec![
-        //     (0, 1),
-        //     (0, 2),
-        //     (1, 3),
-        //     (2, 4),
-        //     (3, 5),
-        //     (4, 6),
-        //     (5, 7),
-        //     (6, 8),
-        //     (7, 9),
-        //     (8, 9),
-        //     (0, 5),
-        //     (1, 6),
-        //     (2, 7),
-        //     (3, 8),
-        //     (4, 9),
-        //     (0, 8),
-        //     (1, 9),
-        //     (2, 5),
-        //     (3, 6),
-        //     (7, 8),
-        // ];
-
-        // for (from_idx, to_idx) in edges {
-        //     g.add_edge(nodes[from_idx], nodes[to_idx], ViewEdge::default());
-        // }
+        tables.iter().for_each(|(func, rows)| {
+            rows.iter().for_each(|row| {
+                let (start_cano, maybe_inner) = value2cano_value_and_maybe_inner
+                    .get(&row.output.value.rep())
+                    .unwrap();
+                let start_node_idx = cano_value2node_idx.get(start_cano).unwrap();
+                for input in &row.inputs {
+                    let end = cano_value2node_idx.get(&input.cano_value.rep()).unwrap();
+                    println!("insert edge {:?}", maybe_inner);
+                    g.add_edge(
+                        *start_node_idx,
+                        *end,
+                        ViewEdge {
+                            identifier: None,
+                            start_maybe_inner: maybe_inner.clone(),
+                        },
+                    );
+                }
+            });
+        });
+        println!("value2 cano_value {:?}", value2cano_value_and_maybe_inner);
 
         let settings_graph = settings::SettingsGraph::default();
         #[cfg(all(feature = "events", not(target_arch = "wasm32")))]
@@ -170,18 +240,22 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 if let Some(data) = crate::web_lookup_example_asset(&name) {
                     app.load_graph_from_str(&name, data);
                 }
-            }
+            };
         }
 
         app
     }
 }
 
-fn trans_raw_egraph_node(func: String, row: &egglog::RawEGraphNode) -> ENode {
+fn trans_raw_egraph_node(
+    func: String,
+    row: &egglog::RawEGraphNode<ValueWithCanno, ValueWithCanno>,
+) -> ENode {
     ENode {
         func: func,
-        id: row.output.rep(),
+        cano_value: row.output.cano_value.rep(),
         operands_num: row.inputs.len(),
+        value: row.output.value.rep(),
     }
 }
 use egglog::NumericId;

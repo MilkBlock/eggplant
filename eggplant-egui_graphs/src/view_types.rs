@@ -5,6 +5,7 @@ use indexmap::IndexMap;
 pub struct ViewNode {
     pub identifier: Option<String>,
     pub enodes: IndexMap<String, Vec<ENode>>,
+    pub cano_value: u32,
     // pub contained_edges: Vec<ViewEdge>,
     // pub labels: Vec<ViewLabel>,
     // pub position: (f64, f64),
@@ -15,15 +16,21 @@ pub struct ViewNode {
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ENode {
     pub func: String,
-    pub id: u32,
+    pub cano_value: u32,
+    pub value: u32,
     pub operands_num: usize,
 }
 
 impl ViewNode {
-    pub fn new(ident: Option<String>, enodes: IndexMap<String, Vec<ENode>>) -> Self {
+    pub fn new(
+        ident: Option<String>,
+        enodes: IndexMap<String, Vec<ENode>>,
+        cano_value: u32,
+    ) -> Self {
         Self {
             identifier: ident,
             enodes,
+            cano_value: cano_value,
             // contained_edges: Vec::new(),
             // labels: Vec::new(),
             // position: (0.0, 0.0),
@@ -164,6 +171,7 @@ impl Default for ViewNode {
         Self {
             identifier: None,
             enodes: Default::default(),
+            cano_value: 0,
         }
     }
 }

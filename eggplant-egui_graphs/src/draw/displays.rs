@@ -35,13 +35,16 @@ where
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct InnerPos {
+    pub ty: String,
+    pub cano_value: u32,
+    pub value: u32,
+    pub operand_idx: usize,
+}
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum MaybeInner {
     Itself,
-    Inner {
-        ty: String,
-        enode_id: u32,
-        operand_idx: usize,
-    },
+    Inner { inner_pos: InnerPos },
 }
 pub trait DisplayEdge<Ty, D>: Clone + From<EdgeProps>
 where

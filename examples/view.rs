@@ -40,6 +40,8 @@ macro_rules! prop {
 fn main() {
     env_logger::init();
     let expr: Expr<MyTx, _> = Add::new(&Mul::new(&Const::new(3), &Const::new(2)), &Const::new(4));
+    let expr2: Expr<MyTx, _> = Add::new(&Mul::new(&Const::new(1), &Const::new(6)), &Const::new(4));
+    expr2.commit();
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
