@@ -20,7 +20,7 @@ pub use helpers::{
 pub use metadata::Metadata;
 pub use view_types::*;
 
-pub use draw::{InnerPos, MaybeInner};
+pub use draw::{InnerPos, MaybeInner, FuncOffset};
 pub use graph_view::{LayoutForce, LayoutForceState};
 pub use layouts::force_directed::{
     CenterGravity, CenterGravityParams, Extra, ForceAlgorithm,

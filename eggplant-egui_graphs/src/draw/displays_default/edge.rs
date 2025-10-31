@@ -35,7 +35,7 @@ impl From<EdgeProps> for DefaultEdgeShape {
             selected: edge.selected,
             label_text: edge.label,
 
-            width: 2.,
+            width: 1.,
             tip_size: 15.,
             tip_angle: std::f32::consts::TAU / 30.,
             curve_size: 20.,

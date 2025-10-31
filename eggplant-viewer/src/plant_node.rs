@@ -42,7 +42,7 @@ impl DisplayNode<Directed> for FlexNodeShape {
             f.layout_no_wrap(
                 // self.label.clone(),
                 "CLASS".to_string(),
-                FontId::new(40., FontFamily::Monospace),
+                FontId::new(ctx.meta.canvas_to_screen_size(5.), FontFamily::Monospace),
                 color,
             )
         });
@@ -76,12 +76,15 @@ impl DisplayNode<Directed> for FlexNodeShape {
             // );
             current_y += 5.;
             for enode in enodes {
-                let enode_text = format!("{}{}", enode.func, enode.value);
+                let enode_text = format!(
+                    "{}{}{:?}",
+                    enode.func_offset.func, enode.func_offset.offset, enode.basics
+                );
                 let rect = painter.text(
                     egui::pos2(center.x, current_y), // 缩进20像素
                     egui::Align2::LEFT_TOP,
                     enode_text,
-                    FontId::new(40., FontFamily::Monospace),
+                    FontId::new(ctx.meta.canvas_to_screen_size(5.), FontFamily::Monospace),
                     COLORS[func.len() % 7], // 使用UI的文本颜色
                 );
                 enode_rect.push(rect.clone());
@@ -90,7 +93,7 @@ impl DisplayNode<Directed> for FlexNodeShape {
             }
 
             // 在函数之间添加额外间距
-            current_y += 8.0;
+            current_y += ctx.meta.canvas_to_screen_size(1.0);
         }
 
         let shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(1., color));

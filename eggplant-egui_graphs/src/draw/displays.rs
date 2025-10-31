@@ -34,11 +34,21 @@ where
     fn is_inside(&self, pos: Pos2) -> bool;
 }
 
+// unique id for enodes
+#[derive(Debug, Clone, Hash, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FuncOffset {
+    pub func: String,
+    pub offset: usize,
+}
+impl FuncOffset {
+    pub fn new(id: String, offset: usize) -> Self {
+        Self { func: id, offset }
+    }
+}
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct InnerPos {
-    pub ty: String,
     pub cano_value: u32,
-    pub value: u32,
+    pub id: FuncOffset, // id is (row number , value)
     pub operand_idx: usize,
 }
 #[derive(Debug, Serialize, Deserialize, Clone)]

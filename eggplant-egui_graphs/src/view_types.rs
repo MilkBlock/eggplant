@@ -1,4 +1,4 @@
-use crate::draw::MaybeInner;
+use crate::{FuncOffset, draw::MaybeInner};
 use indexmap::IndexMap;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -15,10 +15,10 @@ pub struct ViewNode {
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ENode {
-    pub func: String,
+    pub func_offset: FuncOffset,
     pub cano_value: u32,
-    pub value: u32,
     pub operands_num: usize,
+    pub basics: Vec<u32>,
 }
 
 impl ViewNode {

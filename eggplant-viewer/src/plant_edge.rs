@@ -6,7 +6,7 @@ use itertools::Itertools;
 use petgraph::Directed;
 
 const TIP_ANGLE: f32 = std::f32::consts::TAU / 20.;
-const TIP_SIZE: f32 = 50.;
+const TIP_SIZE: f32 = 7.;
 const EDGE_COLOR: Color32 = Color32::WHITE;
 
 #[derive(Clone)]
@@ -36,37 +36,36 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
             MaybeInner::Inner {
                 inner_pos:
                     InnerPos {
-                        ty,
                         cano_value,
-                        value,
+                        id,
                         operand_idx,
                     },
             } => {
+                if start.id() == end.id() {
+                    return vec![];
+                }
                 let enodes = &start.payload().enodes;
-                match enodes.get(&ty) {
+                match enodes.get(&id.func) {
                     Some(type_specified_enodes) => {
                         // coordinate y = reduce all nodes number before + i
                         let (i, _enode) = type_specified_enodes
                             .iter()
-                            .find_position(|x| x.cano_value == cano_value)
-                            .unwrap_or_else(|| panic!("{:?} {} enode not found ", ty, cano_value));
-                        let s = start.payload().enodes.get_index_of(&ty).unwrap();
-                        // println!("inner ty {}", ty);
-                        let reduced_nodes_num =
-                            enodes.iter().take(s).fold(usize::default(), |m, (k, v)| {
-                                // println!("added {k} with len {}", v.len());
-                                m + v.len()
+                            .find_position(|x| x.func_offset == id)
+                            .unwrap_or_else(|| {
+                                panic!("{:?} {} enode not found ", id.func, cano_value)
                             });
-                        let y = reduced_nodes_num + i + 1;
+                        let s = start.payload().enodes.get_index_of(&id.func).unwrap();
+                        // println!("inner ty {}", ty);
+                        let reduced_nodes_num = enodes.iter().take(s).fold(0.8, |m, (k, v)| {
+                            // println!("added {k} with len {}", v.len());
+                            m + v.len() as f32 + 0.5
+                        });
+                        let y = reduced_nodes_num + i as f32;
                         // println!("y = {}", y);
-                        start.location()
-                            + Vec2::new(
-                                ctx.meta.canvas_to_screen_size(50.),
-                                ctx.meta.canvas_to_screen_size(50.0),
-                            ) * y as f32
+                        start.location() + Vec2::new(0., 6.0) * (y) as f32
                     }
                     None => {
-                        panic!("type {} not found ", ty)
+                        panic!("type {} not found ", id.func)
                     }
                 }
             }
@@ -92,7 +91,7 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
         // dot it so that we can see which enode as start
         res.push(Shape::Circle(CircleShape::filled(
             points_line[0],
-            ctx.meta.canvas_to_screen_size(self.default_impl.width * 5.),
+            ctx.meta.canvas_to_screen_size(self.default_impl.width * 1.),
             Color32::GOLD,
         )));
 
