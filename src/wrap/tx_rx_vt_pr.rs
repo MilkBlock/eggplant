@@ -1149,3 +1149,29 @@ impl ToDot for TxRxVTPR {
         todo!()
     }
 }
+
+#[cfg(feature = "viewer")]
+impl EGraphView for TxRxVTPR {
+    fn egraph(&self) -> std::sync::Arc<std::sync::Mutex<EGraph>> {
+        self.egraph.clone()
+    }
+
+    fn view(&self) -> Result<(), eframe::Error> {
+        use eggplant_viewer::*;
+
+        let native_options = eframe::NativeOptions::default();
+        let egraph = self.egraph.lock().unwrap();
+        eframe::run_native(
+            "eggplant_egui_graphs demo",
+            native_options,
+            Box::new(|cc| {
+                Ok(Box::new(EGraphApp::new(
+                    cc,
+                    DemoLayout::Hierarchical,
+                    &egraph,
+                    EmptyH {}.dyn_clone(),
+                )))
+            }),
+        )
+    }
+}

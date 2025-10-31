@@ -82,7 +82,7 @@ where
     _marker: PhantomData<Ty>,
 }
 
-#[allow(clippy::missing_fields_in_debug)] // TODO: add all fields or remove this and fix all warnings
+#[allow(clippy::missing_fields_in_debug)]
 impl<Ty, D> Debug for Node<Ty, D>
 where
     Ty: EdgeType,
@@ -159,7 +159,7 @@ where
         &mut self.display
     }
 
-    #[allow(clippy::missing_panics_doc)] // TODO: Add panic message
+    #[allow(clippy::missing_panics_doc)]
     pub fn id(&self) -> NodeIndex {
         self.id.unwrap()
     }

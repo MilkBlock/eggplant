@@ -1153,3 +1153,51 @@ impl ToDot for SlottedTxRxVTPR {
         todo!()
     }
 }
+
+#[cfg(feature = "viewer")]
+impl EGraphView for SlottedTxRxVTPR {
+    fn egraph(&self) -> std::sync::Arc<std::sync::Mutex<EGraph>> {
+        self.egraph.clone()
+    }
+
+    fn view(&self) -> Result<(), eframe::Error> {
+        use eggplant_viewer::*;
+        let map: Arc<DashMap<Sym, WorkAreaNode>> = Arc::new(self.map.clone());
+        #[derive(Clone)]
+        struct SlotEventHandler {
+            map: Arc<DashMap<Sym, WorkAreaNode>>,
+        }
+        impl EventHandle for SlotEventHandler {
+            fn dyn_clone(&self) -> Box<dyn EventHandle> {
+                Box::new(self.clone())
+            }
+
+            fn on_drag(&self, cano_value: u32) {
+                println!("{cano_value} dragged")
+            }
+
+            fn on_hover(&self, cano_value: u32) {
+                println!("{cano_value} hovered")
+            }
+
+            fn on_selected(&self, cano_value: u32) {
+                println!("{cano_value} selected")
+            }
+        }
+
+        let native_options = eframe::NativeOptions::default();
+        let egraph = self.egraph.lock().unwrap();
+        eframe::run_native(
+            "eggplant_egui_graphs demo",
+            native_options,
+            Box::new(|cc| {
+                Ok(Box::new(EGraphApp::new(
+                    cc,
+                    DemoLayout::Hierarchical,
+                    &egraph,
+                    SlotEventHandler { map }.dyn_clone(),
+                )))
+            }),
+        )
+    }
+}

@@ -11,7 +11,7 @@ use petgraph::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::draw::{DisplayEdge, DisplayNode, MaybeInner};
+use crate::draw::{DisplayEdge, DisplayNode};
 use crate::elements::IndexTy;
 use crate::view_types::{ViewEdge, ViewNode};
 use crate::{
@@ -80,7 +80,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
     }
 
     /// Finds edge by position.
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)] // 
     pub fn edge_by_screen_pos(
         &self,
         meta: &Metadata,
@@ -110,12 +110,12 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
     }
 
     /// Adds node to graph setting default location and default label values
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_node(&mut self, payload: ViewNode) -> NodeIndex<DefaultIx> {
         self.add_node_custom(payload, default_node_transform)
     }
 
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_node_custom(
         &mut self,
         payload: ViewNode,
@@ -134,7 +134,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
     }
 
     /// Adds node to graph setting custom location and default label value
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_node_with_location(
         &mut self,
         payload: ViewNode,
@@ -157,7 +157,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
     }
 
     /// Adds node to graph setting custom location and custom label value
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_node_with_label_and_location(
         &mut self,
         payload: ViewNode,
@@ -183,7 +183,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
     }
 
     /// Removes all edges between start and end node. Returns removed edges count.
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn remove_edges_between(
         &mut self,
         start: NodeIndex<DefaultIx>,
@@ -208,7 +208,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
     }
 
     /// Adds edge between start and end node with default label.
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_edge(
         &mut self,
         start: NodeIndex<IndexTy>,
@@ -219,7 +219,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
     }
 
     /// Adds edge between start and end node with custom label setting correct order.
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_edge_with_label(
         &mut self,
         start: NodeIndex<IndexTy>,
@@ -232,7 +232,7 @@ impl<Nd: DisplayNode<Directed>, Ed: DisplayEdge<Directed, Nd>> Graph<Nd, Ed> {
         })
     }
 
-    #[allow(clippy::missing_panics_doc)] // TODO: add panics doc
+    #[allow(clippy::missing_panics_doc)]
     pub fn add_edge_custom(
         &mut self,
         start: NodeIndex<DefaultIx>,

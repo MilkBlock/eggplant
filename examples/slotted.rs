@@ -2,6 +2,7 @@ use eggplant::prelude::*;
 use eggplant::slotted_tx_rx_vt_pr;
 use eggplant::wrap::NodeDropperSgl;
 use eggplant::wrap::RuleCtxHook;
+
 #[eggplant::slotted_dsl]
 pub enum Expr {
     Var {},
@@ -50,9 +51,11 @@ fn main() {
     //     panic!("should infer to 10");
     // }
 
-    expr.pull();
+    // expr
+    //     .pull();
     MyTx::egraph_to_dot("egraph.dot");
     MyTx::wag_to_dot("wag.dot");
+    MyTx::view().unwrap();
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot");
 }

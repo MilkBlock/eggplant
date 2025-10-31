@@ -1393,6 +1393,7 @@ version = "0.2.7"
 dependencies = [
  "dashmap",
  "derive_more",
+ "eframe",
  "egglog",
  "eggplant-egui_graphs",
  "eggplant-macros",

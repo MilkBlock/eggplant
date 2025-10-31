@@ -31,6 +31,7 @@ use tabs::import_load::UserUpload;
 mod plant_edge;
 mod plant_node;
 pub mod start;
+pub use eggplant_egui_graphs::{EmptyH, EventHandle, EventHandler};
 pub use start::*;
 mod ui_consts;
 mod util;
@@ -51,7 +52,7 @@ use crate::graph_ops::GraphActions;
 use crate::keybindings::{Command, dispatch as dispatch_keybindings};
 use crate::metrics::MetricsRecorder;
 use crate::plant_edge::PlantEdgeShape;
-use crate::plant_node::FlexNodeShape;
+use crate::plant_node::PlantNodeShape;
 use crate::status::{StatusKind, StatusQueue};
 #[cfg(feature = "events")]
 pub use crossbeam::channel::{Receiver, Sender, unbounded};
@@ -78,7 +79,7 @@ mod drawers;
 //     },
 // }
 
-type NS = FlexNodeShape;
+type NS = PlantNodeShape;
 type ES = PlantEdgeShape;
 type PetEGraph = Graph<NS, ES>;
 pub enum DemoGraph {
@@ -88,9 +89,8 @@ pub enum DemoGraph {
 type TblOffset = usize;
 
 // Main demo application state
-pub struct EGraphApp<T: EGraphViewerSgl> {
+pub struct EGraphApp {
     pub g: DemoGraph,
-    _p: PhantomData<T>,
     pub settings_graph: settings::SettingsGraph,
     pub settings_interaction: settings::SettingsInteraction,
     pub settings_navigation: settings::SettingsNavigation,
@@ -164,7 +164,7 @@ pub enum RightTab {
     Import,
 }
 
-impl<T: EGraphViewerSgl> EGraphApp<T> {
+impl EGraphApp {
     pub fn random_node_idx(&self) -> Option<NodeIndex> {
         // Moved into GraphActions; keep thin wrapper if still referenced elsewhere.
         let cnt = match &self.g {
@@ -699,7 +699,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
     // (moved) ui_import_tab in tabs::import_load
 }
 
-impl<T: EGraphViewerSgl> App for EGraphApp<T> {
+impl App for EGraphApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Reset typing flag each frame; UI code will set it when a text field has focus
         self.typing_in_input = false;
@@ -959,7 +959,7 @@ impl<T: EGraphViewerSgl> App for EGraphApp<T> {
 }
 
 // Small helper methods for consistent status notifications across actions
-impl<T: EGraphViewerSgl> EGraphApp<T> {
+impl EGraphApp {
     fn notify_info(&mut self, msg: impl Into<String>) {
         self.status.push_info(msg);
     }
@@ -992,7 +992,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
     }
 }
 
-impl<T: EGraphViewerSgl> EGraphApp<T> {
+impl EGraphApp {
     // Minimal schema to load JSON graphs: {"nodes":[id...],"edges":[[source,target],...]}
     // ids are integers; node payload and edge payload are ignored (())
     // On web, file bytes are provided by egui; no filesystem access needed.
@@ -1020,6 +1020,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                 _ => {}
             }
             let s = format!("{:?}", e);
+            // TODO we can log event here
             self.last_events.push(s);
             if self.last_events.len() > crate::EVENTS_LIMIT {
                 let overflow = self.last_events.len() - crate::EVENTS_LIMIT;

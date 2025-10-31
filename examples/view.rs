@@ -1,7 +1,5 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr;
-#[cfg(feature = "viewer")]
-use eggplant_viewer::EGraphViewerSgl;
 #[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
@@ -12,6 +10,7 @@ pub enum Expr {
 }
 
 tx_rx_vt_pr!(MyTx, MyPatRec);
+
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
         #[eggplant::pat_vars]

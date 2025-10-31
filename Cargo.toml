@@ -10,7 +10,7 @@ readme.workspace = true
 
 [features]
 default = ["viewer"]
-viewer = ["eggplant-viewer"]
+viewer = ["eggplant-viewer", "dep:eframe"]
 
 [dependencies]
 derive_more = { version = "2.0.1", features = [
@@ -29,6 +29,7 @@ log = "0.4.27"
 eggplant-macros.workspace = true
 eggplant-viewer = { workspace = true, optional = true }
 eggplant-egui_graphs = { workspace = true, optional = true }
+eframe = { workspace = true, optional = true }
 egglog.workspace = true
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"

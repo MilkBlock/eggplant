@@ -1184,3 +1184,26 @@ where
 pub trait FromMetas<PR: PatRecSgl> {
     fn from_metas(values: &mut impl Iterator<Item = SlotMeta<PR>>) -> Self;
 }
+
+// #[cfg(feature = "viewer")]
+impl<S: SingletonGetter> EGraphViewSgl for S
+where
+    S::RetTy: EGraphView + Tx,
+{
+    fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
+        Self::sgl().egraph()
+    }
+    fn view() -> Result<(), eggplant_viewer::Error> {
+        Self::sgl().view()
+    }
+}
+
+pub trait EGraphViewSgl {
+    fn egraph() -> Arc<Mutex<EGraph>>;
+    fn view() -> Result<(), eframe::Error>;
+}
+
+pub trait EGraphView {
+    fn egraph(&self) -> Arc<Mutex<EGraph>>;
+    fn view(&self) -> Result<(), eframe::Error>;
+}

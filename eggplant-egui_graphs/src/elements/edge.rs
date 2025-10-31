@@ -63,7 +63,7 @@ impl<Ty: EdgeType, Dn: DisplayNode<Ty>, D: DisplayEdge<Ty, Dn>> Edge<Ty, Dn, D> 
         &mut self.display
     }
 
-    #[allow(clippy::missing_panics_doc)] // TODO: Add panic message
+    #[allow(clippy::missing_panics_doc)]
     pub fn id(&self) -> EdgeIndex {
         self.id.unwrap()
     }

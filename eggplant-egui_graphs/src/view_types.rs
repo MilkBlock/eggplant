@@ -1,5 +1,6 @@
 use crate::{FuncOffset, draw::MaybeInner};
 use indexmap::IndexMap;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ViewNode {
@@ -11,6 +12,59 @@ pub struct ViewNode {
     // pub position: (f64, f64),
     // pub size: (f64, f64),
     // pub properties: HashMap<String, String>,
+    pub event_handle: EventHandler,
+}
+#[allow(unused)]
+pub trait EventHandle: Send + Sync {
+    fn on_drag(&self, cano_value: u32) {}
+    fn on_hover(&self, cano_value: u32) {}
+    fn on_selected(&self, cano_value: u32) {}
+    fn dyn_clone(&self) -> Box<dyn EventHandle>;
+}
+pub struct EventHandler {
+    pub event_handle: Box<dyn EventHandle>,
+}
+#[derive(Clone, Debug)]
+pub struct EmptyH {}
+impl EventHandle for EmptyH {
+    fn dyn_clone(&self) -> Box<dyn EventHandle> {
+        Box::new(self.clone())
+    }
+}
+impl Default for EventHandler {
+    fn default() -> Self {
+        EventHandler {
+            event_handle: EmptyH {}.dyn_clone(),
+        }
+    }
+}
+impl std::fmt::Debug for EventHandler {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EventHandler").finish()
+    }
+}
+impl Clone for EventHandler {
+    fn clone(&self) -> Self {
+        EventHandler {
+            event_handle: self.event_handle.dyn_clone(),
+        }
+    }
+}
+impl Serialize for EventHandler {
+    fn serialize<S>(&self, _serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        todo!()
+    }
+}
+impl<'de> Deserialize<'de> for EventHandler {
+    fn deserialize<D>(_deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
+    }
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -26,11 +80,13 @@ impl ViewNode {
         ident: Option<String>,
         enodes: IndexMap<String, Vec<ENode>>,
         cano_value: u32,
+        event_handle: EventHandler,
     ) -> Self {
         Self {
             identifier: ident,
             enodes,
             cano_value: cano_value,
+            event_handle,
             // contained_edges: Vec::new(),
             // labels: Vec::new(),
             // position: (0.0, 0.0),
@@ -97,9 +153,6 @@ impl ViewNode {
 pub struct ViewEdge {
     pub identifier: Option<String>,
     pub start_maybe_inner: MaybeInner,
-    // pub sections: Vec<ElkEdgeSection>,
-    // pub labels: Vec<ViewLabel>,
-    // pub properties: HashMap<String, String>,
 }
 
 impl ViewEdge {
@@ -112,58 +165,6 @@ impl ViewEdge {
             // properties: HashMap::new(),
         }
     }
-
-    //     pub fn set_identifier(&mut self, id: String) {
-    //         self.identifier = Some(id);
-    //     }
-
-    //     pub fn identifier(&self) -> Option<&str> {
-    //         self.identifier.as_deref()
-    //     }
-
-    //     pub fn add_section(&mut self, section: ElkEdgeSection) {
-    //         self.sections.push(section);
-    //     }
-
-    //     pub fn sections(&self) -> &[ElkEdgeSection] {
-    //         &self.sections
-    //     }
-
-    //     pub fn sections_mut(&mut self) -> &mut [ElkEdgeSection] {
-    //         &mut self.sections
-    //     }
-
-    //     pub fn add_label(&mut self, label: ViewLabel) {
-    //         self.labels.push(label);
-    //     }
-    // }
-
-    // /// ELK edge section for complex edge routing
-    // #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-    // pub struct ElkEdgeSection {
-    //     pub start_point: (f64, f64),
-    //     pub end_point: (f64, f64),
-    //     pub bend_points: Vec<(f64, f64)>,
-}
-
-// /// ELK label for nodes and edges
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ViewLabel {
-    // pub text: String,
-    // pub position: (f64, f64),
-}
-
-impl ViewLabel {
-    pub fn new() -> Self {
-        Self {
-            // text: String::new(),
-            // position: (0.0, 0.0),
-        }
-    }
-
-    pub fn set_text(&mut self, text: String) {
-        // self.text = text;
-    }
 }
 
 impl Default for ViewNode {
@@ -172,6 +173,7 @@ impl Default for ViewNode {
             identifier: None,
             enodes: Default::default(),
             cano_value: 0,
+            event_handle: Default::default(),
         }
     }
 }
@@ -179,11 +181,5 @@ impl Default for ViewNode {
 impl Default for ViewEdge {
     fn default() -> Self {
         Self::new(MaybeInner::Itself)
-    }
-}
-
-impl Default for ViewLabel {
-    fn default() -> Self {
-        Self::new()
     }
 }

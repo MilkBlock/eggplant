@@ -157,16 +157,6 @@ macro_rules! tx_rx_vt_pr {
         impl eggplant::wrap::WithPatRecSgl for $tx_name {
             type PatRecSgl = $pat_rec_name;
         }
-        // #[cfg(feature = "viewer")]
-        // #[cfg(feature = "viewer")]
-        impl eggplant::eggplant_viewer::EGraphViewerSgl for $tx_name {
-            fn egraph() -> std::sync::Arc<std::sync::Mutex<eggplant::egglog::EGraph>> {
-                <Self as eggplant::prelude::RxSgl>::egraph()
-            }
-            fn view() -> Result<(), eggplant::eggplant_viewer::Error> {
-                eggplant::eggplant_viewer::view::<Self>()
-            }
-        }
     };
 }
 

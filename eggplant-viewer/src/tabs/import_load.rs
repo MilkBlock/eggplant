@@ -1,4 +1,4 @@
-use crate::{EGraphApp, start::EGraphViewerSgl};
+use crate::EGraphApp;
 use egui::Ui;
 
 const SCHEMA_NODES: &str = r#"[
@@ -35,7 +35,7 @@ pub struct UserUpload {
     pub data: String,
 }
 
-impl<T: EGraphViewerSgl> EGraphApp<T> {
+impl EGraphApp {
     pub fn ui_import_tab(&mut self, ui: &mut Ui) {
         // Include the generated assets manifest (build.rs)
         #[allow(non_upper_case_globals)]

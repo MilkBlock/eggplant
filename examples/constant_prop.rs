@@ -57,6 +57,7 @@ fn main() {
     expr.pull();
     MyTx::egraph_to_dot("egraph.dot");
     MyTx::wag_to_dot("wag.dot");
+    MyTx::view().unwrap();
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot");
 }

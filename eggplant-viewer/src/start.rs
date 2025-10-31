@@ -1,12 +1,11 @@
 use eframe::CreationContext;
 use egglog::{EGraph, RawEGraphNode, SerializeConfig, Value};
-use eggplant_egui_graphs::{ENode, FuncOffset, Graph, InnerPos, MaybeInner, ViewEdge, ViewNode};
+use eggplant_egui_graphs::{
+    ENode, EventHandler, FuncOffset, Graph, InnerPos, MaybeInner, ViewEdge, ViewNode,
+};
 use indexmap::IndexMap;
 use petgraph::prelude::StableGraph;
-use std::{
-    collections::HashMap,
-    sync::{Arc, Mutex},
-};
+use std::collections::HashMap;
 
 #[cfg(feature = "events")]
 use crate::event_filters::EventFilters;
@@ -25,12 +24,15 @@ struct ValueMeta {
     inner_pos: InnerPos,
 }
 
-impl<T: EGraphViewerSgl> EGraphApp<T> {
-    pub fn new(cc: &CreationContext<'_>) -> Self {
+impl EGraphApp {
+    pub fn new(
+        cc: &CreationContext<'_>,
+        layout: DemoLayout,
+        egraph: &EGraph,
+        event_handler: Box<dyn EventHandle>,
+    ) -> Self {
         let mut g = Graph::new(StableGraph::default());
         let tables = {
-            let egraph = T::egraph().clone();
-            let egraph = egraph.lock().unwrap();
             let tables = egraph.serialize_raw(SerializeConfig::default());
             let tables = tables
                 .iter()
@@ -176,6 +178,9 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                     Some(format!("c{:?}", k)),
                     enodes_of_one_eclass,
                     cano_value.expect("no node in this class").rep(),
+                    EventHandler {
+                        event_handle: event_handler.dyn_clone(),
+                    },
                 );
                 println!("{:?}", view_node);
                 view_node
@@ -190,16 +195,24 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
                     .unwrap();
                 let start_node_idx = cano_value2node_idx.get(start_cano).unwrap();
                 println!("checking {}{}", func, offset);
-                for input in &row.inputs_complex {
+                for (i, input) in row.inputs_complex.iter().enumerate() {
                     println!("has complex edge {}{}", input.sort, input.offset);
                     let end = cano_value2node_idx.get(&input.cano_value.rep()).unwrap();
-                    println!("insert edge {:?}", maybe_inner);
+                    // println!("insert edge {:?}", maybe_inner);
                     g.add_edge(
                         *start_node_idx,
                         *end,
                         ViewEdge {
                             identifier: None,
-                            start_maybe_inner: maybe_inner.clone(),
+                            start_maybe_inner: match &maybe_inner {
+                                MaybeInner::Itself => panic!("start can't be eclass"),
+                                MaybeInner::Inner { inner_pos } => MaybeInner::Inner {
+                                    inner_pos: InnerPos {
+                                        operand_idx: i,
+                                        ..inner_pos.clone()
+                                    },
+                                },
+                            },
                         },
                     );
                 }
@@ -253,7 +266,7 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             drag_hover_graph: false,
             status: StatusQueue::new(),
             // selected_layout: DemoLayout::FruchtermanReingold,
-            selected_layout: DemoLayout::Hierarchical,
+            selected_layout: layout,
             typing_in_input: false,
             show_export_modal: false,
             export_include_layout: true,
@@ -268,7 +281,6 @@ impl<T: EGraphViewerSgl> EGraphApp<T> {
             web_upload_buf: Rc::new(RefCell::new(Vec::new())),
             fit_to_screen_once_pending: false,
             pan_to_graph_pending: false,
-            _p: PhantomData,
         };
 
         // Web: if URL hash contains g=<example_name>, load that example graph automatically
@@ -298,21 +310,3 @@ fn trans_raw_egraph_node(
     }
 }
 use egglog::NumericId;
-
-pub fn view<T: EGraphViewerSgl>() -> Result<(), eframe::Error> {
-    let native_options = eframe::NativeOptions::default();
-    eframe::run_native(
-        "eggplant_egui_graphs demo",
-        native_options,
-        Box::new(|cc| Ok::<Box<dyn eframe::App>, _>(Box::new(crate::EGraphApp::<T>::new(cc)))),
-    )
-}
-
-pub trait EGraphViewerSgl {
-    fn egraph() -> Arc<Mutex<EGraph>>;
-    fn view() -> Result<(), eframe::Error>;
-}
-
-pub trait EGraphViewer {
-    fn egraph(&self) -> Arc<Mutex<EGraph>>;
-}

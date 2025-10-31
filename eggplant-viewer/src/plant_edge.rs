@@ -31,8 +31,8 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
         ctx: &DrawContext,
     ) -> Vec<egui::Shape> {
         let mut res = vec![];
-        let start = match start_maybe_inner {
-            MaybeInner::Itself => start.location(),
+        let (start, end) = match start_maybe_inner {
+            MaybeInner::Itself => (start.location(), end.location()),
             MaybeInner::Inner {
                 inner_pos:
                     InnerPos {
@@ -41,9 +41,6 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
                         operand_idx,
                     },
             } => {
-                if start.id() == end.id() {
-                    return vec![];
-                }
                 let enodes = &start.payload().enodes;
                 match enodes.get(&id.func) {
                     Some(type_specified_enodes) => {
@@ -62,7 +59,19 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
                         });
                         let y = reduced_nodes_num + i as f32;
                         // println!("y = {}", y);
-                        start.location() + Vec2::new(0., 6.0) * (y) as f32
+                        if start.id() == end.id() {
+                            let start_loc = start.location()
+                                + Vec2::new(0., 6.0) * (y) as f32
+                                + Vec2::new(6., 0.) * operand_idx as f32;
+                            (start_loc.clone(), start_loc)
+                        } else {
+                            (
+                                start.location()
+                                    + Vec2::new(0., 6.0) * (y) as f32
+                                    + Vec2::new(6., 0.) * operand_idx as f32,
+                                end.location(),
+                            )
+                        }
                     }
                     None => {
                         panic!("type {} not found ", id.func)
@@ -70,7 +79,6 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
                 }
             }
         };
-        let end = end.location();
         let (x_dist, y_dist) = (end.x - start.x, end.y - start.y);
         let (dx, dy) = (x_dist, y_dist);
 
