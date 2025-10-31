@@ -11,19 +11,14 @@ use std::collections::HashMap;
 use crate::event_filters::EventFilters;
 use crate::*;
 
-type LightSort = String;
+type SortName = String;
 struct ValueWithCano {
+    #[allow(unused)]
     value: Value,
     cano_value: Value,
-    sort: LightSort,
+    sort: SortName,
     offset: usize,
 }
-struct ValueMeta {
-    input: Value,
-    cano_input: Value,
-    inner_pos: InnerPos,
-}
-
 impl EGraphApp {
     pub fn new(
         cc: &CreationContext<'_>,

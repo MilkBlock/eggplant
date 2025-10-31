@@ -53,7 +53,7 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
                             });
                         let s = start.payload().enodes.get_index_of(&id.func).unwrap();
                         // println!("inner ty {}", ty);
-                        let reduced_nodes_num = enodes.iter().take(s).fold(0.8, |m, (k, v)| {
+                        let reduced_nodes_num = enodes.iter().take(s).fold(0.8, |m, (_k, v)| {
                             // println!("added {k} with len {}", v.len());
                             m + v.len() as f32 + 0.5
                         });
@@ -80,7 +80,7 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
             }
         };
         let (x_dist, y_dist) = (end.x - start.x, end.y - start.y);
-        let (dx, dy) = (x_dist, y_dist);
+        let (_dx, _dy) = (x_dist, y_dist);
 
         let mut points_line;
 

@@ -154,8 +154,8 @@ fn rect_to_points(rect: Rect) -> Vec<Pos2> {
     vec![top_left, top_right, bottom_right, bottom_left]
 }
 
-const TIP_ANGLE: f32 = std::f32::consts::TAU / 30.;
-const TIP_SIZE: f32 = 15.;
+const _TIP_ANGLE: f32 = std::f32::consts::TAU / 30.;
+const _TIP_SIZE: f32 = 15.;
 const COLORS: [Color32; 6] = [
     Color32::RED,
     Color32::from_rgb(255, 102, 0),
@@ -167,7 +167,7 @@ const COLORS: [Color32; 6] = [
 ];
 
 /// rotates vector by angle
-fn rotate_vector(vec: Vec2, angle: f32) -> Vec2 {
+fn _rotate_vector(vec: Vec2, angle: f32) -> Vec2 {
     let cos = angle.cos();
     let sin = angle.sin();
     Vec2::new(cos * vec.x - sin * vec.y, sin * vec.x + cos * vec.y)

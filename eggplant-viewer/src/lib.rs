@@ -13,7 +13,6 @@ use instant::Instant;
 // use petgraph::Directed;
 use petgraph::stable_graph::NodeIndex;
 use rand::Rng;
-use std::marker::PhantomData;
 #[cfg(all(feature = "events", target_arch = "wasm32"))]
 use std::{cell::RefCell, rc::Rc};
 
@@ -32,7 +31,6 @@ mod plant_edge;
 mod plant_node;
 pub mod start;
 pub use eggplant_egui_graphs::{EmptyH, EventHandle, EventHandler};
-pub use start::*;
 mod ui_consts;
 mod util;
 
@@ -964,6 +962,7 @@ impl EGraphApp {
         self.status.push_info(msg);
     }
 
+    #[allow(unused)]
     fn notify_added(&mut self, singular: &str, plural: &str, n: u32) {
         let text = if n == 1 {
             format!("+1 {}", singular)
@@ -973,6 +972,7 @@ impl EGraphApp {
         self.status.push_success(text);
     }
 
+    #[allow(unused)]
     fn notify_removed(&mut self, singular: &str, plural: &str, n: u32) {
         let text = if n == 1 {
             format!("-1 {}", singular)
@@ -982,6 +982,7 @@ impl EGraphApp {
         self.status.push_success(text);
     }
 
+    #[allow(unused)]
     fn notify_swapped(&mut self, singular: &str, plural: &str, n: u32) {
         let text = if n == 1 {
             format!("Swap 1 {}", singular)
