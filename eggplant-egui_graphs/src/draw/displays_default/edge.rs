@@ -111,7 +111,7 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
     fn shapes(
         &mut self,
         start: &Node<Directed, Nd>,
-        start_maybe_inner: MaybeInner,
+        _start_maybe_inner: MaybeInner,
         end: &Node<Directed, Nd>,
         ctx: &DrawContext,
     ) -> Vec<egui::Shape> {

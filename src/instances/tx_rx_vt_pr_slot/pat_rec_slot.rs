@@ -1,6 +1,8 @@
-use crate::{etc::generate_dot_by_graph, wrap::*};
-
-use super::*;
+use crate::{
+    etc::generate_dot_by_graph,
+    prelude::slotted::{FuncName, SlottedCtx},
+    wrap::*,
+};
 use dashmap::DashMap;
 use derive_more::{Debug, Deref};
 use egglog::util::IndexSet;
@@ -26,6 +28,9 @@ pub struct SlottedPatRecorder {
     _registry: EgglogTypeRegistry,
     /// next_pat_id increment when on_record_end is called
     next_pat_id: AtomicU32,
+
+    // slotted ctx
+    slotted_ctx: SlottedCtx,
 }
 struct SlottedPatRecNode {
     work_node: WorkAreaNode,
@@ -80,6 +85,7 @@ impl SlottedPatRecorder {
             next_pat_id: AtomicU32::new(0),
             root_table: DashMap::default(),
             constraint_table: DashMap::default(),
+            slotted_ctx: SlottedCtx::new(),
         }
     }
     // collect all ancestors of cur_sym, without cur_sym
@@ -376,6 +382,21 @@ impl PatRec for SlottedPatRecorder {
             _p: PhantomData,
         }
     }
+
+    fn on_ctx_insert<PR: PatRecSgl>(
+        &self,
+        combos: Vec<(FuncName, egglog::Value, Self::MetaTy<PR>)>,
+    ) -> Self::MetaTy<PR> {
+        todo!()
+    }
+
+    fn on_ctx_union<PR: PatRecSgl>(
+        &self,
+        combo1: (FuncName, egglog::Value, Self::MetaTy<PR>),
+        combo2: (FuncName, egglog::Value, Self::MetaTy<PR>),
+    ) -> Self::MetaTy<PR> {
+        todo!()
+    }
 }
 
 impl SlottedPatRec for SlottedPatRecorder {
@@ -421,8 +442,8 @@ impl<PR: PatRecSgl> std::fmt::Debug for SlotMeta<PR> {
     }
 }
 impl<PR: PatRecSgl> Meta for SlotMeta<PR> {
-    fn merge(metas: &mut impl Iterator<Item = Box<dyn std::any::Any>>) -> Self {
-        Self::from_metas(&mut metas.map(|x| *x.downcast::<SlotMeta<PR>>().unwrap()))
+    fn merge(metas: &mut impl Iterator<Item = Self>) -> Self {
+        Self::from_metas(&mut metas.map(|x| x))
     }
 }
 unsafe impl<PR: PatRecSgl> Send for SlotMeta<PR> {}

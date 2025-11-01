@@ -540,10 +540,11 @@ pub fn slotted_dsl(
                                 }
                             }
                             impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                                type MetaTy = ();
                                 fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                                     #W::Value::new(self.erase())
                                 }
-                                fn meta(&self) -> Box<dyn std::any::Any>{
+                                fn meta(&self) -> Self::MetaTy{
                                     panic!("pure value don't have any meta")
                                 }
                             }
@@ -817,10 +818,11 @@ pub fn slotted_dsl(
                     //     }
                     // }
                     impl #W::Insertable<#name_node<(),()>> for #valued_variant_name {
+                        type MetaTy = ();
                         fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
                             #W::Value::new(self._itself.val)
                         }
-                        fn meta(&self) -> Box<dyn std::any::Any>{
+                        fn meta(&self) -> Self::MetaTy{
                             panic!("pure value don't have any meta")
                         }
                     }
@@ -1172,10 +1174,11 @@ pub fn slotted_dsl(
                     #(#constraint_fns)*
                 };
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                    type MetaTy = ();
                     fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
                         #W::Value::new(self.erase())
                     }
-                    fn meta(&self) -> Box<dyn std::any::Any>{
+                    fn meta(&self) -> Self::MetaTy{
                         panic!("pure value don't have any meta")
                     }
                 }

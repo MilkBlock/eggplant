@@ -75,7 +75,7 @@ impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
     pub fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
         self.ctx._intern_container(container)
     }
-    pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+    pub fn insert(&self, table: &'static str, key: &[egglog::Value]) -> egglog::Value {
         self.ctx.insert(table, key)
     }
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {

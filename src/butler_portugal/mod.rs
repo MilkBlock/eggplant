@@ -37,14 +37,15 @@ pub mod symmetry;
 pub mod tensor;
 pub mod young_tableaux;
 
-pub use canonicalization::{CanonicalizationMethod, canonicalize, canonicalize_with_optimizations};
+pub use canonicalization::canonicalize;
 pub use error::{ButlerPortugalError, Result};
 pub use index::TensorIndex;
-pub use symmetry::Symmetry;
 pub use tensor::Tensor;
 
 #[cfg(test)]
 mod tests {
+    use crate::butler_portugal::symmetry::Symmetry;
+
     use super::*;
 
     #[test]

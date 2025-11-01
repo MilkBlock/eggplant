@@ -1,3 +1,4 @@
+use crate::prelude::slotted::FuncName;
 use crate::prelude::{SlotMeta, TxRxVT};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
@@ -233,10 +234,10 @@ pub trait VersionCtl {
 }
 
 pub trait Meta: Default + Clone + Send + Sync + fmt::Debug {
-    fn merge(metas: &mut impl Iterator<Item = Box<dyn Any>>) -> Self;
+    fn merge(metas: &mut impl Iterator<Item = Self>) -> Self;
 }
 impl Meta for () {
-    fn merge(_metas: &mut impl Iterator<Item = Box<dyn Any>>) -> Self {
+    fn merge(_metas: &mut impl Iterator<Item = Self>) -> Self {
         ()
     }
 }
@@ -244,7 +245,7 @@ impl Meta for () {
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
 pub trait PatRec: NodeDropper + Tx {
-    type MetaTy<T: PatRecSgl>: Meta;
+    type MetaTy<PR: PatRecSgl>: Meta;
     #[track_caller]
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
@@ -253,6 +254,22 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
     fn meta_of<PR: PatRecSgl>(&self, node: &(impl EgglogNode + 'static)) -> Self::MetaTy<PR>;
+
+    #[allow(unused)]
+    fn on_ctx_insert<PR: PatRecSgl>(
+        &self,
+        combos: Vec<(FuncName, egglog::Value, Self::MetaTy<PR>)>,
+    ) -> Self::MetaTy<PR> {
+        Self::MetaTy::merge(&mut combos.into_iter().map(|(x, y, z)| z))
+    }
+    #[allow(unused)]
+    fn on_ctx_union<PR: PatRecSgl>(
+        &self,
+        combo1: (FuncName, egglog::Value, Self::MetaTy<PR>),
+        combo2: (FuncName, egglog::Value, Self::MetaTy<PR>),
+    ) -> Self::MetaTy<PR> {
+        Default::default()
+    }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PatId(pub u32);
@@ -267,6 +284,16 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
     fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy;
+
+    fn on_ctx_insert<PR: PatRecSgl>(
+        &self,
+        combos: Vec<(FuncName, egglog::Value, Self::MetaTy)>,
+    ) -> Self::MetaTy;
+    fn on_ctx_union<PR: PatRecSgl>(
+        &self,
+        combo1: (FuncName, egglog::Value, Self::MetaTy),
+        combo2: (FuncName, egglog::Value, Self::MetaTy),
+    ) -> Self::MetaTy;
 }
 impl<T: SingletonGetter> PatRecSgl for T
 where
@@ -293,6 +320,21 @@ where
 
     fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy {
         Self::sgl().meta_of::<Self>(node)
+    }
+
+    fn on_ctx_insert<PR: PatRecSgl>(
+        &self,
+        combos: Vec<(FuncName, egglog::Value, Self::MetaTy)>,
+    ) -> Self::MetaTy {
+        Self::sgl().on_ctx_insert(combos)
+    }
+
+    fn on_ctx_union<PR: PatRecSgl>(
+        &self,
+        combo1: (FuncName, egglog::Value, Self::MetaTy),
+        combo2: (FuncName, egglog::Value, Self::MetaTy),
+    ) -> Self::MetaTy {
+        Self::sgl().on_ctx_union(combo1, combo2)
     }
 }
 
@@ -968,23 +1010,26 @@ pub trait FromPlainValuesMetas<PR: PatRecSgl> {
 /// Insertable and RetypeValue are quite different, Insertable is used in Union or table insert
 /// while RetypeValueonly used when you want operational structure
 pub trait Insertable<T>: Clone {
+    type MetaTy;
     fn to_value(&self, ctx: &RuleCtx) -> Value<T>;
-    fn meta(&self) -> Box<dyn Any>;
+    fn meta(&self) -> Self::MetaTy;
 }
 impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for (I, M) {
+    type MetaTy = M;
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
     }
-    fn meta(&self) -> Box<dyn std::any::Any> {
-        Box::new(self.1.clone())
+    fn meta(&self) -> Self::MetaTy {
+        self.1.clone()
     }
 }
 impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for &(I, M) {
+    type MetaTy = M;
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
     }
-    fn meta(&self) -> Box<dyn Any> {
-        Box::new(self.1.clone())
+    fn meta(&self) -> Self::MetaTy {
+        self.1.clone()
     }
 }
 pub trait RetypeValue {
@@ -1034,10 +1079,11 @@ pub trait BoxedContainer: BoxedValue {
 pub trait SingleFieldVariant {}
 
 impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
+    type MetaTy = ();
     fn to_value(&self, ctx: &RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
     }
-    fn meta(&self) -> Box<dyn std::any::Any> {
+    fn meta(&self) -> Self::MetaTy {
         panic!("Boxed base don't have meta")
     }
 }

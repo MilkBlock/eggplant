@@ -1,5 +1,4 @@
 pub mod pat_rec;
-pub mod pat_rec_slot;
 pub mod tx;
 pub mod tx_minimal;
 pub mod tx_rx_vt;
@@ -196,16 +195,18 @@ macro_rules! slotted_patttern_recorder {
     ($name:ident) => {
         #[derive(Debug)]
         pub struct $name {
-            tx: eggplant::instances::pat_rec_slot::SlottedPatRecorder,
+            tx: eggplant::instances::tx_rx_vt_pr_slot::pat_rec_slot::SlottedPatRecorder,
         }
         impl eggplant::prelude::SingletonGetter for $name {
-            type RetTy = eggplant::instances::pat_rec_slot::SlottedPatRecorder;
-            fn sgl() -> &'static eggplant::instances::pat_rec_slot::SlottedPatRecorder {
+            type RetTy = eggplant::instances::tx_rx_vt_pr_slot::pat_rec_slot::SlottedPatRecorder;
+            fn sgl()
+            -> &'static eggplant::instances::tx_rx_vt_pr_slot::pat_rec_slot::SlottedPatRecorder
+            {
                 static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
                 &INSTANCE
                     .get_or_init(|| -> $name {
                         Self {
-                            tx: eggplant::instances::pat_rec_slot::SlottedPatRecorder::new(),
+                            tx: eggplant::instances::tx_rx_vt_pr_slot::pat_rec_slot::SlottedPatRecorder::new(),
                         }
                     })
                     .tx

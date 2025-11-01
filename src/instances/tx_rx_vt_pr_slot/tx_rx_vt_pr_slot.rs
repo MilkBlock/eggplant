@@ -45,7 +45,7 @@ pub struct SlottedTxRxVTPR {
 
 #[allow(unused)]
 #[derive(Debug)]
-pub struct CommitCheckPoint {
+struct CommitCheckPoint {
     committed_node_root: Sym,
     staged_set_nodes: Vec<Sym>,
     staged_new_nodes: Vec<Sym>,
