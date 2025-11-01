@@ -1401,6 +1401,7 @@ dependencies = [
  "env_logger",
  "graphviz-rust",
  "inventory",
+ "itertools 0.14.0",
  "log",
  "petgraph 0.6.5",
  "serde",

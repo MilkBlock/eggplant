@@ -36,6 +36,7 @@ strum_macros = "0.27.2"
 graphviz-rust = "0.9.5"
 serde.workspace = true
 serde_json.workspace = true
+itertools.workspace = true
 
 [[bin]]
 name = "viewer_example"
