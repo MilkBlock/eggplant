@@ -1,4 +1,5 @@
 mod butler_portugal;
+pub mod instances;
 pub mod prelude;
 mod test;
 pub mod wrap;
@@ -17,3 +18,5 @@ pub use serde;
 pub use serde_json;
 pub use strum;
 pub use strum_macros;
+
+mod etc;

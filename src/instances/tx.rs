@@ -1,8 +1,6 @@
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
-use egglog::ast::Command;
-
-use super::*;
+use crate::wrap::*;
 use dashmap::DashMap;
+use egglog::ast::Command;
 use egglog::{EGraph, SerializeConfig, util::IndexSet};
 use std::{path::Path, sync::Mutex};
 

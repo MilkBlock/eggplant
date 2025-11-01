@@ -1,9 +1,4 @@
-use crate::wrap::{
-    EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, constraint::IntoConstraintFact,
-    etc::generate_dot_by_graph,
-};
-
-use super::*;
+use crate::{etc::generate_dot_by_graph, wrap::*};
 use dashmap::DashMap;
 use derive_more::Debug;
 use egglog::util::IndexSet;

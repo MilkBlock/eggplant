@@ -1,9 +1,7 @@
-use crate::wrap::{
-    EgglogFunc, EgglogFuncInputs, EgglogFuncOutput,
+use crate::{
     etc::{Escape, quote, topo_sort},
+    wrap::*,
 };
-
-use super::*;
 use core::panic;
 use dashmap::DashMap;
 use egglog::{
@@ -31,7 +29,7 @@ use std::{
 /// 3. VersionCtl: version control for nodes
 /// 4. PR: Pattern recorder
 /// 5. generate proof (opt.)
-pub struct SlottedTxRxVTPR {
+pub struct TxRxVTPR {
     pub egraph: Arc<Mutex<EGraph>>,
     map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
@@ -54,7 +52,7 @@ pub struct CommitCheckPoint {
 }
 
 /// Tx with version ctl feature
-impl SlottedTxRxVTPR {
+impl TxRxVTPR {
     pub fn clear_egraph(&self) {
         let mut egraph = self.egraph.lock().unwrap();
         self.sym2value_map.clear();
@@ -116,11 +114,9 @@ impl SlottedTxRxVTPR {
         for (i, (in_degree, out_degree)) in ins.iter_mut().zip(outs.iter_mut()).enumerate() {
             let sym = index_set[i];
             let node = self.map.get(&sym).unwrap();
-            *in_degree = SlottedTxRxVTPR::degree_in_subgraph(
-                node.preds().into_iter().map(|x| *x),
-                index_set,
-            );
-            *out_degree = SlottedTxRxVTPR::degree_in_subgraph(node.succs().into_iter(), index_set);
+            *in_degree =
+                TxRxVTPR::degree_in_subgraph(node.preds().into_iter().map(|x| *x), index_set);
+            *out_degree = TxRxVTPR::degree_in_subgraph(node.succs().into_iter(), index_set);
         }
         let (mut _ins, mut outs) = match direction {
             TopoDirection::Up => (ins, outs),
@@ -416,9 +412,9 @@ impl SlottedTxRxVTPR {
     }
 }
 
-unsafe impl Send for SlottedTxRxVTPR {}
-unsafe impl Sync for SlottedTxRxVTPR {}
-impl VersionCtl for SlottedTxRxVTPR {
+unsafe impl Send for TxRxVTPR {}
+unsafe impl Sync for TxRxVTPR {}
+impl VersionCtl for TxRxVTPR {
     /// locate the lastest version of the symbol
     fn locate_latest(&self, old: Sym) -> Sym {
         let map = &self.map;
@@ -464,7 +460,7 @@ impl VersionCtl for SlottedTxRxVTPR {
 }
 
 // MARK: Tx
-impl Tx for SlottedTxRxVTPR {
+impl Tx for TxRxVTPR {
     fn send(&self, transmitted: TxCommand) {
         let mut egraph = self.egraph.lock().unwrap();
         match transmitted {
@@ -521,7 +517,7 @@ impl Tx for SlottedTxRxVTPR {
     }
 }
 
-impl TxCommit for SlottedTxRxVTPR {
+impl TxCommit for TxRxVTPR {
     /// commit behavior:
     /// 1. commit all descendants (if you also call set fn on subnodes they will also be committed)
     /// 2. commit basing on the latest ersion of the working graph (working graph records all versions)
@@ -655,7 +651,7 @@ impl TxCommit for SlottedTxRxVTPR {
 }
 
 // MARK: Rx
-impl Rx for SlottedTxRxVTPR {
+impl Rx for TxRxVTPR {
     fn on_func_get<'a, 'b, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -756,12 +752,12 @@ impl Rx for SlottedTxRxVTPR {
     }
 }
 
-impl NodeDropper for SlottedTxRxVTPR {}
-impl NodeOwner for SlottedTxRxVTPR {
+impl NodeDropper for TxRxVTPR {}
+impl NodeOwner for TxRxVTPR {
     type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 
-impl NodeSetter for SlottedTxRxVTPR {
+impl NodeSetter for TxRxVTPR {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
         // do nothing
         // the node may be set but we don't care
@@ -769,7 +765,7 @@ impl NodeSetter for SlottedTxRxVTPR {
     }
 }
 
-impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
+impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
     fn add_rule<P: PatVars<PR>>(
         &self,
         rule_name: &str,
@@ -782,8 +778,6 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
         PR::on_record_start();
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
-        let metas = pat_vars.metas_iter().collect::<Vec<_>>();
-        println!("metas got {:#?}", metas);
 
         let facts = PR::pat2fact_builder(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
@@ -800,11 +794,11 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 .map(|x| (x.0.as_str(), x.1.clone()))
                 .collect::<Vec<_>>(),
             Facts(facts),
-            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_>, values| {
+            move |ctx, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
                 let valued_pat_vars = P::Valued::from_plain_values_metas(
                     &mut values.iter().cloned(),
-                    &mut metas.clone().into_iter(),
+                    &mut std::iter::repeat(PR::MetaTy::default()),
                 );
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
@@ -899,7 +893,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
     // }
 }
 
-impl ToDot for SlottedTxRxVTPR {
+impl ToDot for TxRxVTPR {
     /// transform EGraph into dot file
     fn egraph_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
@@ -1155,35 +1149,13 @@ impl ToDot for SlottedTxRxVTPR {
 }
 
 #[cfg(feature = "viewer")]
-impl EGraphView for SlottedTxRxVTPR {
+impl EGraphView for TxRxVTPR {
     fn egraph(&self) -> std::sync::Arc<std::sync::Mutex<EGraph>> {
         self.egraph.clone()
     }
 
     fn view(&self) -> Result<(), eframe::Error> {
         use eggplant_viewer::*;
-        let map: Arc<DashMap<Sym, WorkAreaNode>> = Arc::new(self.map.clone());
-        #[derive(Clone)]
-        struct SlotEventHandler {
-            map: Arc<DashMap<Sym, WorkAreaNode>>,
-        }
-        impl EventHandle for SlotEventHandler {
-            fn dyn_clone(&self) -> Box<dyn EventHandle> {
-                Box::new(self.clone())
-            }
-
-            fn on_drag(&self, cano_value: u32) {
-                println!("{cano_value} dragged")
-            }
-
-            fn on_hover(&self, cano_value: u32) {
-                println!("{cano_value} hovered")
-            }
-
-            fn on_selected(&self, cano_value: u32) {
-                println!("{cano_value} selected")
-            }
-        }
 
         let native_options = eframe::NativeOptions::default();
         let egraph = self.egraph.lock().unwrap();
@@ -1195,7 +1167,7 @@ impl EGraphView for SlottedTxRxVTPR {
                     cc,
                     DemoLayout::Hierarchical,
                     &egraph,
-                    SlotEventHandler { map }.dyn_clone(),
+                    EmptyH {}.dyn_clone(),
                 )))
             }),
         )

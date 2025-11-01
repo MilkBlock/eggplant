@@ -1,9 +1,10 @@
+use crate::prelude::{SlotMeta, TxRxVT};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
-    SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
+    SortName, SymLit, VarName,
 };
-use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl, SlotMeta};
+use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl};
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::ast::{RustSpan, Span};

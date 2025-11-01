@@ -1,6 +1,4 @@
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, etc::topo_sort};
-
-use super::*;
+use crate::{etc::topo_sort, wrap::*};
 use dashmap::DashMap;
 use egglog::{
     EGraph, SerializeConfig,

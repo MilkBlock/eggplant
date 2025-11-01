@@ -1,9 +1,6 @@
-use egglog::ast::Command;
-
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
-
-use super::*;
+use crate::wrap::*;
 use dashmap::DashMap;
+use egglog::ast::Command;
 use egglog::{
     EGraph, SerializeConfig,
     util::{IndexMap, IndexSet},
