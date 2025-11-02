@@ -1,4 +1,4 @@
-use crate::prelude::slotted::FuncName;
+use crate::prelude::slotted::{_FuncValueMeta, FuncName, FuncValueMeta};
 use crate::prelude::{SlotMeta, TxRxVT};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
@@ -258,17 +258,22 @@ pub trait PatRec: NodeDropper + Tx {
     #[allow(unused)]
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        combos: Vec<(FuncName, egglog::Value, Self::MetaTy<PR>)>,
+        inputs: Vec<FuncValueMeta<Self, PR>>,
+        output: (FuncName, egglog::Value),
     ) -> Self::MetaTy<PR> {
-        Self::MetaTy::merge(&mut combos.into_iter().map(|(x, y, z)| z))
+        Self::MetaTy::<PR>::merge(&mut inputs.into_iter().map(|(x, y, z)| z))
     }
     #[allow(unused)]
     fn on_ctx_union<PR: PatRecSgl>(
         &self,
-        combo1: (FuncName, egglog::Value, Self::MetaTy<PR>),
-        combo2: (FuncName, egglog::Value, Self::MetaTy<PR>),
-    ) -> Self::MetaTy<PR> {
-        Default::default()
+        combo1: FuncValueMeta<Self, PR>,
+        combo2: FuncValueMeta<Self, PR>,
+    ) {
+    }
+
+    /// return whether updated
+    fn flush_pending(&self) -> bool {
+        false
     }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -285,15 +290,17 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
     fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy;
 
-    fn on_ctx_insert<PR: PatRecSgl>(
-        &self,
-        combos: Vec<(FuncName, egglog::Value, Self::MetaTy)>,
+    fn on_ctx_insert(
+        inputs: Vec<_FuncValueMeta<Self>>,
+        output: (FuncName, egglog::Value),
     ) -> Self::MetaTy;
-    fn on_ctx_union<PR: PatRecSgl>(
-        &self,
+    fn on_ctx_union(
         combo1: (FuncName, egglog::Value, Self::MetaTy),
         combo2: (FuncName, egglog::Value, Self::MetaTy),
-    ) -> Self::MetaTy;
+    );
+
+    /// flush pending and return whether updated
+    fn flush_pending() -> bool;
 }
 impl<T: SingletonGetter> PatRecSgl for T
 where
@@ -322,19 +329,22 @@ where
         Self::sgl().meta_of::<Self>(node)
     }
 
-    fn on_ctx_insert<PR: PatRecSgl>(
-        &self,
-        combos: Vec<(FuncName, egglog::Value, Self::MetaTy)>,
+    fn on_ctx_insert(
+        inputs: Vec<_FuncValueMeta<Self>>,
+        output: (FuncName, egglog::Value),
     ) -> Self::MetaTy {
-        Self::sgl().on_ctx_insert(combos)
+        Self::sgl().on_ctx_insert::<Self>(inputs, output)
     }
 
-    fn on_ctx_union<PR: PatRecSgl>(
-        &self,
+    fn on_ctx_union(
         combo1: (FuncName, egglog::Value, Self::MetaTy),
         combo2: (FuncName, egglog::Value, Self::MetaTy),
-    ) -> Self::MetaTy {
+    ) {
         Self::sgl().on_ctx_union(combo1, combo2)
+    }
+
+    fn flush_pending() -> bool {
+        Self::sgl().flush_pending()
     }
 }
 

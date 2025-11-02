@@ -827,7 +827,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                     let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
                     let updated = iter_report.updated;
                     run_report.union(iter_report);
-                    if !updated {
+                    if !updated && !PR::flush_pending() {
                         break run_report;
                     }
                 }
@@ -842,6 +842,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
             }
             RunConfig::Once => {
                 let run_report = egraph.step_rules(ruleset_id.0).unwrap();
+                PR::flush_pending();
                 run_report
             }
         }

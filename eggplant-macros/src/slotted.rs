@@ -862,20 +862,39 @@ pub fn slotted_dsl(
                     .iter()
                     .map(|x| ctx_insert_fn_ts_with_pr(x, &name_node))
                     .collect();
+                let (
+                    subsume_remove_fns,
+                    subsume_remove_fn_decls,
+                    pr_subsume_remove_fns,
+                    pr_subsume_remove_fn_decls,
+                ): (
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                ) = data_enum
+                    .variants
+                    .iter()
+                    .map(|x| ctx_subsume_remove_fn_ts_with_pr(x, &name_node))
+                    .collect();
                 let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
                 let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_node);
                 quote! {
                     pub trait #ctx_trait_name {
                         #(#insert_fn_decls)*
+                        #(#subsume_remove_fn_decls)*
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
                         #(#insert_fns)*
+                        #(#subsume_remove_fns)*
                     }
                     pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
                         #(#pr_insert_fn_decls)*
+                        #(#pr_subsume_remove_fn_decls)*
                     }
                     impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,PR> {
                         #(#pr_insert_fns)*
+                        #(#pr_subsume_remove_fns)*
                     }
                 }
             };

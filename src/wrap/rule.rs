@@ -1,6 +1,6 @@
 use crate::wrap::{
-    self, BoxedContainer, BoxedValue, EgglogContainerTy, EgglogNode, Insertable,
-    IntoConstraintFact, PatRecSgl, RetypeValue,
+    self, BoxedContainer, BoxedValue, EgglogContainerTy, EgglogEnumVariantTy, EgglogNode,
+    Insertable, IntoConstraintFact, PatRecSgl, RetypeValue,
 };
 use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::ast::{Expr, Fact, ResolvedVar};
@@ -12,6 +12,7 @@ use egglog::{
     span,
 };
 use egglog::{ContainerValue, RunReport};
+use env_logger::Target;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::ops::Deref;
@@ -44,6 +45,7 @@ pub trait RuleCtxHook {
     fn on_insert(&self, table: &str, key: &[egglog::Value]);
     fn on_union(&self, x: egglog::Value, y: egglog::Value);
     fn on_subsume(&self, table: &str, key: &[egglog::Value]);
+    fn on_remove(&self, table: &str, key: &[egglog::Value]);
     fn dyn_clone(&self) -> Box<dyn RuleCtxHook>;
 }
 
@@ -81,11 +83,30 @@ impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
         self.ctx.insert_func_tbl(table, key);
     }
-    pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
+    pub fn union<T0: EgglogTy, T1: EgglogTy>(
+        &self,
+        x: impl Insertable<T0, MetaTy = PR::MetaTy>,
+        y: impl Insertable<T1, MetaTy = PR::MetaTy>,
+    ) {
+        PR::on_ctx_union(
+            (
+                <T0::EnumVariantMarker as EgglogEnumVariantTy>::TY_NAME,
+                x.to_value(&self.ctx).val,
+                x.meta(),
+            ),
+            (
+                T1::EnumVariantMarker::TY_NAME,
+                y.to_value(&self.ctx).val,
+                y.meta(),
+            ),
+        );
         self.ctx.union(x, y);
     }
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
         self.ctx.subsume(table, key);
+    }
+    pub fn remove(&self, table: &str, key: &[egglog::Value]) {
+        self.ctx.remove(table, key);
     }
     pub fn _devalue_container<T: ContainerValue>(
         &self,
@@ -147,6 +168,10 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
         self.hook.0.as_ref().map(|hook| hook.on_subsume(table, key));
         unsafe { (*self.rule_ctx.get()).subsume(table, key) }
+    }
+    pub fn remove(&self, table: &str, key: &[egglog::Value]) {
+        self.hook.0.as_ref().map(|hook| hook.on_remove(table, key));
+        unsafe { (*self.rule_ctx.get()).remove(table, key) }
     }
     pub fn _devalue_container<T: ContainerValue>(
         &self,

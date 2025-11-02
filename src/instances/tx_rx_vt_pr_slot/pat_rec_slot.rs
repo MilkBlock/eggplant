@@ -1,6 +1,6 @@
 use crate::{
     etc::generate_dot_by_graph,
-    prelude::slotted::{FuncName, SlottedCtx},
+    prelude::slotted::{FuncName, SlotPendingOps, SlottedCtx},
     wrap::*,
 };
 use dashmap::DashMap;
@@ -385,17 +385,36 @@ impl PatRec for SlottedPatRecorder {
 
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        combos: Vec<(FuncName, egglog::Value, Self::MetaTy<PR>)>,
+        inputs: Vec<(FuncName, egglog::Value, Self::MetaTy<PR>)>,
+        output: (FuncName, egglog::Value),
     ) -> Self::MetaTy<PR> {
-        todo!()
+        // self.slotted_ctx.insert(cano_value, meta);
+        let inner_inputs = inputs
+            .iter()
+            .map(|(x, y, z)| (*x, y.clone(), z.inner.clone()))
+            .collect();
+        let merged = SlotMeta::merge(&mut inputs.into_iter().map(|(_x, _y, z)| z));
+        self.slotted_ctx.push_pending(SlotPendingOps::Insert {
+            inputs: inner_inputs,
+            output: (output.0, output.1.clone(), merged.inner.clone()),
+        });
+        merged
     }
 
     fn on_ctx_union<PR: PatRecSgl>(
         &self,
-        combo1: (FuncName, egglog::Value, Self::MetaTy<PR>),
-        combo2: (FuncName, egglog::Value, Self::MetaTy<PR>),
-    ) -> Self::MetaTy<PR> {
-        todo!()
+        x: (FuncName, egglog::Value, Self::MetaTy<PR>),
+        y: (FuncName, egglog::Value, Self::MetaTy<PR>),
+    ) {
+        self.slotted_ctx.push_pending(SlotPendingOps::Union(
+            (x.0, x.1, x.2.inner),
+            (y.0, y.1, y.2.inner),
+        ))
+    }
+
+    fn flush_pending(&self) -> bool {
+        self.slotted_ctx.flush_pending();
+        false
     }
 }
 

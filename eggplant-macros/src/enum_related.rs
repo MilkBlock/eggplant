@@ -568,6 +568,91 @@ pub fn ctx_insert_fn_ts(
         },
     )
 }
+pub fn ctx_subsume_remove_fn_ts_with_pr(
+    variant: &syn::Variant,
+    _name_node: &Ident,
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
+    let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let valued_ref_node_meta_list: Vec<TokenStream> = variant2valued_ref_node_meta_list(&variant);
+    let complex_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| Some(quote!(#complex)),
+    );
+    let _complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |_complex, complex_ty| Some(quote!(#complex_ty)),
+    );
+    let field_idents = variant2field_ident(&variant);
+    let _func_value_meta_field_idents = complex_field_idents
+        .iter()
+        .map(|x| format_ident!("func_value_meta_{}", x.to_string()))
+        .collect::<Vec<_>>();
+
+    let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
+    let (variant_marker, variant_name) = variant2marker_name(variant);
+    let subsume_fn_name = format_ident!("subsume_{}", variant_name.to_string().to_snake_case());
+    let remove_fn_name = format_ident!("remove_{}", variant_name.to_string().to_snake_case());
+    let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+
+    // MARK: Enum New Fns
+    (
+        // insert fn
+        quote! {
+            #[track_caller]
+            fn #subsume_fn_name(&self, #(#valued_ref_node_list),*) {
+                use #W::Value;
+                use #W::Insertable;
+                let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                self.subsume(
+                    <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,
+                    &key
+                )
+            }
+            #[track_caller]
+            fn #remove_fn_name(&self, #(#valued_ref_node_list),*) {
+                use #W::Value;
+                use #W::Insertable;
+                let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                self.remove(
+                    <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,
+                    &key
+                )
+            }
+        },
+        // insert decl
+        quote! {
+            #[track_caller]
+            fn #subsume_fn_name(&self, #(#valued_ref_node_list),*) ;
+            #[track_caller]
+            fn #remove_fn_name(&self, #(#valued_ref_node_list),*) ;
+        },
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            fn #subsume_fn_name(&self, #(#valued_ref_node_meta_list),*) {
+                 self.ctx.#subsume_fn_name(#(#field_idents),*);
+            }
+            #[track_caller]
+            fn #remove_fn_name(&self, #(#valued_ref_node_meta_list),*) {
+                 self.ctx.#remove_fn_name(#(#field_idents),*);
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            fn #subsume_fn_name(&self, #(#valued_ref_node_meta_list),*) ;
+            #[track_caller]
+            fn #remove_fn_name(&self, #(#valued_ref_node_meta_list),*) ;
+        },
+    )
+}
+
 pub fn ctx_insert_fn_ts_with_pr(
     variant: &syn::Variant,
     name_node: &Ident,
@@ -579,7 +664,16 @@ pub fn ctx_insert_fn_ts_with_pr(
         |_basic, _basic_ty| None,
         |complex, _complex_ty| Some(quote!(#complex)),
     );
+    let complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |_complex, complex_ty| Some(quote!(#complex_ty)),
+    );
     let field_idents = variant2field_ident(&variant);
+    let func_value_meta_field_idents = complex_field_idents
+        .iter()
+        .map(|x| format_ident!("func_value_meta_{}", x.to_string()))
+        .collect::<Vec<_>>();
 
     let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
     let (variant_marker, variant_name) = variant2marker_name(variant);
@@ -612,9 +706,19 @@ pub fn ctx_insert_fn_ts_with_pr(
         quote! {
             #[track_caller]
             fn #insert_fn_name(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
-                use #W::Meta;
-                let __merged = PR::on_ctx_insert(vec![#(#complex_field_idents.meta()),*]);
-                (self.ctx.#insert_fn_name(#(#field_idents),*),__merged)
+                use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
+                #(
+                    let #func_value_meta_field_idents =
+                        (<<#complex_field_tys as EgglogTy>::EnumVariantMarker as EgglogEnumVariantTy>::TY_NAME,
+                            #complex_field_idents.to_value(&self.ctx).val,
+                            #complex_field_idents.meta());
+                )*
+                let __val = self.ctx.#insert_fn_name(#(#field_idents),*);
+                let __merged = PR::on_ctx_insert(
+                    vec![#(#func_value_meta_field_idents),*],
+                    (<#variant_marker as EgglogEnumVariantTy>::TY_NAME, __val.val )
+                );
+                (__val,__merged)
             }
         },
         // pr insert decl

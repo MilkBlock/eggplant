@@ -1,7 +1,8 @@
 use super::pat_rec_slot::SlotMeta;
 use crate::{
     butler_portugal::{Tensor, canonicalize},
-    wrap::SlottedPatRecSgl,
+    prelude::ArcSlotMetaInner,
+    wrap::{PatRec, PatRecSgl, SlottedPatRecSgl},
 };
 use egglog::{Value, util::IndexMap};
 
@@ -88,13 +89,15 @@ impl Group {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SlottedCtx {
     // slotted id info
     next_seclass_id: usize,
     next_senode_id: usize,
 
     cano_value2seclasses: IndexMap<Value, SEClassesWithCanoValue>,
+
+    pub pending_ops: crossbeam::queue::SegQueue<SlotPendingOps>,
 }
 impl SlottedCtx {
     pub fn new() -> Self {
@@ -102,15 +105,37 @@ impl SlottedCtx {
             next_seclass_id: 0,
             next_senode_id: 0,
             cano_value2seclasses: Default::default(),
+            pending_ops: Default::default(),
         }
     }
     // pending insert
-    pub fn insert<PR: SlottedPatRecSgl>(&mut self, cano_value: Value, meta: SlotMeta<PR>) {
-        match self.cano_value2seclasses.get(&cano_value) {
-            Some(seclasses) => {
-                // seclasses.ty2senodes.get
+    // pub fn insert<PR: SlottedPatRecSgl>(&mut self, cano_value: Value, meta: Vec<SlotMeta<PR>>) {}
+    pub fn push_pending(&self, pended: SlotPendingOps) {
+        self.pending_ops.push(pended);
+    }
+    pub fn flush_pending(&self) {
+        while let Some(pended) = self.pending_ops.pop() {
+            println!("processing {:?}", pended);
+            match pended {
+                SlotPendingOps::Insert { inputs, output } => {
+                    println!("inputs:{:?} output:{:?}", inputs, output);
+                }
+                SlotPendingOps::Union(a, b) => {
+                    println!("union :{:?} {:?}", a, b);
+                }
             }
-            None => {}
         }
     }
+    pub fn add_pending_ops() {}
+}
+pub type _FuncValueMeta<PR: PatRecSgl> = (FuncName, egglog::Value, PR::MetaTy);
+pub type FuncValueMeta<Pr: PatRec, PR: PatRecSgl> = (FuncName, egglog::Value, Pr::MetaTy<PR>);
+pub type FuncValueMetaInner = (FuncName, egglog::Value, ArcSlotMetaInner);
+#[derive(Clone, Debug)]
+pub enum SlotPendingOps {
+    Insert {
+        inputs: Vec<FuncValueMetaInner>,
+        output: FuncValueMetaInner,
+    },
+    Union(FuncValueMetaInner, FuncValueMetaInner),
 }
