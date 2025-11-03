@@ -230,6 +230,14 @@ impl Tx for PatRecorder {
     fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         todo!("not yet implemented");
     }
+
+    fn replace_meta(&self, _sym: Sym, _meta: Box<dyn std::any::Any>) {
+        panic!("no meta")
+    }
+
+    fn get_meta(&self, _sym: Sym) -> Box<dyn std::any::Any> {
+        panic!("no meta")
+    }
 }
 
 impl NodeDropper for PatRecorder {

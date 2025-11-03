@@ -1,5 +1,5 @@
 use eggplant_egui_graphs::{DisplayNode, MaybeInner, NodeProps, ViewNode};
-use egui::{Color32, FontFamily, FontId, Pos2, Rect, Vec2, epaint::TextShape};
+use egui::{Color32, FontFamily, FontId, Pos2, Rect, Shape, Stroke, Vec2, epaint::TextShape};
 use petgraph::Directed;
 
 #[derive(Clone, Debug)]
@@ -9,6 +9,7 @@ pub struct PlantNodeShape {
     size_x: f32,
     size_y: f32,
     selected: Option<MaybeInner>,
+    last_whether_selected: Option<MaybeInner>,
     dragged: bool,
     hovered: bool,
 }
@@ -23,6 +24,7 @@ impl From<NodeProps> for PlantNodeShape {
             selected: node_props.selected,
             dragged: node_props.dragged,
             hovered: node_props.hovered,
+            last_whether_selected: None,
         }
     }
 }
@@ -87,10 +89,19 @@ impl DisplayNode<Directed> for PlantNodeShape {
         }
 
         if self.selected.is_some() {
+            // newly selected
+            if self.last_whether_selected.is_none() {
+                self.payload
+                    .event_handle
+                    .event_handle
+                    .on_newly_selected(self.payload.cano_value);
+                self.last_whether_selected = self.selected.clone();
+            }
             self.payload
                 .event_handle
                 .event_handle
                 .on_selected(self.payload.cano_value);
+            // TODO just be more light as selected?
         }
         if self.hovered {
             self.payload
@@ -105,7 +116,7 @@ impl DisplayNode<Directed> for PlantNodeShape {
                 .on_drag(self.payload.cano_value);
         }
 
-        // let shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(1., color));
+        let _shape_rect = Shape::convex_polygon(points, Color32::default(), Stroke::new(1., color));
         // update self size
         self.size_x = rect.size().x / 2.; // compensate, I'don't know why the label's width is so large
         self.size_y = rect.size().y;

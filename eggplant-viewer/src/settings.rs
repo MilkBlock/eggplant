@@ -17,11 +17,11 @@ impl Default for SettingsInteraction {
         Self {
             dragging_enabled: true,
             hover_enabled: true,
-            node_clicking_enabled: false,
-            node_selection_enabled: false,
+            node_clicking_enabled: true,
+            node_selection_enabled: true,
             node_selection_multi_enabled: false,
-            edge_clicking_enabled: false,
-            edge_selection_enabled: false,
+            edge_clicking_enabled: true,
+            edge_selection_enabled: true,
             edge_selection_multi_enabled: false,
         }
     }

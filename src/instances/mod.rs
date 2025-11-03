@@ -130,6 +130,9 @@ macro_rules! tx_rx_vt_pr {
         impl eggplant::wrap::WithPatRecSgl for $tx_name {
             type PatRecSgl = $pat_rec_name;
         }
+        impl eggplant::wrap::WithRxSgl for $pat_rec_name {
+            type RxSgl = $tx_name;
+        }
     };
 }
 
@@ -163,6 +166,9 @@ macro_rules! slotted_tx_rx_vt_pr {
         eggplant::slotted_patttern_recorder!($pat_rec_name);
         impl eggplant::wrap::WithPatRecSgl for $tx_name {
             type PatRecSgl = $pat_rec_name;
+        }
+        impl eggplant::wrap::WithRxSgl for $pat_rec_name {
+            type RxSgl = $tx_name;
         }
     };
 }

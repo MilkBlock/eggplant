@@ -18,7 +18,11 @@ pub struct ViewNode {
 pub trait EventHandle: Send + Sync {
     fn on_drag(&self, cano_value: u32) {}
     fn on_hover(&self, cano_value: u32) {}
+    // for every frame
     fn on_selected(&self, cano_value: u32) {}
+    // just once
+    fn on_newly_selected(&self, cano_value: u32) {}
+    fn on_clicked(&self, cano_value: u32) {}
     fn dyn_clone(&self) -> Box<dyn EventHandle>;
 }
 pub struct EventHandler {

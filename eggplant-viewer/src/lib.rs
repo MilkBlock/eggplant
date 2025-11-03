@@ -1,5 +1,6 @@
 use eframe::App;
 // use dagviz::{GraphConfig, GraphEdge, GraphNode, layout::layout};
+pub use eframe;
 pub use eframe::Error;
 use eggplant_egui_graphs::events;
 use eggplant_egui_graphs::{

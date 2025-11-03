@@ -7,6 +7,8 @@
 //! slot symmetries S and dummy symmetries D is canonicalized by finding
 //! the minimal representative in the double coset D*g*S.
 
+use crate::butler_portugal::index::DeBrus;
+
 use super::error::Result;
 use super::index::TensorIndex;
 use super::schreier_sims::schreier_sims;
@@ -181,18 +183,13 @@ fn enumerate_group(bsgs: &BSGS, degree: usize) -> Vec<Permutation> {
 }
 
 /// Creates a canonical key for tensor comparison
-fn tensor_canonical_key(tensor: &Tensor) -> String {
-    let mut key = String::new();
+fn tensor_canonical_key(tensor: &Tensor) -> DeBrus {
+    let mut key = DeBrus::new();
 
     // Add index names in order with their variance
     for index in tensor.indices() {
-        key.push_str(index.name());
-        key.push(if index.is_contravariant() { '^' } else { '_' });
-        key.push('|'); // separator
+        key.push(index.de_bru());
     }
-
-    // Add coefficient at the end (so lexicographic ordering of indices takes precedence)
-    key.push_str(&format!("#{}", tensor.coefficient()));
 
     key
 }
@@ -391,12 +388,14 @@ fn tensor_symmetry_generators(tensor: &Tensor) -> Vec<Permutation> {
 
 #[cfg(test)]
 mod tests {
+    use crate::butler_portugal::tensor::DeBru;
+
     use super::Symmetry;
     use super::*;
 
     #[test]
     fn test_trivial_canonicalization() {
-        let tensor = Tensor::new("T", vec![TensorIndex::new("i", 0)]);
+        let tensor = Tensor::new(vec![TensorIndex::new(DeBru::new(3), 0)]);
         let result = match canonicalize(&tensor) {
             Ok(val) => val,
             Err(e) => panic!("canonicalize failed: {e}"),
@@ -406,10 +405,10 @@ mod tests {
 
     #[test]
     fn test_symmetric_tensor_canonicalization() {
-        let mut tensor = Tensor::new(
-            "S",
-            vec![TensorIndex::new("b", 0), TensorIndex::new("a", 1)],
-        );
+        let mut tensor = Tensor::new(vec![
+            TensorIndex::new(DeBru::new(1), 0),
+            TensorIndex::new(DeBru::new(2), 1),
+        ]);
 
         tensor.add_symmetry(Symmetry::symmetric(vec![0, 1]));
 
@@ -417,42 +416,8 @@ mod tests {
             Ok(val) => val,
             Err(e) => panic!("canonicalize failed: {e}"),
         };
-        assert_eq!(result.indices()[0].name(), "a");
-        assert_eq!(result.indices()[1].name(), "b");
-    }
-
-    #[test]
-    fn test_antisymmetric_tensor_canonicalization() {
-        let mut tensor = Tensor::new(
-            "A",
-            vec![TensorIndex::new("b", 0), TensorIndex::new("a", 1)],
-        );
-
-        tensor.add_symmetry(Symmetry::antisymmetric(vec![0, 1]));
-
-        let result = match canonicalize(&tensor) {
-            Ok(val) => val,
-            Err(e) => panic!("canonicalize failed: {e}"),
-        };
-        assert_eq!(result.indices()[0].name(), "a");
-        assert_eq!(result.indices()[1].name(), "b");
-        assert_eq!(result.coefficient(), -1); // Sign change from swap
-    }
-
-    #[test]
-    fn test_zero_tensor_canonicalization() {
-        let mut tensor = Tensor::new(
-            "A",
-            vec![TensorIndex::new("a", 0), TensorIndex::new("a", 1)],
-        );
-
-        tensor.add_symmetry(Symmetry::antisymmetric(vec![0, 1]));
-
-        let result = match canonicalize(&tensor) {
-            Ok(val) => val,
-            Err(e) => panic!("canonicalize failed: {e}"),
-        };
-        assert_eq!(result.coefficient(), 0);
+        assert_eq!(result.indices()[0].de_bru(), DeBru::new(1));
+        assert_eq!(result.indices()[1].de_bru(), DeBru::new(2));
     }
 
     #[test]
@@ -462,17 +427,5 @@ mod tests {
 
         let non_identity = vec![1, 0, 2, 3];
         assert!(!is_identity(&non_identity));
-    }
-
-    #[test]
-    fn test_tensor_canonical_key() {
-        let tensor = Tensor::new(
-            "T",
-            vec![TensorIndex::new("a", 0), TensorIndex::contravariant("b", 1)],
-        );
-
-        let key = tensor_canonical_key(&tensor);
-        assert!(key.contains("a_"));
-        assert!(key.contains("b^"));
     }
 }

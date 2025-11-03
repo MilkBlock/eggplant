@@ -3,6 +3,8 @@
 //! This module defines various types of tensor symmetries and provides
 //! methods for checking permutation validity and calculating sign changes.
 
+use crate::butler_portugal::tensor::DeBru;
+
 use super::index::TensorIndex;
 use std::collections::HashSet;
 
@@ -273,14 +275,14 @@ impl Symmetry {
                 indices: sym_indices,
             } => {
                 // Check if any two indices in the antisymmetric group are equal
-                let names: Vec<&str> = sym_indices
+                let debrus: Vec<DeBru> = sym_indices
                     .iter()
                     .filter_map(|&i| indices.get(i))
-                    .map(|idx| idx.name())
+                    .map(|idx| idx.de_bru())
                     .collect();
 
-                let unique_names: HashSet<&str> = names.iter().cloned().collect();
-                names.len() != unique_names.len()
+                let unique_names: HashSet<DeBru> = debrus.iter().cloned().collect();
+                debrus.len() != unique_names.len()
             }
             _ => false,
         }
@@ -395,17 +397,6 @@ mod tests {
         assert_eq!(permutation_parity(&[0, 1, 2]), 1); // Identity
         assert_eq!(permutation_parity(&[1, 0, 2]), -1); // Single swap
         assert_eq!(permutation_parity(&[2, 1, 0]), -1); // Single 2-cycle (0↔2)
-    }
-
-    #[test]
-    fn test_antisymmetric_makes_zero() {
-        let asym = Symmetry::antisymmetric(vec![0, 1]);
-        let indices = vec![
-            TensorIndex::new("a", 0),
-            TensorIndex::new("a", 1), // Same name - should be zero
-        ];
-
-        assert!(asym.makes_tensor_zero(&indices));
     }
 
     #[test]

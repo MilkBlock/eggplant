@@ -54,6 +54,8 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
     #[track_caller]
     fn on_new(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
+    fn replace_meta(&self, sym: Sym, meta: Box<dyn Any>);
+    #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -62,6 +64,9 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
     #[track_caller]
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value;
+    fn get_meta(&self, _sym: Sym) -> Box<dyn std::any::Any> {
+        panic!("no meta")
+    }
 }
 pub trait Rx: 'static {
     #[track_caller]
@@ -118,6 +123,8 @@ pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
     fn receive(received: TxCommand);
     #[track_caller]
     fn on_new(node: &(impl EgglogNode + 'static));
+    #[track_caller]
+    fn replace_meta(sym: Sym, meta: Box<dyn Any>);
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -177,6 +184,10 @@ where
     }
     fn canonical_raw(node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         Self::sgl().canonical_raw(node1)
+    }
+
+    fn replace_meta(sym: Sym, meta: Box<dyn Any>) {
+        Self::sgl().replace_meta(sym, meta)
     }
 }
 pub trait NodeSetterSgl {
@@ -272,7 +283,7 @@ pub trait PatRec: NodeDropper + Tx {
     }
 
     /// return whether updated
-    fn flush_pending(&self) -> bool {
+    fn flush_pending(&self, _egraph: &EGraph) -> bool {
         false
     }
 }
@@ -300,9 +311,9 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     );
 
     /// flush pending and return whether updated
-    fn flush_pending() -> bool;
+    fn flush_pending(egraph: &EGraph) -> bool;
 }
-impl<T: SingletonGetter> PatRecSgl for T
+impl<T: WithRxSgl + SingletonGetter> PatRecSgl for T
 where
     T::RetTy: PatRec + NodeSetter,
 {
@@ -343,13 +354,16 @@ where
         Self::sgl().on_ctx_union(combo1, combo2)
     }
 
-    fn flush_pending() -> bool {
-        Self::sgl().flush_pending()
+    fn flush_pending(egraph: &EGraph) -> bool {
+        Self::sgl().flush_pending(egraph)
     }
 }
 
-pub trait WithPatRecSgl {
+pub trait WithPatRecSgl: SingletonGetter {
     type PatRecSgl: PatRecSgl;
+}
+pub trait WithRxSgl {
+    type RxSgl: RxSgl;
 }
 
 // pub trait WithPatternRecorderSgl

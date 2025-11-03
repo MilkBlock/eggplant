@@ -12,7 +12,6 @@ use egglog::{
     span,
 };
 use egglog::{ContainerValue, RunReport};
-use env_logger::Target;
 use std::cell::UnsafeCell;
 use std::marker::PhantomData;
 use std::ops::Deref;

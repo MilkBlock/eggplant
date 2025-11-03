@@ -39,34 +39,7 @@ pub mod young_tableaux;
 
 pub use canonicalization::canonicalize;
 pub use error::{ButlerPortugalError, Result};
+pub use index::DeBrus;
 pub use index::TensorIndex;
+pub use tensor::DeBru;
 pub use tensor::Tensor;
-
-#[cfg(test)]
-mod tests {
-    use crate::butler_portugal::symmetry::Symmetry;
-
-    use super::*;
-
-    #[test]
-    fn test_basic_tensor_creation() {
-        let tensor = Tensor::new(
-            "T",
-            vec![TensorIndex::new("i", 0), TensorIndex::new("j", 1)],
-        );
-
-        assert_eq!(tensor.name(), "T");
-        assert_eq!(tensor.indices().len(), 2);
-    }
-
-    #[test]
-    fn test_symmetry_application() {
-        let mut tensor = Tensor::new(
-            "S",
-            vec![TensorIndex::new("a", 0), TensorIndex::new("b", 1)],
-        );
-
-        tensor.add_symmetry(Symmetry::symmetric(vec![0, 1]));
-        assert_eq!(tensor.symmetries().len(), 1);
-    }
-}

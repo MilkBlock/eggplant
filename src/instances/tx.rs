@@ -166,6 +166,10 @@ impl Tx for TxNoVT {
     fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         todo!("not yet implemented");
     }
+
+    fn replace_meta(&self, sym: Sym, meta: Box<dyn std::any::Any>) {
+        panic!("basic tx not allow meta")
+    }
 }
 
 impl NodeDropper for TxNoVT {}

@@ -515,6 +515,10 @@ impl Tx for TxRxVTPR {
             .value();
         egraph.get_canonical_value(val, egraph.get_sort_by_name(node1.ty_name()).unwrap())
     }
+
+    fn replace_meta(&self, _sym: Sym, _meta: Box<dyn std::any::Any>) {
+        panic!("no meta")
+    }
 }
 
 impl TxCommit for TxRxVTPR {

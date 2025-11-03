@@ -1,5 +1,8 @@
+#[cfg(feature = "viewer")]
+use crate::prelude::SlottedPatRecorder;
 use crate::{
     etc::{Escape, quote, topo_sort},
+    prelude::{ArcSlotMetaInner, SlotMetaInner, SlotWorkAreaNode},
     wrap::*,
 };
 use core::panic;
@@ -31,10 +34,13 @@ use std::{
 /// 5. generate proof (opt.)
 pub struct SlottedTxRxVTPR {
     pub egraph: Arc<Mutex<EGraph>>,
-    map: DashMap<Sym, WorkAreaNode>,
+    map: DashMap<Sym, SlotWorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
     staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
     staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
+
+    sym2meta: DashMap<Sym, ArcSlotMetaInner>,
+
     checkpoints: Mutex<Vec<CommitCheckPoint>>,
     registry: EgglogTypeRegistry,
     /// mapping from sym to value, used to query [`Value`] in EGraph of specified [`Sym`]
@@ -168,6 +174,8 @@ impl SlottedTxRxVTPR {
             egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 Self::add_eggplant_sorts(&mut e);
+                // turn off semi naive
+                e.seminaive = false;
                 e
             })),
             registry: EgglogTypeRegistry::new_with_inventory(),
@@ -178,6 +186,7 @@ impl SlottedTxRxVTPR {
             sym2value_map: Arc::new(DashMap::new()),
             // proof_store: Mutex::new(ProofStore::default()),
             commit_counter: Mutex::new(0),
+            sym2meta: Default::default(),
         };
         let type_defs = EgglogTypeRegistry::collect_type_defs();
         for def in type_defs {
@@ -239,7 +248,7 @@ impl SlottedTxRxVTPR {
     //     tx
     // }
     // if auto_latest is true, it will locate the latest version of the node and add it to the map
-    fn add_node(&self, mut node: WorkAreaNode, auto_latest: bool) {
+    fn add_node(&self, mut node: SlotWorkAreaNode, auto_latest: bool) {
         let sym = node.cur_sym();
         for node in node.succs_mut() {
             log::debug!("succ is {}", node);
@@ -330,7 +339,7 @@ impl SlottedTxRxVTPR {
                 let mut staged_node = staged_latest_sym_map.get(&ancestor).unwrap().clone_dyn();
                 *staged_node.cur_sym_mut() = next_sym;
 
-                let mut staged_node = WorkAreaNode::new(staged_node);
+                let mut staged_node = SlotWorkAreaNode::new(staged_node);
                 // set prev, chain next latest version to latest version
                 staged_node.prev = Some(latest_sym);
                 staged_node.preds = self.map.get(&ancestor).unwrap().preds.clone();
@@ -378,7 +387,7 @@ impl SlottedTxRxVTPR {
         log::debug!("after update_nodes:{:#?}", self.map);
         next_syms
     }
-    pub fn wag_build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
+    pub fn wag_build_petgraph(&self) -> StableDiGraph<SlotWorkAreaNode, ()> {
         // 1. collect all nodes
         let v = self
             .map
@@ -482,6 +491,14 @@ impl Tx for SlottedTxRxVTPR {
             .lock()
             .unwrap()
             .insert(node.cur_sym(), node.clone_dyn());
+
+        let merged = ArcSlotMetaInner::from_metas(node.succs().iter().map(|succ| {
+            self.sym2meta
+                .get(succ)
+                .expect("meta of succ sym should added ")
+                .clone()
+        }));
+        self.sym2meta.insert(node.cur_sym(), merged);
     }
 
     #[track_caller]
@@ -516,6 +533,23 @@ impl Tx for SlottedTxRxVTPR {
             .expect("sym should be comitted before get value")
             .value();
         egraph.get_canonical_value(val, egraph.get_sort_by_name(node1.ty_name()).unwrap())
+    }
+
+    fn replace_meta(&self, sym: Sym, meta: Box<dyn std::any::Any>) {
+        let node = self
+            .map
+            .get(&sym)
+            .expect("node should be added before replace_meta");
+        let meta: Box<ArcSlotMetaInner> = meta.downcast().unwrap();
+        self.sym2meta.entry(sym).insert(*meta);
+    }
+    fn get_meta(&self, sym: Sym) -> Box<dyn std::any::Any> {
+        match self.sym2meta.get(&sym) {
+            Some(meta) => Box::new(meta.clone()),
+            None => {
+                panic!("shoud not get meta before node is added")
+            }
+        }
     }
 }
 
@@ -555,7 +589,7 @@ impl TxCommit for SlottedTxRxVTPR {
         let mut backup_staged_new_syms = IndexSet::default();
         let len = news.len();
         for (new, new_node) in news.drain(0..len) {
-            self.add_node(WorkAreaNode::new(new_node.clone_dyn()), false);
+            self.add_node(SlotWorkAreaNode::new(new_node.clone_dyn()), false);
             backup_staged_new_syms.insert(new);
         }
         // collect all staged ndoes
@@ -715,7 +749,10 @@ impl Rx for SlottedTxRxVTPR {
                 ret_sym = Some(boxed_node.cur_sym())
             }
             log::info!("pulled add node: {:?}", boxed_node);
-            self.add_node(WorkAreaNode::new_pulled(boxed_node, value.erase()), false);
+            self.add_node(
+                SlotWorkAreaNode::new_pulled(boxed_node, value.erase()),
+                false,
+            );
         }
         log::debug!(
             "term:{:?}, term_dag:{:?}, cost:{}",
@@ -819,20 +856,21 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
 
     #[track_caller]
     fn run_ruleset(&self, ruleset_id: RuleSetId, until: RunConfig) -> RunReport {
-        let mut egraph = self.egraph.lock().unwrap();
         match until {
             RunConfig::Sat => {
+                let mut egraph = self.egraph.lock().unwrap();
                 let mut run_report = RunReport::default();
                 loop {
                     let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
                     let updated = iter_report.updated;
                     run_report.union(iter_report);
-                    if !updated && !PR::flush_pending() {
+                    if !updated && !PR::flush_pending(&egraph) {
                         break run_report;
                     }
                 }
             }
             RunConfig::Times(times) => {
+                let mut egraph = self.egraph.lock().unwrap();
                 let mut run_report = RunReport::default();
                 for _ in 0..times {
                     let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
@@ -841,8 +879,9 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 run_report
             }
             RunConfig::Once => {
+                let mut egraph = self.egraph.lock().unwrap();
                 let run_report = egraph.step_rules(ruleset_id.0).unwrap();
-                PR::flush_pending();
+                PR::flush_pending(&egraph);
                 run_report
             }
         }
@@ -1154,17 +1193,17 @@ impl ToDot for SlottedTxRxVTPR {
 }
 
 #[cfg(feature = "viewer")]
-impl EGraphView for SlottedTxRxVTPR {
+impl EGraphView for (SlottedTxRxVTPR, SlottedPatRecorder) {
     fn egraph(&self) -> std::sync::Arc<std::sync::Mutex<EGraph>> {
-        self.egraph.clone()
+        self.0.egraph.clone()
     }
 
     fn view(&self) -> Result<(), eframe::Error> {
         use eggplant_viewer::*;
-        let map: Arc<DashMap<Sym, WorkAreaNode>> = Arc::new(self.map.clone());
+        let map: Arc<DashMap<Sym, SlotWorkAreaNode>> = Arc::new(self.0.map.clone());
         #[derive(Clone)]
         struct SlotEventHandler {
-            map: Arc<DashMap<Sym, WorkAreaNode>>,
+            map: Arc<DashMap<Sym, SlotWorkAreaNode>>,
         }
         impl EventHandle for SlotEventHandler {
             fn dyn_clone(&self) -> Box<dyn EventHandle> {
@@ -1185,7 +1224,7 @@ impl EGraphView for SlottedTxRxVTPR {
         }
 
         let native_options = eframe::NativeOptions::default();
-        let egraph = self.egraph.lock().unwrap();
+        let egraph = self.0.egraph.lock().unwrap();
         eframe::run_native(
             "eggplant_egui_graphs demo",
             native_options,

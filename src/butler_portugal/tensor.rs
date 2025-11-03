@@ -7,12 +7,22 @@ use super::index::TensorIndex;
 use super::symmetry::Symmetry;
 use super::young_tableaux::{StandardTableau, young_symmetrizer_permutations};
 use std::fmt;
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Copy, PartialOrd, Ord)]
+pub struct DeBru(usize);
+impl DeBru {
+    pub fn new(de_bruijn: usize) -> DeBru {
+        Self(de_bruijn)
+    }
+}
+impl std::fmt::Display for DeBru {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{{{}}}", self.0)
+    }
+}
 
 /// Represents a tensor with indices and symmetry properties
 #[derive(Debug, Clone, PartialEq)]
 pub struct Tensor {
-    /// The name/symbol of the tensor (e.g., "R" for Riemann tensor)
-    name: String,
     /// The indices of the tensor
     indices: Vec<TensorIndex>,
     /// Symmetry properties of the tensor
@@ -33,13 +43,11 @@ impl Tensor {
     /// use butler_portugal::{Tensor, TensorIndex};
     ///
     /// let tensor = Tensor::new(
-    ///     "g",
     ///     vec![TensorIndex::new("mu", 0), TensorIndex::new("nu", 1)],
     /// );
     /// ```
-    pub fn new(name: &str, indices: Vec<TensorIndex>) -> Self {
+    pub fn new(indices: Vec<TensorIndex>) -> Self {
         Self {
-            name: name.to_string(),
             indices,
             symmetries: Vec::new(),
             coefficient: 1,
@@ -47,18 +55,12 @@ impl Tensor {
     }
 
     /// Creates a new tensor with a coefficient
-    pub fn with_coefficient(name: &str, indices: Vec<TensorIndex>, coefficient: i32) -> Self {
+    pub fn with_coefficient(indices: Vec<TensorIndex>, coefficient: i32) -> Self {
         Self {
-            name: name.to_string(),
             indices,
             symmetries: Vec::new(),
             coefficient,
         }
-    }
-
-    /// Returns the name of the tensor
-    pub fn name(&self) -> &str {
-        &self.name
     }
 
     /// Returns a reference to the tensor indices
@@ -152,7 +154,6 @@ impl Tensor {
         }
 
         let mut new_tensor = Self {
-            name: self.name.clone(),
             indices: new_indices,
             symmetries: self.symmetries.clone(),
             coefficient: self.coefficient,
@@ -230,11 +231,6 @@ impl Tensor {
 
 /// Helper: add two tensors if their names and indices (by name/variance) match, summing coefficients
 fn add_tensors(a: &Tensor, b: &Tensor) -> super::Result<Tensor> {
-    if a.name() != b.name() {
-        return Err(super::ButlerPortugalError::IncompatibleTensors(
-            "Cannot add tensors with different names".to_string(),
-        ));
-    }
     // Normalize indices by name and variance (ignore position)
     let mut a_indices: Vec<_> = a.indices().iter().collect();
     let mut b_indices: Vec<_> = b.indices().iter().collect();
@@ -243,7 +239,7 @@ fn add_tensors(a: &Tensor, b: &Tensor) -> super::Result<Tensor> {
     let indices_match = a_indices
         .iter()
         .zip(&b_indices)
-        .all(|(x, y)| x.name() == y.name() && x.is_contravariant() == y.is_contravariant());
+        .all(|(x, y)| x.de_bru() == y.de_bru() && x.is_contravariant() == y.is_contravariant());
     if indices_match {
         // Use canonical order for result
         let mut result = a.clone();
@@ -273,7 +269,7 @@ impl fmt::Display for Tensor {
             self.coefficient.abs().to_string()
         };
 
-        write!(f, "{}{}{}", sign, coeff, self.name)?;
+        write!(f, "{}{}", sign, coeff)?;
 
         if !self.indices.is_empty() {
             write!(f, "_")?;
@@ -295,29 +291,28 @@ mod tests {
 
     #[test]
     fn test_tensor_creation() {
-        let tensor = Tensor::new(
-            "R",
-            vec![TensorIndex::new("a", 0), TensorIndex::new("b", 1)],
-        );
+        let tensor = Tensor::new(vec![
+            TensorIndex::new(DeBru(1), 0),
+            TensorIndex::new(DeBru(2), 1),
+        ]);
 
-        assert_eq!(tensor.name(), "R");
         assert_eq!(tensor.rank(), 2);
         assert_eq!(tensor.coefficient(), 1);
     }
 
     #[test]
     fn test_tensor_with_coefficient() {
-        let tensor = Tensor::with_coefficient("T", vec![TensorIndex::new("i", 0)], -3);
+        let tensor = Tensor::with_coefficient(vec![TensorIndex::new(DeBru(1), 0)], -3);
 
         assert_eq!(tensor.coefficient(), -3);
     }
 
     #[test]
     fn test_index_swapping() {
-        let mut tensor = Tensor::new(
-            "A",
-            vec![TensorIndex::new("i", 0), TensorIndex::new("j", 1)],
-        );
+        let mut tensor = Tensor::new(vec![
+            TensorIndex::new(DeBru(1), 0),
+            TensorIndex::new(DeBru(2), 1),
+        ]);
 
         tensor.add_symmetry(Symmetry::antisymmetric(vec![0, 1]));
 
@@ -328,10 +323,10 @@ mod tests {
 
     #[test]
     fn test_tensor_display() {
-        let tensor = Tensor::new(
-            "g",
-            vec![TensorIndex::new("mu", 0), TensorIndex::new("nu", 1)],
-        );
+        let tensor = Tensor::new(vec![
+            TensorIndex::new(DeBru(1), 0),
+            TensorIndex::new(DeBru(2), 1),
+        ]);
 
         let display = format!("{tensor}");
         assert!(display.contains("g"));

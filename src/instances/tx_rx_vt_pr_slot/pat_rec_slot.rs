@@ -1,11 +1,12 @@
 use crate::{
+    butler_portugal::{DeBru, DeBrus, Tensor, TensorIndex},
     etc::generate_dot_by_graph,
     prelude::slotted::{FuncName, SlotPendingOps, SlottedCtx},
     wrap::*,
 };
 use dashmap::DashMap;
 use derive_more::{Debug, Deref};
-use egglog::util::IndexSet;
+use egglog::{EGraph, util::IndexSet};
 use petgraph::prelude::StableDiGraph;
 use std::{
     collections::HashMap,
@@ -30,7 +31,7 @@ pub struct SlottedPatRecorder {
     next_pat_id: AtomicU32,
 
     // slotted ctx
-    slotted_ctx: SlottedCtx,
+    pub slotted_ctx: Arc<SlottedCtx>,
 }
 struct SlottedPatRecNode {
     work_node: WorkAreaNode,
@@ -85,7 +86,7 @@ impl SlottedPatRecorder {
             next_pat_id: AtomicU32::new(0),
             root_table: DashMap::default(),
             constraint_table: DashMap::default(),
-            slotted_ctx: SlottedCtx::new(),
+            slotted_ctx: Default::default(),
         }
     }
     // collect all ancestors of cur_sym, without cur_sym
@@ -213,7 +214,6 @@ impl SlottedPatRecorder {
                 .preds
                 .push(sym);
         }
-        self.map.insert(node.work_node.cur_sym(), node);
     }
 
     fn current_pat_id(&self) -> PatId {
@@ -279,6 +279,10 @@ impl Tx for SlottedPatRecorder {
     }
     fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         todo!("not yet implemented");
+    }
+
+    fn replace_meta(&self, sym: Sym, meta: Box<dyn std::any::Any>) {
+        panic!("new meta operation is done in query_slot")
     }
 }
 
@@ -412,8 +416,8 @@ impl PatRec for SlottedPatRecorder {
         ))
     }
 
-    fn flush_pending(&self) -> bool {
-        self.slotted_ctx.flush_pending();
+    fn flush_pending(&self, egraph: &EGraph) -> bool {
+        self.slotted_ctx.flush_pending(egraph);
         false
     }
 }
@@ -434,18 +438,41 @@ impl SlottedPatRec for SlottedPatRecorder {
 
 #[derive(Clone, Debug, Default)]
 pub struct SlotMetaInner {
-    sub_metas: Vec<ArcSlotMetaInner>,
-    var_id_set: IndexSet<crate::wrap::SlotVarID>,
+    pub sub_metas: Vec<ArcSlotMetaInner>,
+    pub var_id_set: IndexSet<crate::wrap::SlotVarID>,
 }
 #[derive(Clone, Debug, Deref, Default)]
 pub struct ArcSlotMetaInner {
-    inner: Arc<SlotMetaInner>,
+    pub inner: Arc<SlotMetaInner>,
 }
 impl ArcSlotMetaInner {
     fn new(inner: SlotMetaInner) -> Self {
         Self {
             inner: Arc::new(inner),
         }
+    }
+    pub fn get_current_layer_de_bruijn(&self) -> Vec<Vec<usize>> {
+        let mut a = vec![];
+        for meta in self.inner.sub_metas.iter() {
+            a.push(
+                meta.var_id_set
+                    .iter()
+                    .map(|x| self.inner.var_id_set.get_index_of(x))
+                    .map(Option::unwrap)
+                    .collect(),
+            );
+        }
+        a
+    }
+    pub fn tensor(&self) -> Tensor {
+        Tensor::new(
+            self.get_current_layer_de_bruijn()
+                .iter()
+                .flat_map(|v| v.iter().copied())
+                .enumerate()
+                .map(|(i, x)| TensorIndex::new(DeBru::new(x), i))
+                .collect(),
+        )
     }
 }
 pub struct SlotMeta<PR: PatRecSgl> {
@@ -509,19 +536,28 @@ impl<PR: PatRecSgl> FromMetas<PR> for SlotMeta<PR> {
     ///  x     y             {x}   {y}                 {x}    {y}
     ///
     fn from_metas(sub_metas: &mut impl Iterator<Item = SlotMeta<PR>>) -> Self {
-        let sub_metas: Vec<_> = sub_metas.map(|x| x.inner).collect();
-        let var_id_set = sub_metas
-            .iter()
-            .map(|meta| &meta.inner.var_id_set)
-            .flat_map(|x| x.iter().copied())
-            .collect();
+        let sub_metas = sub_metas.map(|x| x.inner);
         // length of sub_metas should be same to merged mapping length
         Self {
-            inner: ArcSlotMetaInner::new(SlotMetaInner {
+            inner: ArcSlotMetaInner::from_metas(sub_metas),
+            _p: PhantomData,
+        }
+    }
+}
+impl ArcSlotMetaInner {
+    pub fn from_metas(sub_metas: impl Iterator<Item = ArcSlotMetaInner>) -> Self {
+        let sub_metas: Vec<_> = sub_metas.collect();
+        let var_id_set = sub_metas
+            .iter()
+            .map(|meta| &meta.var_id_set)
+            .flat_map(|x| x.iter().copied())
+            .collect();
+
+        ArcSlotMetaInner {
+            inner: Arc::new(SlotMetaInner {
                 sub_metas,
                 var_id_set,
             }),
-            _p: PhantomData,
         }
     }
 }
@@ -562,5 +598,15 @@ impl<PR: PatRecSgl> SlotMeta<PR> {
             );
         }
         a
+    }
+    pub fn tensor(&self) -> Tensor {
+        Tensor::new(
+            self.get_current_layer_de_bruijn()
+                .iter()
+                .flat_map(|v| v.iter().copied())
+                .enumerate()
+                .map(|(i, x)| TensorIndex::new(DeBru::new(x), i))
+                .collect(),
+        )
     }
 }
