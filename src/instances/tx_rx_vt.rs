@@ -462,10 +462,6 @@ impl Tx for TxRxVT {
     fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         todo!("not yet implemented");
     }
-
-    fn replace_meta(&self, _sym: Sym, _meta: Box<dyn std::any::Any>) {
-        panic!("no meta")
-    }
 }
 
 impl TxCommit for TxRxVT {
@@ -637,10 +633,6 @@ impl Rx for TxRxVT {
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
         let value = sym.get_value_by_eval_string(&mut self.egraph.lock().unwrap());
         self.on_pull_value(Value::<T>::new(value))
-    }
-
-    fn egraph(&self) -> Arc<Mutex<EGraph>> {
-        self.egraph.clone()
     }
 }
 

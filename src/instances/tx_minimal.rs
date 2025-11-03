@@ -1,9 +1,12 @@
 use crate::wrap::*;
 use egglog::{EGraph, SerializeConfig, ast::Command};
-use std::{path::Path, sync::Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 pub struct TxMinimal {
-    egraph: Mutex<EGraph>,
+    pub egraph: Arc<Mutex<EGraph>>,
 }
 
 /// tx with miminal feature (only new function is supported)
@@ -11,11 +14,11 @@ pub struct TxMinimal {
 impl TxMinimal {
     pub fn new_with_type_defs(commands: Vec<Command>) -> Self {
         Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 e.run_program(commands).unwrap();
                 e
-            }),
+            })),
         }
     }
     pub fn new() -> Self {
@@ -81,10 +84,6 @@ impl Tx for TxMinimal {
 
     fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         todo!("not yet implemented");
-    }
-
-    fn replace_meta(&self, _sym: Sym, _meta: Box<dyn std::any::Any>) {
-        panic!("no meta")
     }
 }
 

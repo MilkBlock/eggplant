@@ -663,9 +663,9 @@ pub fn dsl(
                                     }
                                 }
                             }
-                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
                                 type MetaTy = ();
-                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
+                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                                     #W::Value::new(self.erase())
                                 }
                                 fn meta(&self) -> Self::MetaTy{
@@ -941,9 +941,9 @@ pub fn dsl(
                     //         self._itself
                     //     }
                     // }
-                    impl #W::Insertable<#name_node<(),()>> for #valued_variant_name {
+                    impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
                         type MetaTy = ();
-                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                             #W::Value::new(self._itself.val)
                         }
                         fn meta(&self) -> Self::MetaTy{
@@ -1297,9 +1297,9 @@ pub fn dsl(
                     #(#handle_getter_fns)*
                     #(#constraint_fns)*
                 };
-                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
                     type MetaTy = ();
-                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
+                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                         #W::Value::new(self.erase())
                     }
                     fn meta(&self) -> Self::MetaTy{

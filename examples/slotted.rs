@@ -17,7 +17,7 @@ slotted_tx_rx_vt_pr!(MyTx, MyPatRec);
 fn main() {
     env_logger::init();
     // let expr: Expr<MyTx, _> = Add::new(&Mul::new(&Var::new(), &Var::new()), &Const::new(4));
-    let expr: Expr<MyTx, _> = Add::new(&Var::new(), &Var::new());
+    let expr: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("b"));
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
@@ -45,7 +45,7 @@ fn main() {
         },
     );
     println!("first");
-    // let report = MyTx::run_ruleset(ruleset, RunConfig::Once);
+    let report = MyTx::run_ruleset(ruleset, RunConfig::Once);
     // println!("second");
     // let report = MyTx::run_ruleset(ruleset, RunConfig::Once);
     // println!("third");
@@ -151,7 +151,7 @@ impl<T: eggplant::wrap::TxSgl + eggplant::wrap::NonPatRecSgl + eggplant::wrap::W
         let expr = Var::new();
         T::replace_meta(
             expr.cur_sym(),
-            Box::new(ArcSlotMetaInner {
+            Box::new(SlotMeta {
                 inner: Arc::new(SlotMetaInner {
                     sub_metas: vec![],
                     var_id_set: {

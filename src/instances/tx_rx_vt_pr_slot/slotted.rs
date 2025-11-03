@@ -1,6 +1,6 @@
 use crate::{
     butler_portugal::{Tensor, canonicalize},
-    prelude::ArcSlotMetaInner,
+    prelude::SlotMeta,
     wrap::{EgglogNode, PatRec, PatRecSgl, Sym, Syms},
 };
 use dashmap::DashMap;
@@ -163,8 +163,8 @@ impl SlottedCtx {
 
 fn find_satisfied_enode(
     seclasses: &dashmap::mapref::one::RefMut<'_, Value, SEClassesWithCanoValue>,
-    inputs: &[(&'static str, Value, ArcSlotMetaInner)],
-    (output_func, output_cano_val, output_meta): &(&'static str, Value, ArcSlotMetaInner),
+    inputs: &[(&'static str, Value, SlotMeta)],
+    (output_func, output_cano_val, output_meta): &(&'static str, Value, SlotMeta),
 ) -> Option<SENodeID> {
     // if let Some(senode_ids) = seclasses.ty2senodes.get(output_func) {
     //     for enode_id in senode_ids.iter() {
@@ -189,8 +189,8 @@ fn find_satisfied_enode(
 }
 
 pub type _FuncValueMeta<PR: PatRecSgl> = (FuncName, egglog::Value, PR::MetaTy);
-pub type FuncValueMeta<Pr: PatRec, PR: PatRecSgl> = (FuncName, egglog::Value, Pr::MetaTy<PR>);
-pub type FuncValueMetaInner = (FuncName, egglog::Value, ArcSlotMetaInner);
+pub type FuncValueMeta<Pr: PatRec> = (FuncName, egglog::Value, Pr::MetaTy);
+pub type FuncValueMetaInner = (FuncName, egglog::Value, SlotMeta);
 #[derive(Clone, Debug)]
 pub enum SlotPendingOps {
     Insert {

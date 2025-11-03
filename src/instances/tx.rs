@@ -2,11 +2,12 @@ use crate::wrap::*;
 use dashmap::DashMap;
 use egglog::ast::Command;
 use egglog::{EGraph, SerializeConfig, util::IndexSet};
+use std::sync::Arc;
 use std::{path::Path, sync::Mutex};
 
 #[allow(unused)]
 pub struct TxNoVT {
-    pub egraph: Mutex<EGraph>,
+    pub egraph: Arc<Mutex<EGraph>>,
     map: DashMap<Sym, WorkAreaNode>,
     registry: EgglogTypeRegistry,
 }
@@ -15,12 +16,12 @@ pub struct TxNoVT {
 impl TxNoVT {
     pub fn new_with_type_defs(type_defs: Vec<Command>) -> Self {
         Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 log::info!("{:?}", type_defs);
                 e.run_program(type_defs).unwrap();
                 e
-            }),
+            })),
             map: DashMap::default(),
             registry: EgglogTypeRegistry::new_with_inventory(),
         }
@@ -165,10 +166,6 @@ impl Tx for TxNoVT {
     }
     fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         todo!("not yet implemented");
-    }
-
-    fn replace_meta(&self, sym: Sym, meta: Box<dyn std::any::Any>) {
-        panic!("basic tx not allow meta")
     }
 }
 

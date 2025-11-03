@@ -526,6 +526,16 @@ pub fn ctx_insert_fn_ts(
 ) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
     let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
     let field_idents = variant2field_ident(&variant);
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant :#W::EgglogEnumVariantTy)
+            })
+        },
+    );
 
     let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
     let (variant_marker, variant_name) = variant2marker_name(variant);
@@ -537,7 +547,8 @@ pub fn ctx_insert_fn_ts(
         // insert fn
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 use #W::Value;
                 use #W::Insertable;
                 let key = [
@@ -552,19 +563,22 @@ pub fn ctx_insert_fn_ts(
         // insert decl
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
         },
         // pr insert fn
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 self.ctx.#insert_fn_name(#(#field_idents),*)
             }
         },
         // pr insert decl
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
         },
     )
 }
@@ -578,6 +592,16 @@ pub fn ctx_subsume_remove_fn_ts_with_pr(
         variant,
         |_basic, _basic_ty| None,
         |complex, _complex_ty| Some(quote!(#complex)),
+    );
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant :#W::EgglogEnumVariantTy)
+            })
+        },
     );
     let _complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
@@ -601,7 +625,8 @@ pub fn ctx_subsume_remove_fn_ts_with_pr(
         // insert fn
         quote! {
             #[track_caller]
-            fn #subsume_fn_name(&self, #(#valued_ref_node_list),*) {
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) {
                 use #W::Value;
                 use #W::Insertable;
                 let key = [
@@ -613,7 +638,8 @@ pub fn ctx_subsume_remove_fn_ts_with_pr(
                 )
             }
             #[track_caller]
-            fn #remove_fn_name(&self, #(#valued_ref_node_list),*) {
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) {
                 use #W::Value;
                 use #W::Insertable;
                 let key = [
@@ -628,27 +654,33 @@ pub fn ctx_subsume_remove_fn_ts_with_pr(
         // insert decl
         quote! {
             #[track_caller]
-            fn #subsume_fn_name(&self, #(#valued_ref_node_list),*) ;
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) ;
             #[track_caller]
-            fn #remove_fn_name(&self, #(#valued_ref_node_list),*) ;
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) ;
         },
         // pr insert fn
         quote! {
             #[track_caller]
-            fn #subsume_fn_name(&self, #(#valued_ref_node_meta_list),*) {
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) {
                  self.ctx.#subsume_fn_name(#(#field_idents),*);
             }
             #[track_caller]
-            fn #remove_fn_name(&self, #(#valued_ref_node_meta_list),*) {
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) {
                  self.ctx.#remove_fn_name(#(#field_idents),*);
             }
         },
         // pr insert decl
         quote! {
             #[track_caller]
-            fn #subsume_fn_name(&self, #(#valued_ref_node_meta_list),*) ;
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) ;
             #[track_caller]
-            fn #remove_fn_name(&self, #(#valued_ref_node_meta_list),*) ;
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) ;
         },
     )
 }
@@ -664,7 +696,28 @@ pub fn ctx_insert_fn_ts_with_pr(
         |_basic, _basic_ty| None,
         |complex, _complex_ty| Some(quote!(#complex)),
     );
-    let complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant )
+            })
+        },
+    );
+    let complex_generic_idents_with_constraint =
+        variant2mapped_ident_type_list_view_container_as_complex(
+            variant,
+            |_basic, _basic_ty| None,
+            |complex, _complex_ty| {
+                Some({
+                    let variant = format_ident!("V_{}", complex);
+                    quote!( #variant :#W::EgglogEnumVariantTy)
+                })
+            },
+        );
+    let _complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_basic, _basic_ty| None,
         |_complex, complex_ty| Some(quote!(#complex_ty)),
@@ -685,7 +738,8 @@ pub fn ctx_insert_fn_ts_with_pr(
         // insert fn
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 use #W::Value;
                 use #W::Insertable;
                 let key = [
@@ -700,16 +754,18 @@ pub fn ctx_insert_fn_ts_with_pr(
         // insert decl
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
         },
         // pr insert fn
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
                 use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
                 #(
                     let #func_value_meta_field_idents =
-                        (<<#complex_field_tys as EgglogTy>::EnumVariantMarker as EgglogEnumVariantTy>::TY_NAME,
+                        (#complex_generic_idents::TY_NAME,
                             #complex_field_idents.to_value(&self.ctx).val,
                             #complex_field_idents.meta());
                 )*
@@ -724,7 +780,8 @@ pub fn ctx_insert_fn_ts_with_pr(
         // pr insert decl
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy);
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy);
         },
     )
 }
@@ -738,13 +795,24 @@ pub fn ctx_set_fn_ts(
     let field_idents = variant2field_ident(&variant);
 
     let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant :#W::EgglogEnumVariantTy)
+            })
+        },
+    );
     let (_variant_marker, variant_name) = variant2marker_name(variant);
     let set_fn_name = format_ident!("set_{}", variant_name.to_string().to_snake_case());
     let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
     (
         quote! {
             #[track_caller]
-            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) {
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) {
                 use #W::EgglogFunc;
                 use #W::Value;
                 use #W::Insertable;
@@ -759,19 +827,22 @@ pub fn ctx_set_fn_ts(
         },
         quote! {
             #[track_caller]
-            fn #set_fn_name(&self, #(#valued_ref_node_list,)*output:impl eggplant::wrap::Insertable<#output>) ;
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)*output:impl eggplant::wrap::Insertable<#output>) ;
         },
         // pr insert fn
         quote! {
             #[track_caller]
-            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>){
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>){
                 self.ctx.#set_fn_name(#(#field_idents,)* output)
             }
         },
         // pr insert decl
         quote! {
             #[track_caller]
-            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>);
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>);
         },
     )
 }

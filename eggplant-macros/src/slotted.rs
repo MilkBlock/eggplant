@@ -539,9 +539,9 @@ pub fn slotted_dsl(
                                     }
                                 }
                             }
-                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
                                 type MetaTy = ();
-                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
+                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                                     #W::Value::new(self.erase())
                                 }
                                 fn meta(&self) -> Self::MetaTy{
@@ -699,7 +699,9 @@ pub fn slotted_dsl(
                         // for complex type，fetch value from sym_to_value_map 
                         // transform Sym<Expr> into Sym as key
                         Some(quote! {
-                            let #complex_ident: #W::Value<#complex_ty<(),()>> = #W::Value::new(sym_to_value_map.get(&#complex_ident.erase()).unwrap().clone());
+                            let #complex_ident: (#W::Value<#complex_ty<(),()>> , SlotMeta)= (#W::Value::new(sym_to_value_map.get(&#complex_ident.erase()).unwrap().clone()), 
+                            *T::get_meta(#complex_ident.erase()).downcast().expect("meta type mismatched")
+                        );
                         })
                     },
                 );
@@ -712,8 +714,9 @@ pub fn slotted_dsl(
 
                 quote! {
                     #name_inner::#variant_name { #(#variant_idents),* } => {
+                        use eggplant::prelude::SlotMeta;
                         #(#get_value_calls)*
-                        let value = ctx.#insert_fn_name(#(#field_args),*);
+                        let value = ctx.#insert_fn_name(#(#field_args),*).to_value(&ctx.ctx);
                         sym_to_value_map.insert(sym, value.erase());
                         value.erase()
                     }
@@ -817,9 +820,9 @@ pub fn slotted_dsl(
                     //         self._itself
                     //     }
                     // }
-                    impl #W::Insertable<#name_node<(),()>> for #valued_variant_name {
+                    impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
                         type MetaTy = ();
-                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),()>> {
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                             #W::Value::new(self._itself.val)
                         }
                         fn meta(&self) -> Self::MetaTy{
@@ -1052,7 +1055,7 @@ pub fn slotted_dsl(
                             }
                         }
                     }
-                    impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
+                    impl<T:#W::NodeDropperSgl , V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
                         #[track_caller]
                         fn collect_vars(
                             &self,
@@ -1098,12 +1101,14 @@ pub fn slotted_dsl(
                             } else {
                                 // Otherwise, use ctx.insert to insert new node
                                 // Call corresponding insert method based on node type
+                                //TODO
+                                let ctx: &#W::PRRuleCtx<'_, '_, '_, MyPatRec> = unsafe { std::mem::transmute(ctx) };
                                 match &*self.node.ty.unwrap_ref() {
                                     inner =>
                                         // Dynamically call corresponding insert method
                                         match inner {
                                             #(#native_egglog_match_arms),*
-                                    }
+                                        }
                                 }
 
                             }
@@ -1156,10 +1161,11 @@ pub fn slotted_dsl(
                         }
                     }
 
-                    impl<T:#W::TxSgl+ #W::VersionCtlSgl + #W::TxCommitSgl + #W::NonPatRecSgl,S: #W::EgglogEnumVariantTy> #W::Commit for self::#name_node<T,S>
+                    impl<T:#W::TxSgl+ #W::VersionCtlSgl + #W::TxCommitSgl + #W::NonPatRecSgl + #W::WithPatRecSgl,S: #W::EgglogEnumVariantTy> #W::Commit for self::#name_node<T,S>
                     {
                         fn commit(&self) {
                             T::on_commit(self);
+                            <T as #W::WithPatRecSgl>::PatRecSgl::flush_pending(&T::egraph().lock().unwrap());
                         }
                         fn commit_with_hook(&self, hook:Box<dyn #W::RuleCtxHook>) {
                             T::on_commit_with_hook(self, hook);
@@ -1192,9 +1198,9 @@ pub fn slotted_dsl(
                     #(#handle_getter_fns)*
                     #(#constraint_fns)*
                 };
-                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), ()>> for #W::Value<self::#name_node<T, V>> {
+                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
                     type MetaTy = ();
-                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), ()>> {
+                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                         #W::Value::new(self.erase())
                     }
                     fn meta(&self) -> Self::MetaTy{

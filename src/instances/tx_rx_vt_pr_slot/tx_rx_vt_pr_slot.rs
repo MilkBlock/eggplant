@@ -2,7 +2,7 @@
 use crate::prelude::SlottedPatRecorder;
 use crate::{
     etc::{Escape, quote, topo_sort},
-    prelude::{ArcSlotMetaInner, SlotMetaInner, SlotWorkAreaNode},
+    prelude::{SlotMeta, SlotWorkAreaNode},
     wrap::*,
 };
 use core::panic;
@@ -39,7 +39,7 @@ pub struct SlottedTxRxVTPR {
     staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
     staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
 
-    sym2meta: DashMap<Sym, ArcSlotMetaInner>,
+    sym2meta: DashMap<Sym, SlotMeta>,
 
     checkpoints: Mutex<Vec<CommitCheckPoint>>,
     registry: EgglogTypeRegistry,
@@ -492,7 +492,7 @@ impl Tx for SlottedTxRxVTPR {
             .unwrap()
             .insert(node.cur_sym(), node.clone_dyn());
 
-        let merged = ArcSlotMetaInner::from_metas(node.succs().iter().map(|succ| {
+        let merged = SlotMeta::from_metas(node.succs().iter().map(|succ| {
             self.sym2meta
                 .get(succ)
                 .expect("meta of succ sym should added ")
@@ -534,15 +534,8 @@ impl Tx for SlottedTxRxVTPR {
             .value();
         egraph.get_canonical_value(val, egraph.get_sort_by_name(node1.ty_name()).unwrap())
     }
-
-    fn replace_meta(&self, sym: Sym, meta: Box<dyn std::any::Any>) {
-        let node = self
-            .map
-            .get(&sym)
-            .expect("node should be added before replace_meta");
-        let meta: Box<ArcSlotMetaInner> = meta.downcast().unwrap();
-        self.sym2meta.entry(sym).insert(*meta);
-    }
+}
+impl NodeDropper for SlottedTxRxVTPR {
     fn get_meta(&self, sym: Sym) -> Box<dyn std::any::Any> {
         match self.sym2meta.get(&sym) {
             Some(meta) => Box::new(meta.clone()),
@@ -550,6 +543,16 @@ impl Tx for SlottedTxRxVTPR {
                 panic!("shoud not get meta before node is added")
             }
         }
+    }
+
+    fn replace_meta(&self, sym: Sym, meta: Box<dyn std::any::Any>) {
+        let committed_found = self.map.get(&sym).is_some();
+        let staged_found = self.staged_new_map.lock().unwrap().get(&sym).is_some();
+        if !committed_found && !staged_found {
+            panic!("node should be added before replace_meta");
+        }
+        let meta: Box<SlotMeta> = meta.downcast().unwrap();
+        self.sym2meta.entry(sym).insert(*meta);
     }
 }
 
@@ -785,13 +788,8 @@ impl Rx for SlottedTxRxVTPR {
             panic!("{}'s value not found in sym2value_map", sym)
         }
     }
-
-    fn egraph(&self) -> Arc<Mutex<EGraph>> {
-        self.egraph.clone()
-    }
 }
 
-impl NodeDropper for SlottedTxRxVTPR {}
 impl NodeOwner for SlottedTxRxVTPR {
     type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
@@ -1200,10 +1198,10 @@ impl EGraphView for (SlottedTxRxVTPR, SlottedPatRecorder) {
 
     fn view(&self) -> Result<(), eframe::Error> {
         use eggplant_viewer::*;
-        let map: Arc<DashMap<Sym, SlotWorkAreaNode>> = Arc::new(self.0.map.clone());
+        // let map: Arc<DashMap<Sym, SlotWorkAreaNode>> = Arc::new(self.0.map.clone());
         #[derive(Clone)]
         struct SlotEventHandler {
-            map: Arc<DashMap<Sym, SlotWorkAreaNode>>,
+            // map: Arc<DashMap<Sym, SlotWorkAreaNode>>,
         }
         impl EventHandle for SlotEventHandler {
             fn dyn_clone(&self) -> Box<dyn EventHandle> {
@@ -1233,7 +1231,7 @@ impl EGraphView for (SlottedTxRxVTPR, SlottedPatRecorder) {
                     cc,
                     DemoLayout::Hierarchical,
                     &egraph,
-                    SlotEventHandler { map }.dyn_clone(),
+                    SlotEventHandler {}.dyn_clone(),
                 )))
             }),
         )

@@ -46,6 +46,14 @@ pub trait NodeDropper: NodeOwner + 'static {
     fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
         // do nothing as default
     }
+
+    #[track_caller]
+    fn replace_meta(&self, _sym: Sym, _meta: Box<dyn Any>) {
+        panic!("no meta suppoerted")
+    }
+    fn get_meta(&self, _sym: Sym) -> Box<dyn std::any::Any> {
+        panic!("no meta supported")
+    }
 }
 pub trait Tx: 'static + NodeOwner + NodeDropper {
     /// receive is guaranteed to not be called in proc macro
@@ -53,8 +61,6 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
     fn send(&self, sended: TxCommand);
     #[track_caller]
     fn on_new(&self, node: &(impl EgglogNode + 'static));
-    #[track_caller]
-    fn replace_meta(&self, sym: Sym, meta: Box<dyn Any>);
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         &self,
@@ -64,9 +70,6 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
     #[track_caller]
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value;
-    fn get_meta(&self, _sym: Sym) -> Box<dyn std::any::Any> {
-        panic!("no meta")
-    }
 }
 pub trait Rx: 'static {
     #[track_caller]
@@ -91,7 +94,6 @@ pub trait Rx: 'static {
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit;
     #[track_caller]
     fn on_pull_value<T: EgglogTy>(&self, value: Value<T>) -> SymLit;
-    fn egraph(&self) -> Arc<Mutex<EGraph>>;
 }
 
 pub trait SingletonGetter: 'static {
@@ -116,6 +118,9 @@ where
 }
 pub trait NodeDropperSgl: 'static + Sized + SingletonGetter + NodeOwnerSgl {
     fn on_drop(dropped: &mut (impl EgglogNode + 'static));
+
+    fn replace_meta(sym: Sym, meta: Box<dyn Any>);
+    fn get_meta(sym: Sym) -> Box<dyn std::any::Any>;
 }
 
 pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
@@ -123,8 +128,6 @@ pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
     fn receive(received: TxCommand);
     #[track_caller]
     fn on_new(node: &(impl EgglogNode + 'static));
-    #[track_caller]
-    fn replace_meta(sym: Sym, meta: Box<dyn Any>);
     #[track_caller]
     fn on_func_set<'a, F: EgglogFunc>(
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -148,7 +151,6 @@ pub trait RxSgl: 'static + Sized + SingletonGetter + NodeDropperSgl + NodeOwnerS
     )>;
     #[track_caller]
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static));
-    fn egraph() -> Arc<std::sync::Mutex<EGraph>>;
 }
 
 impl<S: SingletonGetter> NodeDropperSgl for S
@@ -158,6 +160,12 @@ where
     fn on_drop(_dropped: &mut (impl EgglogNode + 'static)) {
         // do nothing as default
         // Self::sgl().on_drop(dropped);
+    }
+    fn replace_meta(sym: Sym, meta: Box<dyn Any>) {
+        Self::sgl().replace_meta(sym, meta)
+    }
+    fn get_meta(sym: Sym) -> Box<dyn std::any::Any> {
+        Self::sgl().get_meta(sym)
     }
 }
 
@@ -184,10 +192,6 @@ where
     }
     fn canonical_raw(node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         Self::sgl().canonical_raw(node1)
-    }
-
-    fn replace_meta(sym: Sym, meta: Box<dyn Any>) {
-        Self::sgl().replace_meta(sym, meta)
     }
 }
 pub trait NodeSetterSgl {
@@ -227,10 +231,6 @@ where
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_pull::<T>(node)
     }
-
-    fn egraph() -> Arc<std::sync::Mutex<EGraph>> {
-        Self::sgl().egraph()
-    }
 }
 
 /// version control triat
@@ -256,7 +256,7 @@ impl Meta for () {
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
 pub trait PatRec: NodeDropper + Tx {
-    type MetaTy<PR: PatRecSgl>: Meta;
+    type MetaTy: Meta;
     #[track_caller]
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
@@ -264,23 +264,18 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
-    fn meta_of<PR: PatRecSgl>(&self, node: &(impl EgglogNode + 'static)) -> Self::MetaTy<PR>;
+    fn meta_of(&self, node: &(impl EgglogNode + 'static)) -> Self::MetaTy;
 
     #[allow(unused)]
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        inputs: Vec<FuncValueMeta<Self, PR>>,
+        inputs: Vec<FuncValueMeta<Self>>,
         output: (FuncName, egglog::Value),
-    ) -> Self::MetaTy<PR> {
-        Self::MetaTy::<PR>::merge(&mut inputs.into_iter().map(|(x, y, z)| z))
+    ) -> Self::MetaTy {
+        Self::MetaTy::merge(&mut inputs.into_iter().map(|(x, y, z)| z))
     }
     #[allow(unused)]
-    fn on_ctx_union<PR: PatRecSgl>(
-        &self,
-        combo1: FuncValueMeta<Self, PR>,
-        combo2: FuncValueMeta<Self, PR>,
-    ) {
-    }
+    fn on_ctx_union(&self, combo1: FuncValueMeta<Self>, combo2: FuncValueMeta<Self>) {}
 
     /// return whether updated
     fn flush_pending(&self, _egraph: &EGraph) -> bool {
@@ -317,7 +312,7 @@ impl<T: WithRxSgl + SingletonGetter> PatRecSgl for T
 where
     T::RetTy: PatRec + NodeSetter,
 {
-    type MetaTy = <T::RetTy as PatRec>::MetaTy<Self>;
+    type MetaTy = <T::RetTy as PatRec>::MetaTy;
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_new_query_leaf(node);
     }
@@ -337,7 +332,7 @@ where
     }
 
     fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy {
-        Self::sgl().meta_of::<Self>(node)
+        Self::sgl().meta_of(node)
     }
 
     fn on_ctx_insert(
@@ -623,7 +618,7 @@ impl<T: EgglogTy> TyCounter<T> {
 }
 
 impl EgglogEnumVariantTy for () {
-    const TY_NAME: &'static str = "Unknown";
+    const TY_NAME: &'static str = "Unknown Func";
     type ValuedWithDefault<T> = Value<T>;
     const BASIC_FIELD_NAMES: &[&'static str] = &[];
     const BASIC_FIELD_TYPES: &[&'static str] = &[];
@@ -1227,8 +1222,14 @@ where
 
 /// a marker trait for those not pattern recorder singleton
 /// because currently rust doesn't support `!PatRecSgl` clause
-pub trait NonPatRecSgl {}
-impl NonPatRecSgl for () {}
+pub trait NonPatRecSgl {
+    fn egraph() -> Arc<Mutex<EGraph>>;
+}
+impl NonPatRecSgl for () {
+    fn egraph() -> Arc<Mutex<EGraph>> {
+        panic!()
+    }
+}
 
 pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl {}
 impl<T: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl> G for T {}
@@ -1252,14 +1253,14 @@ where
         Self::sgl().on_new_query_slot(node, var_id);
     }
 }
-pub trait FromMetas<PR: PatRecSgl> {
-    fn from_metas(values: &mut impl Iterator<Item = SlotMeta<PR>>) -> Self;
+pub trait FromMetas {
+    fn from_metas(values: &mut impl Iterator<Item = SlotMeta>) -> Self;
 }
 
 // #[cfg(feature = "viewer")]
 impl<S: SingletonGetter> EGraphViewSgl for S
 where
-    S::RetTy: EGraphView + Tx,
+    S::RetTy: EGraphView,
 {
     fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
         Self::sgl().egraph()

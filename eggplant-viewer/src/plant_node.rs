@@ -95,14 +95,22 @@ impl DisplayNode<Directed> for PlantNodeShape {
                     .event_handle
                     .event_handle
                     .on_newly_selected(self.payload.cano_value);
-                self.last_whether_selected = self.selected.clone();
             }
+            // draw a rectange when selected
+            painter.rect(
+                rect,
+                0.,
+                Color32::default(),
+                Stroke::new(1., Color32::ORANGE),
+                egui::StrokeKind::Middle,
+            );
             self.payload
                 .event_handle
                 .event_handle
                 .on_selected(self.payload.cano_value);
             // TODO just be more light as selected?
         }
+        self.last_whether_selected = self.selected.clone();
         if self.hovered {
             self.payload
                 .event_handle

@@ -230,14 +230,6 @@ impl Tx for PatRecorder {
     fn canonical_raw(&self, _node1: &(impl EgglogNode + 'static)) -> egglog::Value {
         todo!("not yet implemented");
     }
-
-    fn replace_meta(&self, _sym: Sym, _meta: Box<dyn std::any::Any>) {
-        panic!("no meta")
-    }
-
-    fn get_meta(&self, _sym: Sym) -> Box<dyn std::any::Any> {
-        panic!("no meta")
-    }
 }
 
 impl NodeDropper for PatRecorder {
@@ -258,7 +250,7 @@ impl NodeSetter for PatRecorder {
 }
 
 impl PatRec for PatRecorder {
-    type MetaTy<T: PatRecSgl> = ();
+    type MetaTy = ();
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
         self.add_node(node);
     }
@@ -322,7 +314,7 @@ impl PatRec for PatRecorder {
         facts_builder
     }
 
-    fn meta_of<PR: PatRecSgl>(&self, _node: &(impl EgglogNode + 'static)) -> Self::MetaTy<PR> {
+    fn meta_of(&self, _node: &(impl EgglogNode + 'static)) -> Self::MetaTy {
         // in vanilla egraph we don't need meta
     }
 }
