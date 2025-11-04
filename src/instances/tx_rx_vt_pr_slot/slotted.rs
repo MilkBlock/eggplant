@@ -188,8 +188,8 @@ fn find_satisfied_enode(
     None
 }
 
-pub type _FuncValueMeta<PR: PatRecSgl> = (FuncName, egglog::Value, PR::MetaTy);
-pub type FuncValueMeta<Pr: PatRec> = (FuncName, egglog::Value, Pr::MetaTy);
+pub type _FuncValueMeta = (FuncName, egglog::Value, SlotMeta);
+pub type FuncValueMeta = (FuncName, egglog::Value, SlotMeta);
 pub type FuncValueMetaInner = (FuncName, egglog::Value, SlotMeta);
 #[derive(Clone, Debug)]
 pub enum SlotPendingOps {

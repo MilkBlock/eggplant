@@ -1,7 +1,6 @@
 mod butler_portugal;
 pub mod instances;
 pub mod prelude;
-mod test;
 pub mod wrap;
 
 pub mod derive_more {

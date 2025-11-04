@@ -308,7 +308,6 @@ impl NodeSetter for SlottedPatRecorder {
 }
 
 impl PatRec for SlottedPatRecorder {
-    type MetaTy = SlotMeta;
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
         self.add_node_with_slot_meta(
             node,
@@ -380,8 +379,8 @@ impl PatRec for SlottedPatRecorder {
 
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        inputs: Vec<(FuncName, egglog::Value, Self::MetaTy)>,
-        output: (FuncName, egglog::Value, Self::MetaTy),
+        inputs: Vec<(FuncName, egglog::Value, SlotMeta)>,
+        output: (FuncName, egglog::Value, SlotMeta),
     ) {
         // self.slotted_ctx.insert(cano_value, meta);
         let inner_inputs = inputs
@@ -396,8 +395,8 @@ impl PatRec for SlottedPatRecorder {
 
     fn on_ctx_union(
         &self,
-        x: (FuncName, egglog::Value, Self::MetaTy),
-        y: (FuncName, egglog::Value, Self::MetaTy),
+        x: (FuncName, egglog::Value, SlotMeta),
+        y: (FuncName, egglog::Value, SlotMeta),
     ) {
         self.slotted_ctx.push_pending(SlotPendingOps::Union(x, y))
     }

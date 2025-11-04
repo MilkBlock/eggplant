@@ -1,3 +1,4 @@
+use crate::prelude::SlotMeta;
 use crate::wrap::{
     self, BoxedContainer, BoxedValue, EgglogContainerTy, EgglogEnumVariantTy, EgglogNode,
     Insertable, IntoConstraintFact, PatRecSgl, RetypeValue,
@@ -84,8 +85,8 @@ impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
     }
     pub fn union<T0: EgglogTy, T1: EgglogTy>(
         &self,
-        x: impl Insertable<T0, MetaTy = PR::MetaTy>,
-        y: impl Insertable<T1, MetaTy = PR::MetaTy>,
+        x: impl Insertable<T0, MetaTy = SlotMeta>,
+        y: impl Insertable<T1, MetaTy = SlotMeta>,
     ) {
         PR::on_ctx_union(
             (

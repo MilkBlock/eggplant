@@ -761,7 +761,7 @@ pub fn ctx_insert_fn_ts_with_pr(
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, SlotMeta){
                 use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
                 #(
                     let #func_value_meta_field_idents =
@@ -781,7 +781,7 @@ pub fn ctx_insert_fn_ts_with_pr(
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy);
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, SlotMeta);
         },
     )
 }

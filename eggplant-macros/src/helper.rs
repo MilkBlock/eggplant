@@ -374,7 +374,7 @@ pub fn variant2valued_ref_node_meta_list(variant: &Variant) -> Vec<proc_macro2::
         |ident, ty| {
             Some({
                 let variant = format_ident!("V_{}", ident);
-                quote! {#ident: impl #W::Insertable<#ty<(), #variant>, MetaTy = PR::MetaTy>}
+                quote! {#ident: impl #W::Insertable<#ty<(), #variant>, MetaTy = SlotMeta>}
             })
         },
     )

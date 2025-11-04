@@ -28,9 +28,9 @@ pub enum Expr {
 }
 #[eggplant::base_ty]
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
-enum SlotMetaBase<PR: PatRecSgl> {
+enum SlotMetaBase {
     Inner {
-        inner: PR::MetaTy,
+        inner: SlotMeta,
     },
     #[default]
     Unknown,

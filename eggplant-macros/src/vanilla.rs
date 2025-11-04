@@ -664,11 +664,11 @@ pub fn dsl(
                                 }
                             }
                             impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
-                                type MetaTy = ();
+                                 
                                 fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                                     #W::Value::new(self.erase())
                                 }
-                                fn meta(&self) -> Self::MetaTy{
+                                fn meta(&self) -> SlotMeta{
                                     panic!("pure value don't have meta")
                                 }
                             }
@@ -942,11 +942,11 @@ pub fn dsl(
                     //     }
                     // }
                     impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
-                        type MetaTy = ();
+                         
                         fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                             #W::Value::new(self._itself.val)
                         }
-                        fn meta(&self) -> Self::MetaTy{
+                        fn meta(&self) -> SlotMeta{
                             panic!("pure value don't have meta")
                         }
                     }
@@ -1298,11 +1298,11 @@ pub fn dsl(
                     #(#constraint_fns)*
                 };
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
-                    type MetaTy = ();
+                     
                     fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                         #W::Value::new(self.erase())
                     }
-                    fn meta(&self) -> Self::MetaTy{
+                    fn meta(&self) -> SlotMeta{
                         panic!("pure value don't have any meta")
                     }
                 }
@@ -1432,7 +1432,7 @@ pub fn pat_vars(
                 }
                 impl #impl_generics #W::PatVars<PR> for #ident #ty_generics #where_clause {
                     type Valued = #valued_ident<PR>;
-                    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>{
+                    fn metas_iter(&self) -> impl Iterator<Item = SlotMeta>{
                         std::iter::empty()
                     }
                 }

@@ -250,7 +250,6 @@ impl NodeSetter for PatRecorder {
 }
 
 impl PatRec for PatRecorder {
-    type MetaTy = ();
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
         self.add_node(node);
     }

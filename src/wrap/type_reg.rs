@@ -9,8 +9,11 @@ use egglog::{
     span, var,
 };
 
-use crate::wrap::{
-    EgglogEnumVariantTy, FromPlainValues, PatRecSgl, PatVars, TermToNode, ToStrArcSort, Value,
+use crate::{
+    prelude::SlotMeta,
+    wrap::{
+        EgglogEnumVariantTy, FromPlainValues, PatRecSgl, PatVars, TermToNode, ToStrArcSort, Value,
+    },
 };
 
 pub trait EgglogContainerTy: EgglogTy {
@@ -65,7 +68,7 @@ pub trait EgglogTy: 'static {
 }
 impl<T: EgglogTy + ToStrArcSort, PR: PatRecSgl> PatVars<PR> for T {
     type Valued = T::Valued;
-    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
+    fn metas_iter(&self) -> impl Iterator<Item = SlotMeta> {
         std::iter::empty()
     }
 }

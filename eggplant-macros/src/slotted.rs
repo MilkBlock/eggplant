@@ -707,11 +707,12 @@ pub fn slotted_dsl(
                     },
                 );
 
-                let field_args = variant2mapped_ident_type_list(
+                let mut field_args = variant2mapped_ident_type_list(
                     variant,
                     |ident, _| Some(quote! { #ident }),
                     |ident, _| Some(quote! { #ident }),
                 );
+                field_args.pop();
 
                 quote! {
                     #name_inner::#variant_name { #(#variant_idents),* } => {
@@ -1272,7 +1273,7 @@ pub fn slotted_pat_vars(
             ensure_PR_contained(field);
             let ty = &field.ty;
             src_field_types_with_generic.push(ty.clone());
-            let ty: Type = syn::parse_quote!((#ty,<PR as #W::PatRecSgl>::MetaTy));
+            let ty: Type = syn::parse_quote!((#ty,SlotMeta));
             field.ty = ty;
         }
     }
@@ -1312,7 +1313,7 @@ pub fn slotted_pat_vars(
             match &mut valued_input_struct.data {
                 Data::Struct(valued_struct) => {
                     valued_struct.fields.iter_mut().zip(src_field_types_with_generic).for_each(|(x,src_ty)| {
-                        x.ty = parse_quote!((<#src_ty as #W::PatVars<PR>>::Valued, <PR as #W::PatRecSgl>::MetaTy));
+                        x.ty = parse_quote!((<#src_ty as #W::PatVars<PR>>::Valued, SlotMeta));
                         valued_tys.push(x.ty.clone())
                     });
                 }
@@ -1338,7 +1339,7 @@ pub fn slotted_pat_vars(
                 impl #impl_generics #W::FromPlainValuesMetas<PR> for #valued_ident #ty_generics #where_clause {
                     fn from_plain_values_metas(
                         values:&mut impl Iterator<Item=#E::Value>,
-                        metas:&mut impl Iterator<Item=<PR as #W::PatRecSgl>::MetaTy>
+                        metas:&mut impl Iterator<Item=SlotMeta>
                     ) -> Self {
                         use #W::Value;
                         use #W::FromPlainValuesMetas;
@@ -1350,7 +1351,7 @@ pub fn slotted_pat_vars(
                 }
                 impl #impl_generics #W::PatVars<PR> for #ident #ty_generics #where_clause {
                     type Valued = #valued_ident<PR>;
-                    fn metas_iter(&self) -> impl Iterator<Item = <PR as #W::PatRecSgl>::MetaTy>{
+                        fn metas_iter(&self) -> impl Iterator<Item = SlotMeta>{
                         use #W::PatVars;
                         let mut acc = std::iter::empty();
                         #(
@@ -1386,7 +1387,7 @@ pub fn slotted_pat_vars(
                     fn new( #(#field_idents:#field_types,)* ) -> Self{
                         #(
                             let #field_idents = {
-                                let meta = *PR::meta_of(#field_idents.cur_sym()).downcast::<PR::MetaTy>().unwrap();
+                                let meta = *PR::meta_of(#field_idents.cur_sym()).downcast::<SlotMeta>().unwrap();
                                 (#field_idents, meta)
                             };
                         )*

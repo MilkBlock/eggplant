@@ -1,10 +1,5 @@
 pub mod pat_rec;
-pub mod tx;
-pub mod tx_minimal;
-pub mod tx_rx_vt;
-pub mod tx_rx_vt_pr;
 pub mod tx_rx_vt_pr_slot;
-pub mod tx_vt;
 
 /// macro to quickly define a Transimitter with no version control
 #[macro_export]
@@ -111,47 +106,6 @@ macro_rules! basic_tx_rx_vt {
             fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
                 Self::sgl().egraph.clone()
             }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! basic_tx_rx_vt_pr {
-    ($name:ident) => {
-        pub struct $name {
-            tx: eggplant::instances::tx_rx_vt_pr::TxRxVTPR,
-        }
-        impl eggplant::prelude::SingletonGetter for $name {
-            type RetTy = eggplant::instances::tx_rx_vt_pr::TxRxVTPR;
-            fn sgl() -> &'static eggplant::instances::tx_rx_vt_pr::TxRxVTPR {
-                static INSTANCE: std::sync::OnceLock<$name> = std::sync::OnceLock::new();
-                &INSTANCE
-                    .get_or_init(|| -> $name {
-                        Self {
-                            tx: eggplant::instances::tx_rx_vt_pr::TxRxVTPR::new(),
-                        }
-                    })
-                    .tx
-            }
-        }
-        impl eggplant::wrap::NonPatRecSgl for $name {
-            fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
-                Self::sgl().egraph.clone()
-            }
-        }
-    };
-}
-
-#[macro_export]
-macro_rules! tx_rx_vt_pr {
-    ($tx_name:ident, $pat_rec_name:ident) => {
-        eggplant::basic_tx_rx_vt_pr!($tx_name);
-        eggplant::basic_patttern_recorder!($pat_rec_name);
-        impl eggplant::wrap::WithPatRecSgl for $tx_name {
-            type PatRecSgl = $pat_rec_name;
-        }
-        impl eggplant::wrap::WithRxSgl for $pat_rec_name {
-            type RxSgl = $tx_name;
         }
     };
 }

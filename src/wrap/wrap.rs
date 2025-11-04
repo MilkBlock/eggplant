@@ -1,5 +1,5 @@
 use crate::prelude::slotted::{_FuncValueMeta, FuncName, FuncValueMeta};
-use crate::prelude::{SlotMeta, TxRxVT};
+use crate::prelude::{SlotMeta, SlottedTxRxVTPR};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
@@ -268,7 +268,6 @@ impl Meta for () {
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
 pub trait PatRec: NodeDropper + Tx {
-    type MetaTy: Meta;
     #[track_caller]
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
@@ -280,12 +279,12 @@ pub trait PatRec: NodeDropper + Tx {
     #[allow(unused)]
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        inputs: Vec<FuncValueMeta<Self>>,
-        output: (FuncName, egglog::Value, Self::MetaTy),
+        inputs: Vec<FuncValueMeta>,
+        output: (FuncName, egglog::Value, SlotMeta),
     ) {
     }
     #[allow(unused)]
-    fn on_ctx_union(&self, combo1: FuncValueMeta<Self>, combo2: FuncValueMeta<Self>) {}
+    fn on_ctx_union(&self, combo1: FuncValueMeta, combo2: FuncValueMeta) {}
 
     /// return whether updated
     fn flush_pending(&self, _egraph: &EGraph) -> bool {
@@ -296,7 +295,6 @@ pub trait PatRec: NodeDropper + Tx {
 pub struct PatId(pub u32);
 
 pub trait PatRecSgl: NodeDropperSgl + TxSgl {
-    type MetaTy: Meta;
     #[track_caller]
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static));
     #[track_caller]
@@ -305,8 +303,8 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
 
-    fn on_ctx_insert(inputs: Vec<_FuncValueMeta<Self>>, output: _FuncValueMeta<Self>);
-    fn on_ctx_union(combo1: _FuncValueMeta<Self>, combo2: _FuncValueMeta<Self>);
+    fn on_ctx_insert(inputs: Vec<_FuncValueMeta>, output: _FuncValueMeta);
+    fn on_ctx_union(combo1: _FuncValueMeta, combo2: _FuncValueMeta);
 
     /// flush pending and return whether updated
     fn flush_pending(egraph: &EGraph) -> bool;
@@ -315,7 +313,6 @@ impl<T: WithRxSgl + SingletonGetter> PatRecSgl for T
 where
     T::RetTy: PatRec + NodeSetter,
 {
-    type MetaTy = <T::RetTy as PatRec>::MetaTy;
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_new_query_leaf(node);
     }
@@ -334,9 +331,9 @@ where
         Self::sgl().pat2fact_builder(pat_id)
     }
 
-    fn on_ctx_insert(inputs: Vec<_FuncValueMeta<Self>>, output: _FuncValueMeta<Self>) {}
+    fn on_ctx_insert(inputs: Vec<_FuncValueMeta>, output: _FuncValueMeta) {}
 
-    fn on_ctx_union(combo1: _FuncValueMeta<Self>, combo2: _FuncValueMeta<Self>) {
+    fn on_ctx_union(combo1: _FuncValueMeta, combo2: _FuncValueMeta) {
         Self::sgl().on_ctx_union(combo1, combo2)
     }
 
@@ -872,7 +869,7 @@ pub trait FromTerm {
 
 /// used for type erased marker
 impl SingletonGetter for () {
-    type RetTy = TxRxVT;
+    type RetTy = SlottedTxRxVTPR;
     fn sgl() -> &'static Self::RetTy {
         panic!("illegal singleton getter, you can't get singleton of ()");
     }
@@ -966,16 +963,16 @@ impl<T: EgglogTy> fmt::Debug for Value<T> {
 /// we use [`PatVars`] trait to mark such patterns
 pub trait PatVars<PR: PatRecSgl>: ToStrArcSort {
     type Valued: FromPlainValuesMetas<PR>;
-    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>;
+    fn metas_iter(&self) -> impl Iterator<Item = SlotMeta>;
 }
 impl<T, PV: ToStrArcSort> ToStrArcSort for (PV, T) {
     fn to_str_arcsort(&self, egraph: &EGraph) -> Vec<(VarName, ArcSort)> {
         PV::to_str_arcsort(&self.0, egraph)
     }
 }
-impl<PR: PatRecSgl, PV: PatVars<PR>> PatVars<PR> for (PV, PR::MetaTy) {
+impl<PR: PatRecSgl, PV: PatVars<PR>> PatVars<PR> for (PV, SlotMeta) {
     type Valued = PV::Valued;
-    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
+    fn metas_iter(&self) -> impl Iterator<Item = SlotMeta> {
         self.0.metas_iter().chain(std::iter::once(self.1.clone()))
     }
 }
@@ -990,10 +987,10 @@ pub trait FromPlainValues {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self;
 }
 
-impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for (T, PR::MetaTy) {
+impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for (T, SlotMeta) {
     fn from_plain_values_metas(
         values: &mut impl Iterator<Item = egglog::Value>,
-        metas: &mut impl Iterator<Item = PR::MetaTy>,
+        metas: &mut impl Iterator<Item = SlotMeta>,
     ) -> Self {
         (
             <T as FromPlainValues>::from_plain_values(values),
@@ -1004,7 +1001,7 @@ impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for (T, PR::Met
 impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for T {
     fn from_plain_values_metas(
         values: &mut impl Iterator<Item = egglog::Value>,
-        _metas: &mut impl Iterator<Item = PR::MetaTy>,
+        _metas: &mut impl Iterator<Item = SlotMeta>,
     ) -> Self {
         <T as FromPlainValues>::from_plain_values(values)
     }
@@ -1013,7 +1010,7 @@ impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for T {
 pub trait FromPlainValuesMetas<PR: PatRecSgl> {
     fn from_plain_values_metas(
         values: &mut impl Iterator<Item = egglog::Value>,
-        metas: &mut impl Iterator<Item = PR::MetaTy>,
+        metas: &mut impl Iterator<Item = SlotMeta>,
     ) -> Self;
 }
 
@@ -1029,7 +1026,7 @@ impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for (I, M) {
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
     }
-    fn meta(&self) -> Self::MetaTy {
+    fn meta(&self) -> M {
         self.1.clone()
     }
 }
@@ -1038,7 +1035,7 @@ impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for &(I, M) {
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
     }
-    fn meta(&self) -> Self::MetaTy {
+    fn meta(&self) -> M {
         self.1.clone()
     }
 }
@@ -1093,7 +1090,7 @@ impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
     fn to_value(&self, ctx: &RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
     }
-    fn meta(&self) -> Self::MetaTy {
+    fn meta(&self) -> () {
         panic!("Boxed base don't have meta")
     }
 }

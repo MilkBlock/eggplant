@@ -119,10 +119,11 @@ pub fn ctx_insert_fn_ts_with_pr_without_meta(
     variant: &syn::Variant,
     name_node: &Ident,
 ) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
-    let mut valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
-    let valued_ref_node_meta_list: Vec<TokenStream> = variant2valued_ref_node_meta_list(&variant);
+    let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let mut valued_ref_node_meta_list: Vec<TokenStream> =
+        variant2valued_ref_node_meta_list(&variant);
     // remove last element which is meta
-    valued_ref_node_list.pop();
+    valued_ref_node_meta_list.pop();
 
     let complex_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
@@ -194,7 +195,7 @@ pub fn ctx_insert_fn_ts_with_pr_without_meta(
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, SlotMeta){
                 use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
                 #(
                     let #func_value_meta_field_idents =
@@ -202,7 +203,7 @@ pub fn ctx_insert_fn_ts_with_pr_without_meta(
                             #complex_field_idents.to_value(&self.ctx).val,
                             #complex_field_idents.meta());
                 )*
-                let __merged = PR::MetaTy::merge(&mut vec![ #(#complex_field_idents.meta()),* ].into_iter());
+                let __merged = SlotMeta::merge(&mut vec![ #(#complex_field_idents.meta()),* ].into_iter());
                 let __meta = SlotMetaBase::Inner{
                     inner: __merged.clone()
                 };
@@ -218,7 +219,7 @@ pub fn ctx_insert_fn_ts_with_pr_without_meta(
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy);
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, SlotMeta);
         },
     )
 }
