@@ -1,6 +1,7 @@
 use crate::{FuncOffset, draw::MaybeInner};
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use egui;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ViewNode {
@@ -23,6 +24,11 @@ pub trait EventHandle: Send + Sync {
     // just once
     fn on_newly_selected(&self, cano_value: u32) {}
     fn on_clicked(&self, cano_value: u32) {}
+    fn node_detail(&self, node: &ViewNode) -> String {
+        format!("Canonical Value: {}", node.cano_value)
+    }
+    /// Called when the event handler is initialized, allowing creation of additional SidePanels
+    fn on_init(&self, _ctx: &egui::Context) {}
     fn dyn_clone(&self) -> Box<dyn EventHandle>;
 }
 pub struct EventHandler {
@@ -31,6 +37,9 @@ pub struct EventHandler {
 #[derive(Clone, Debug)]
 pub struct EmptyH {}
 impl EventHandle for EmptyH {
+    fn node_detail(&self, node: &ViewNode) -> String {
+        format!("Canonical Value: {}", node.cano_value)
+    }
     fn dyn_clone(&self) -> Box<dyn EventHandle> {
         Box::new(self.clone())
     }

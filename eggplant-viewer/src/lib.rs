@@ -12,6 +12,7 @@ use egui::{self, Align2, CollapsingHeader, Color32, Pos2, Rect, ScrollArea, Ui};
 #[cfg(not(feature = "events"))]
 use instant::Instant;
 // use petgraph::Directed;
+use petgraph::Directed;
 use petgraph::stable_graph::NodeIndex;
 use rand::Rng;
 #[cfg(all(feature = "events", target_arch = "wasm32"))]
@@ -143,6 +144,8 @@ pub struct EGraphApp {
     // One-shot navigation actions
     pub fit_to_screen_once_pending: bool,
     pub pan_to_graph_pending: bool,
+    // Event handler for custom UI extensions
+    pub event_handler: Box<dyn EventHandle>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -161,6 +164,7 @@ pub enum ExportDestination {
 pub enum RightTab {
     Playground,
     Import,
+    NodeDetail,
 }
 
 impl EGraphApp {
@@ -541,6 +545,141 @@ impl EGraphApp {
             });
     }
 
+    pub fn ui_node_details(&mut self, ui: &mut Ui) {
+        CollapsingHeader::new("Node Details")
+            .default_open(true)
+            .show(ui, |ui| {
+                ScrollArea::vertical()
+                    .max_height(SELECTED_SCROLL_MAX_HEIGHT)
+                    .show(ui, |ui| match &self.g {
+                        DemoGraph::Directed(g) => {
+                            let selected_nodes = g.selected_nodes();
+                            if selected_nodes.is_empty() {
+                                ui.label("No node selected");
+                                return;
+                            }
+
+                            // For now, show details for the first selected node
+                            if let Some(node_idx) = selected_nodes.first() {
+                                if let Some(node) = g.g().node_weight(*node_idx) {
+                                    self.render_node_details(ui, node);
+                                }
+                            }
+                        }
+                    });
+            });
+    }
+
+    fn render_node_details(
+        &self,
+        ui: &mut Ui,
+        node: &eggplant_egui_graphs::Node<Directed, crate::plant_node::PlantNodeShape>,
+    ) {
+        let payload = node.payload();
+
+        // Node identifier
+        ui.heading("Node Information");
+        ui.separator();
+
+        ui.horizontal(|ui| {
+            ui.label("Identifier:");
+            if let Some(id) = &payload.identifier {
+                ui.code(id);
+            } else {
+                ui.label("None");
+            }
+        });
+
+        ui.horizontal(|ui| {
+            ui.label("Canonical Value:");
+            ui.code(format!("{}", payload.cano_value));
+        });
+
+        ui.separator();
+
+        // ENode information
+        ui.heading("ENodes");
+        if payload.enodes.is_empty() {
+            ui.label("No ENode data");
+        } else {
+            for (func, enodes) in &payload.enodes {
+                ui.collapsing(func, |ui| {
+                    for (i, enode) in enodes.iter().enumerate() {
+                        ui.collapsing(format!("ENode {}", i), |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label("Function:");
+                                ui.code(&enode.func_offset.func);
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Offset:");
+                                ui.code(format!("{}", enode.func_offset.offset));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Canonical Value:");
+                                ui.code(format!("{}", enode.cano_value));
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Operands:");
+                                ui.code(format!("{}", enode.operands_num));
+                            });
+                            if !enode.basics.is_empty() {
+                                ui.horizontal(|ui| {
+                                    ui.label("Basics:");
+                                    ui.code(format!("{:?}", enode.basics));
+                                });
+                            }
+                        });
+                    }
+                });
+            }
+        }
+    }
+
+    pub fn ui_node_detail_tab(&mut self, ui: &mut Ui) {
+        ScrollArea::vertical().show(ui, |ui| {
+            match &self.g {
+                DemoGraph::Directed(g) => {
+                    let selected_nodes = g.selected_nodes();
+                    if selected_nodes.is_empty() {
+                        ui.label("No node selected");
+                        return;
+                    }
+
+                    // For now, show details for the first selected node
+                    if let Some(node_idx) = selected_nodes.first() {
+                        if let Some(node) = g.g().node_weight(*node_idx) {
+                            let payload = node.payload();
+                            let detail = payload.event_handle.event_handle.node_detail(payload);
+
+                            ui.heading("Node Detail");
+                            ui.separator();
+
+                            ui.label("EventHandle Detail:");
+                            ui.code(&detail);
+
+                            ui.separator();
+
+                            // Also show basic node information
+                            ui.heading("Basic Node Info");
+                            ui.horizontal(|ui| {
+                                ui.label("Identifier:");
+                                if let Some(id) = &payload.identifier {
+                                    ui.code(id);
+                                } else {
+                                    ui.label("None");
+                                }
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label("Canonical Value:");
+                                ui.code(format!("{}", payload.cano_value));
+                            });
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     #[cfg(feature = "events")]
     pub fn ui_events(&mut self, ui: &mut Ui) {
         CollapsingHeader::new("Events")
@@ -705,6 +844,19 @@ impl App for EGraphApp {
         // Sync counts displayed on sliders with actual graph values
         self.sync_counts();
 
+        // Call on_init on first update to allow event handler to create additional SidePanels
+        // This ensures UI context is fully initialized
+        static mut ON_INIT_CALLED: bool = false;
+        unsafe {
+            if !ON_INIT_CALLED {
+                self.event_handler.on_init(ctx);
+                ON_INIT_CALLED = true;
+            }
+        }
+
+        // Call on_init every frame to ensure SidePanels are persisted
+        self.event_handler.on_init(ctx);
+
         // Handle global keyboard shortcuts and modal toggling
         self.process_keybindings(ctx);
 
@@ -722,6 +874,11 @@ impl App for EGraphApp {
                             "Playground",
                         );
                         ui.selectable_value(&mut self.right_tab, RightTab::Import, "Import/Load");
+                        ui.selectable_value(
+                            &mut self.right_tab,
+                            RightTab::NodeDetail,
+                            "Node Detail",
+                        );
                     });
                     ui.separator();
                     match self.right_tab {
@@ -729,6 +886,7 @@ impl App for EGraphApp {
                         RightTab::Import => {
                             // egui::ScrollArea::vertical().show(ui, |ui| self.ui_import_tab(ui));
                         }
+                        RightTab::NodeDetail => self.ui_node_detail_tab(ui),
                     }
                 });
         }

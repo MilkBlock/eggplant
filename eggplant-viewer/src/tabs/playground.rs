@@ -169,6 +169,7 @@ impl EGraphApp {
             self.ui_layout_section(ui);
             self.ui_interaction(ui);
             self.ui_selected(ui);
+            self.ui_node_details(ui);
             self.ui_style(ui);
             self.ui_debug(ui);
             self.ui_events(ui);

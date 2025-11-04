@@ -28,16 +28,18 @@ fn main() {
             let x = Var::query_slot("x");
             let y = Var::query_slot("y");
             let add = Add::query(&x, &y);
-            #[eggplant::slotted_pat_vars_catch]
+            #[eggplant::slotted_pat_vars]
             struct AddPat {
                 x: Var,
                 y: Var,
                 add: Add,
             }
+            AddPat::new(x, y, add)
         },
         |ctx, pat| {
             println!("{:?}", pat);
             // ctx.remove_add(&pat.y, &pat.x, ctx.devalue(pat.add.0.ver));
+            println!("Hello {:?} {:?}", pat.y, pat.x);
             let symetric_add = ctx.insert_add(&pat.y, &pat.x);
             // context should be passed from query to action
             println!("{:#?}", symetric_add.1.tensor());
@@ -50,7 +52,7 @@ fn main() {
     // let report = MyTx::run_ruleset(ruleset, RunConfig::Once);
     // println!("third");
     // let report = MyTx::run_ruleset(ruleset, RunConfig::Once);
-    // println!("{:#?}", report);
+    println!("{:#?}", report);
     MyTx::table_view();
 
     // let c: Expr<MyTx, ConstTy> = Const::new(10);
@@ -85,8 +87,8 @@ impl RuleCtxHook for MyHook {
     fn on_union(&self, x: egglog::Value, y: egglog::Value) {
         println!("union {x:?} {y:?}")
     }
-    fn on_subsume(&self, table: &str, key: &[egglog::Value]) {}
-    fn on_remove(&self, table: &str, key: &[egglog::Value]) {}
+    fn on_subsume(&self, _table: &str, _key: &[egglog::Value]) {}
+    fn on_remove(&self, _table: &str, _key: &[egglog::Value]) {}
     fn dyn_clone(&self) -> Box<dyn RuleCtxHook> {
         Box::new(self.clone())
     }
@@ -94,6 +96,8 @@ impl RuleCtxHook for MyHook {
 
 fn view() {
     use eggplant_viewer::*;
+    use eframe::egui;
+    use egglog::NumericId;
     let map = MyPatRec::sgl().slotted_ctx.clone();
     #[derive(Clone)]
     struct SlotEventHandler {
@@ -126,6 +130,51 @@ fn view() {
                     println!("seclasses not generated")
                 }
             }
+        }
+
+        fn on_init(&self, ctx: &egui::Context) {
+            println!("SlotEventHandler::on_init called!");
+            // Create a new SidePanel for Slotted EGraph visualization
+            // This allows users to create additional graph panels for seclasses
+            egui::SidePanel::left("slotted_seclasses")
+                .default_width(400.0)  // Increased width for better visibility
+                .min_width(300.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.heading("🎯 Slotted SEClasses");
+                    ui.separator();
+
+                    // Add some debug info
+                    ui.label("This is the Slotted SEClasses SidePanel");
+                    ui.label("Created via EventHandler::on_init");
+                    ui.separator();
+
+                    // Display information about slotted seclasses
+                    if self.map.cano_value2seclasses.is_empty() {
+                        ui.label("No SEClasses data available");
+                    } else {
+                        ui.label(format!(
+                            "Total SEClasses entries: {}",
+                            self.map.cano_value2seclasses.len()
+                        ));
+
+                        // Show basic information about seclasses
+                        let mut count = 0;
+                        for entry in self.map.cano_value2seclasses.iter().take(10) {
+                            let cano_value = entry.key();
+                            let seclasses = entry.value();
+                            ui.collapsing(format!("Canonical Value: {}", cano_value.rep()), |ui| {
+                                ui.label("Slotted EGraph SEClasses data available");
+                                ui.label(format!("Canonical Value ID: {}", cano_value.rep()));
+                            });
+                            count += 1;
+                        }
+
+                        if count < self.map.cano_value2seclasses.len() {
+                            ui.label("... and more");
+                        }
+                    }
+                });
         }
     }
 

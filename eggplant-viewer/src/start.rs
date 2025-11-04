@@ -276,6 +276,7 @@ impl EGraphApp {
             web_upload_buf: Rc::new(RefCell::new(Vec::new())),
             fit_to_screen_once_pending: false,
             pan_to_graph_pending: false,
+            event_handler,
         };
 
         // Web: if URL hash contains g=<example_name>, load that example graph automatically
