@@ -3,7 +3,6 @@ pub use crate::instances::tx::*;
 pub use crate::instances::tx_minimal::*;
 pub use crate::instances::tx_rx_vt::*;
 pub use crate::instances::tx_rx_vt_pr::*;
-pub use crate::instances::tx_rx_vt_pr_slot::pat_rec_slot::*;
 pub use crate::instances::tx_rx_vt_pr_slot::*;
 #[cfg(feature = "viewer")]
 pub use crate::wrap::EGraphViewSgl;

@@ -1401,6 +1401,7 @@ dependencies = [
  "eggplant-viewer",
  "env_logger",
  "graphviz-rust",
+ "indexmap",
  "inventory",
  "itertools 0.14.0",
  "log",

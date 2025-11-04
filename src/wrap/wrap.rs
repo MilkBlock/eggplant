@@ -15,6 +15,7 @@ use egglog::{
     ast::{Command, GenericAction, GenericExpr},
 };
 use egglog::{TermDag, TermId, ast::Literal};
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::sync::Mutex;
 use std::{
@@ -51,7 +52,7 @@ pub trait NodeDropper: NodeOwner + 'static {
     fn replace_meta(&self, _sym: Sym, _meta: Box<dyn Any>) {
         panic!("no meta suppoerted")
     }
-    fn get_meta(&self, _sym: Sym) -> Box<dyn std::any::Any> {
+    fn meta_of(&self, _sym: Sym) -> Box<dyn std::any::Any> {
         panic!("no meta supported")
     }
 }
@@ -120,7 +121,7 @@ pub trait NodeDropperSgl: 'static + Sized + SingletonGetter + NodeOwnerSgl {
     fn on_drop(dropped: &mut (impl EgglogNode + 'static));
 
     fn replace_meta(sym: Sym, meta: Box<dyn Any>);
-    fn get_meta(sym: Sym) -> Box<dyn std::any::Any>;
+    fn meta_of(sym: Sym) -> Box<dyn std::any::Any>;
 }
 
 pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
@@ -164,8 +165,8 @@ where
     fn replace_meta(sym: Sym, meta: Box<dyn Any>) {
         Self::sgl().replace_meta(sym, meta)
     }
-    fn get_meta(sym: Sym) -> Box<dyn std::any::Any> {
-        Self::sgl().get_meta(sym)
+    fn meta_of(sym: Sym) -> Box<dyn std::any::Any> {
+        Self::sgl().meta_of(sym)
     }
 }
 
@@ -244,7 +245,18 @@ pub trait VersionCtl {
     fn set_prev(&self, node: &mut Sym);
 }
 
-pub trait Meta: Default + Clone + Send + Sync + fmt::Debug {
+pub trait Meta:
+    Default
+    + Clone
+    + Send
+    + Sync
+    + fmt::Debug
+    + Serialize
+    + Deserialize<'static>
+    + Hash
+    + PartialEq
+    + Eq
+{
     fn merge(metas: &mut impl Iterator<Item = Self>) -> Self;
 }
 impl Meta for () {
@@ -264,15 +276,13 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
-    fn meta_of(&self, node: &(impl EgglogNode + 'static)) -> Self::MetaTy;
 
     #[allow(unused)]
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
         inputs: Vec<FuncValueMeta<Self>>,
-        output: (FuncName, egglog::Value),
-    ) -> Self::MetaTy {
-        Self::MetaTy::merge(&mut inputs.into_iter().map(|(x, y, z)| z))
+        output: (FuncName, egglog::Value, Self::MetaTy),
+    ) {
     }
     #[allow(unused)]
     fn on_ctx_union(&self, combo1: FuncValueMeta<Self>, combo2: FuncValueMeta<Self>) {}
@@ -294,16 +304,9 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
-    fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy;
 
-    fn on_ctx_insert(
-        inputs: Vec<_FuncValueMeta<Self>>,
-        output: (FuncName, egglog::Value),
-    ) -> Self::MetaTy;
-    fn on_ctx_union(
-        combo1: (FuncName, egglog::Value, Self::MetaTy),
-        combo2: (FuncName, egglog::Value, Self::MetaTy),
-    );
+    fn on_ctx_insert(inputs: Vec<_FuncValueMeta<Self>>, output: _FuncValueMeta<Self>);
+    fn on_ctx_union(combo1: _FuncValueMeta<Self>, combo2: _FuncValueMeta<Self>);
 
     /// flush pending and return whether updated
     fn flush_pending(egraph: &EGraph) -> bool;
@@ -331,21 +334,9 @@ where
         Self::sgl().pat2fact_builder(pat_id)
     }
 
-    fn meta_of(node: &(impl EgglogNode + 'static)) -> Self::MetaTy {
-        Self::sgl().meta_of(node)
-    }
+    fn on_ctx_insert(inputs: Vec<_FuncValueMeta<Self>>, output: _FuncValueMeta<Self>) {}
 
-    fn on_ctx_insert(
-        inputs: Vec<_FuncValueMeta<Self>>,
-        output: (FuncName, egglog::Value),
-    ) -> Self::MetaTy {
-        Self::sgl().on_ctx_insert::<Self>(inputs, output)
-    }
-
-    fn on_ctx_union(
-        combo1: (FuncName, egglog::Value, Self::MetaTy),
-        combo2: (FuncName, egglog::Value, Self::MetaTy),
-    ) {
+    fn on_ctx_union(combo1: _FuncValueMeta<Self>, combo2: _FuncValueMeta<Self>) {
         Self::sgl().on_ctx_union(combo1, combo2)
     }
 
@@ -1234,7 +1225,7 @@ impl NonPatRecSgl for () {
 pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl {}
 impl<T: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl> G for T {}
 
-pub type SlotVarID = &'static str;
+pub type SlotVarID = String;
 
 pub trait QuerySlot {
     fn query_slot(name: SlotVarID) -> Self;

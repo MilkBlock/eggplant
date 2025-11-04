@@ -536,7 +536,7 @@ impl Tx for SlottedTxRxVTPR {
     }
 }
 impl NodeDropper for SlottedTxRxVTPR {
-    fn get_meta(&self, sym: Sym) -> Box<dyn std::any::Any> {
+    fn meta_of(&self, sym: Sym) -> Box<dyn std::any::Any> {
         match self.sym2meta.get(&sym) {
             Some(meta) => Box::new(meta.clone()),
             None => {

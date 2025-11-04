@@ -1504,18 +1504,19 @@ pub fn base_ty(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let input = parse_macro_input!(item as DeriveInput);
+    let (i_g, t_g, w_c) = input.generics.split_for_impl();
     let ident = &input.ident;
     let ident_snake_case = &input.ident.to_string().to_snake_case();
     let sort = format_ident!("{}Sort", ident);
     quote!(
         #input
         #INVE::submit! { #W::UserBaseSort{ sort_insert_fn: |e| egglog::prelude::add_base_sort(e, #sort, #E::span!()).unwrap() }}
-        impl std::fmt::Display for #ident {
+        impl #i_g std::fmt::Display for #ident #t_g #w_c{
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", serde_json::to_string(&self).unwrap())
             }
         }
-        impl #W::DeLiteral<#ident> for egglog::ast::Literal {
+        impl #i_g #W::DeLiteral<#ident #t_g> #w_c for egglog::ast::Literal {
             fn deliteral(&self) -> #ident {
                 match self {
                     egglog::ast::Literal::Int(_) => todo!(),
@@ -1529,8 +1530,8 @@ pub fn base_ty(
         }
         #[derive(Debug)]
         struct #sort;
-        impl #E::prelude::BaseSort for #sort {
-            type Base = #E::sort::Boxed<#ident>;
+        impl #i_g #E::prelude::BaseSort for #sort #t_g #w_c {
+            type Base = #E::sort::Boxed< #ident #t_g>;
             fn name(&self) -> &str {
                 stringify!(#ident)
             }
@@ -1541,20 +1542,20 @@ pub fn base_ty(
                 term_dag: &mut egglog::TermDag,
             ) -> egglog::Term {
                 use #EP::prelude::FromBase;
-                let op: #E::sort::Boxed<#ident> = base_values.unwrap(value);
+                let op: #E::sort::Boxed< #ident #t_g> = base_values.unwrap(value);
                 let term = term_dag.lit(egglog::ast::Literal::from_base(&op.0));
                 term
             }
         }
-        impl #W::FromBase<#ident> for egglog::ast::Literal { fn from_base(base: &#ident) -> Self { egglog::ast::Literal::String(serde_json::to_string(&base).unwrap()) } }
-        impl #W::EgglogTy for #ident {
-            const TY_NAME: &'static str = stringify!(#ident);
+        impl #i_g #W::FromBase<#ident #t_g> #w_c for egglog::ast::Literal { fn from_base(base: &#ident<#t_g>) -> Self { egglog::ast::Literal::String(serde_json::to_string(&base).unwrap()) } }
+        impl #i_g #W::EgglogTy for #ident #t_g #w_c{
+            const TY_NAME: &'static str = stringify!(#ident #t_g);
             const TY_NAME_LOWER: &'static str = stringify!(#ident_snake_case);
             type Valued = eggplant::prelude::Value<Self>;
             type EnumVariantMarker = ();
         }
-        impl #W::BoxedBase for #ident {
-            type Boxed = #E::sort::Boxed<#ident>;
+        impl #i_g #W::BoxedBase for #ident #t_g #w_c {
+            type Boxed = #E::sort::Boxed<#ident #t_g>;
             fn unbox(boxed: Self::Boxed, ctx: &eggplant::wrap::RuleCtx) -> Self {
                 boxed.0
             }
@@ -1562,7 +1563,7 @@ pub fn base_ty(
                 #E::sort::Boxed(self)
             }
         }
-        impl #W::BoxedValue for #ident {
+        impl #i_g #W::BoxedValue for #ident #t_g #w_c {
             type Output<'a> = Self;
             fn devalue<'b>(rule_ctx: &'b eggplant::wrap::RuleCtx, value: egglog::Value) -> Self::Output<'b>{
                 use #W::BoxedBase;

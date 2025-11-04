@@ -6,9 +6,12 @@ use crate::{
 };
 use dashmap::DashMap;
 use derive_more::{Debug, Deref};
-use egglog::{EGraph, util::IndexSet};
+use egglog::EGraph;
+use indexmap::IndexSet;
 use petgraph::prelude::StableDiGraph;
+use serde::{Deserialize, Serialize};
 use std::{
+    any::Any,
     collections::HashMap,
     path::Path,
     sync::{Arc, Mutex, atomic::AtomicU32},
@@ -285,6 +288,15 @@ impl NodeDropper for SlottedPatRecorder {
             .expect("should have been inserted")
             .selected = false;
     }
+    fn meta_of(&self, sym: Sym) -> Box<dyn Any> {
+        Box::new(
+            self.map
+                .get(&sym)
+                .unwrap_or_else(|| panic!("meta of {} not found", sym))
+                .slot_meta
+                .clone(),
+        )
+    }
 }
 impl NodeOwner for SlottedPatRecorder {
     type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = u32;
@@ -366,30 +378,20 @@ impl PatRec for SlottedPatRecorder {
         facts_builder
     }
 
-    fn meta_of(&self, node: &(impl EgglogNode + 'static)) -> Self::MetaTy {
-        self.map
-            .get(&node.cur_sym())
-            .unwrap_or_else(|| panic!("meta of {} not found", node.cur_sym()))
-            .slot_meta
-            .clone()
-    }
-
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
         inputs: Vec<(FuncName, egglog::Value, Self::MetaTy)>,
-        output: (FuncName, egglog::Value),
-    ) -> Self::MetaTy {
+        output: (FuncName, egglog::Value, Self::MetaTy),
+    ) {
         // self.slotted_ctx.insert(cano_value, meta);
         let inner_inputs = inputs
             .iter()
             .map(|(x, y, z)| (*x, y.clone(), z.clone()))
             .collect();
-        let merged = SlotMeta::merge(&mut inputs.into_iter().map(|(_x, _y, z)| z));
         self.slotted_ctx.push_pending(SlotPendingOps::Insert {
             inputs: inner_inputs,
-            output: (output.0, output.1.clone(), merged.clone()),
+            output: (output.0, output.1.clone(), output.2.clone()),
         });
-        merged
     }
 
     fn on_ctx_union(
@@ -420,15 +422,28 @@ impl SlottedPatRec for SlottedPatRecorder {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Serialize)]
 pub struct SlotMetaInner {
     pub sub_metas: Vec<SlotMeta>,
-    pub var_id_set: IndexSet<crate::wrap::SlotVarID>,
+    pub var_id_set: indexmap::IndexSet<crate::wrap::SlotVarID>,
 }
-#[derive(Clone, Deref)]
+impl std::hash::Hash for SlotMetaInner {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.sub_metas.hash(state);
+    }
+}
+#[derive(Clone, Deref, Hash, Deserialize, PartialEq, Eq, Serialize)]
 pub struct SlotMeta {
     pub inner: Arc<SlotMetaInner>,
 }
+// impl Serialize for SlotMeta {
+//     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+//     where
+//         S: serde::Serializer,
+//     {
+//         S::
+//     }
+// }
 impl SlotMeta {
     fn new(inner: SlotMetaInner) -> Self {
         Self {
@@ -488,7 +503,7 @@ impl SlotMeta {
         let var_id_set = sub_metas
             .iter()
             .map(|meta| &meta.var_id_set)
-            .flat_map(|x| x.iter().copied())
+            .flat_map(|x| x.iter().cloned())
             .collect();
 
         SlotMeta {

@@ -313,8 +313,4 @@ impl PatRec for PatRecorder {
         }
         facts_builder
     }
-
-    fn meta_of(&self, _node: &(impl EgglogNode + 'static)) -> Self::MetaTy {
-        // in vanilla egraph we don't need meta
-    }
 }

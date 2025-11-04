@@ -1,6 +1,7 @@
 // use core::panic;
 use darling::{Error, FromMeta, ast::NestedMeta};
 
+use crate::enum_slot_related::{ctx_insert_fn_ts_with_pr_without_meta, new_fn_without_meta_ts};
 use crate::helper::*;
 use crate::helper::{E, INVE, W};
 use crate::vanilla::ensure_PR_contained;
@@ -700,7 +701,7 @@ pub fn slotted_dsl(
                         // transform Sym<Expr> into Sym as key
                         Some(quote! {
                             let #complex_ident: (#W::Value<#complex_ty<(),()>> , SlotMeta)= (#W::Value::new(sym_to_value_map.get(&#complex_ident.erase()).unwrap().clone()), 
-                            *T::get_meta(#complex_ident.erase()).downcast().expect("meta type mismatched")
+                            *T::meta_of(#complex_ident.erase()).downcast().expect("meta type mismatched")
                         );
                         })
                     },
@@ -731,7 +732,7 @@ pub fn slotted_dsl(
             ) = data_enum
                 .variants
                 .iter()
-                .map(|x| new_fn_ts(x, &name_node, &name_inner, &name_counter))
+                .map(|x| new_fn_without_meta_ts(x, &name_node, &name_inner, &name_counter))
                 .collect();
 
             let (query_fns, query_fn_names, query_fn_args, query_fn_arg_idents): (
@@ -863,7 +864,7 @@ pub fn slotted_dsl(
                 ) = data_enum
                     .variants
                     .iter()
-                    .map(|x| ctx_insert_fn_ts_with_pr(x, &name_node))
+                    .map(|x| ctx_insert_fn_ts_with_pr_without_meta(x, &name_node))
                     .collect();
                 let (
                     subsume_remove_fns,
@@ -1385,7 +1386,7 @@ pub fn slotted_pat_vars(
                     fn new( #(#field_idents:#field_types,)* ) -> Self{
                         #(
                             let #field_idents = {
-                                let meta = PR::meta_of(&#field_idents);
+                                let meta = *PR::meta_of(#field_idents.cur_sym()).downcast::<PR::MetaTy>().unwrap();
                                 (#field_idents, meta)
                             };
                         )*

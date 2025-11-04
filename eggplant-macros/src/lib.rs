@@ -8,6 +8,7 @@ mod helper;
 use helper::{E, W};
 
 mod enum_related;
+mod enum_slot_related;
 mod slotted;
 mod transpiler;
 mod vanilla;
@@ -165,6 +166,16 @@ pub fn slotted_pat_vars_catch(
 /// # Mention
 /// this macro requires enum and should impl Default Serialize Deserialize Hash Debug trait
 pub fn base_ty(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    vanilla::base_ty(attr, item)
+}
+
+#[proc_macro_attribute]
+/// # Mention
+/// this macro requires enum and should impl Default Serialize Deserialize Hash Debug trait
+pub fn slotted_base_ty(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {

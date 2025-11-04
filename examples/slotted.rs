@@ -1,16 +1,39 @@
-use egglog::util::IndexSet;
 use eggplant::prelude::*;
 use eggplant::slotted_tx_rx_vt_pr;
 use eggplant::wrap::NodeDropperSgl;
+use eggplant::wrap::PatRec;
 use eggplant::wrap::RuleCtxHook;
+use indexmap::IndexSet;
+use serde::Deserialize;
+use serde::Serialize;
 use std::sync::Arc;
 
-#[eggplant::slotted_dsl]
+#[eggplant::slotted_dsl(base = SlotMetaBase)]
 pub enum Expr {
     Var {},
-    Const { num: i64 },
-    Mul { l: Expr, r: Expr },
-    Add { l: Expr, r: Expr },
+    Const {
+        num: i64,
+        __meta: SlotMetaBase,
+    },
+    Mul {
+        l: Expr,
+        r: Expr,
+        __meta: SlotMetaBase,
+    },
+    Add {
+        l: Expr,
+        r: Expr,
+        __meta: SlotMetaBase,
+    },
+}
+#[eggplant::base_ty]
+#[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
+enum SlotMetaBase<PR: PatRecSgl> {
+    Inner {
+        inner: PR::MetaTy,
+    },
+    #[default]
+    Unknown,
 }
 
 slotted_tx_rx_vt_pr!(MyTx, MyPatRec);
@@ -25,8 +48,8 @@ fn main() {
         stringify!("add commutative"),
         ruleset,
         || {
-            let x = Var::query_slot("x");
-            let y = Var::query_slot("y");
+            let x = Var::query_slot("x".to_string());
+            let y = Var::query_slot("y".to_string());
             let add = Add::query(&x, &y);
             #[eggplant::slotted_pat_vars]
             struct AddPat {
@@ -95,9 +118,9 @@ impl RuleCtxHook for MyHook {
 }
 
 fn view() {
-    use eggplant_viewer::*;
     use eframe::egui;
     use egglog::NumericId;
+    use eggplant_viewer::*;
     let map = MyPatRec::sgl().slotted_ctx.clone();
     #[derive(Clone)]
     struct SlotEventHandler {
@@ -137,7 +160,7 @@ fn view() {
             // Create a new SidePanel for Slotted EGraph visualization
             // This allows users to create additional graph panels for seclasses
             egui::SidePanel::left("slotted_seclasses")
-                .default_width(400.0)  // Increased width for better visibility
+                .default_width(400.0) // Increased width for better visibility
                 .min_width(300.0)
                 .resizable(true)
                 .show(ctx, |ui| {
@@ -166,6 +189,7 @@ fn view() {
                             ui.collapsing(format!("Canonical Value: {}", cano_value.rep()), |ui| {
                                 ui.label("Slotted EGraph SEClasses data available");
                                 ui.label(format!("Canonical Value ID: {}", cano_value.rep()));
+                                ui.label(format!("SEClasses: {:?}", seclasses));
                             });
                             count += 1;
                         }
@@ -174,6 +198,66 @@ fn view() {
                             ui.label("... and more");
                         }
                     }
+                });
+
+            // Create another SidePanel for graph visualization using GraphView
+            egui::SidePanel::left("slotted_graph")
+                .default_width(500.0)
+                .min_width(400.0)
+                .resizable(true)
+                .show(ctx, |ui| {
+                    ui.heading("📊 Slotted EGraph Visualization");
+                    ui.separator();
+
+                    // Display basic graph information
+                    ui.label(format!(
+                        "SEClasses count: {}",
+                        self.map.cano_value2seclasses.len()
+                    ));
+
+                    // Create a simple graph for demonstration using painter
+                    // Since GraphView is not available in this context, we'll use manual drawing
+                    let (rect, _response) =
+                        ui.allocate_exact_size(egui::vec2(400.0, 300.0), egui::Sense::hover());
+
+                    // Draw a simple graph visualization
+                    let painter = ui.painter();
+
+                    // Draw nodes as circles
+                    let node_radius = 20.0;
+                    let node_positions = [
+                        rect.center() + egui::vec2(-50.0, -50.0),
+                        rect.center() + egui::vec2(50.0, -50.0),
+                        rect.center() + egui::vec2(0.0, 50.0),
+                    ];
+
+                    for (i, pos) in node_positions.iter().enumerate() {
+                        painter.circle_filled(*pos, node_radius, egui::Color32::LIGHT_BLUE);
+                        painter.text(
+                            *pos,
+                            egui::Align2::CENTER_CENTER,
+                            format!("Node {}", i + 1),
+                            egui::TextStyle::Body.resolve(ui.style()),
+                            egui::Color32::BLACK,
+                        );
+                    }
+
+                    // Draw edges as lines
+                    painter.line_segment(
+                        [node_positions[0], node_positions[1]],
+                        egui::Stroke::new(2.0, egui::Color32::GRAY),
+                    );
+                    painter.line_segment(
+                        [node_positions[1], node_positions[2]],
+                        egui::Stroke::new(2.0, egui::Color32::GRAY),
+                    );
+                    painter.line_segment(
+                        [node_positions[2], node_positions[0]],
+                        egui::Stroke::new(2.0, egui::Color32::GRAY),
+                    );
+
+                    ui.label("Simple graph visualization (manual drawing)");
+                    ui.label("Drag functionality available in main graph view");
                 });
         }
     }
@@ -205,7 +289,7 @@ impl<T: eggplant::wrap::TxSgl + eggplant::wrap::NonPatRecSgl + eggplant::wrap::W
                     sub_metas: vec![],
                     var_id_set: {
                         let mut idx_set = IndexSet::default();
-                        idx_set.insert(name);
+                        idx_set.insert(name.to_string());
                         idx_set
                     },
                 }),
