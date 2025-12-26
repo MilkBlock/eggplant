@@ -380,25 +380,31 @@ impl PatRec for SlottedPatRecorder {
 
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        inputs: Vec<(FuncName, egglog::Value, Self::MetaTy)>,
-        output: (FuncName, egglog::Value, Self::MetaTy),
+        inputs: Vec<(FuncName, egglog::Value, Option<Self::MetaTy>)>,
+        output: (FuncName, egglog::Value, Option<Self::MetaTy>),
     ) {
         // self.slotted_ctx.insert(cano_value, meta);
         let inner_inputs = inputs
             .iter()
-            .map(|(x, y, z)| (*x, y.clone(), z.clone()))
+            .map(|(x, y, z)| (*x, y.clone(), z.clone().expect("meta not found")))
             .collect();
         self.slotted_ctx.push_pending(SlotPendingOps::Insert {
             inputs: inner_inputs,
-            output: (output.0, output.1.clone(), output.2.clone()),
+            output: (
+                output.0,
+                output.1.clone(),
+                output.2.clone().expect("meta not found"),
+            ),
         });
     }
 
     fn on_ctx_union(
         &self,
-        x: (FuncName, egglog::Value, Self::MetaTy),
-        y: (FuncName, egglog::Value, Self::MetaTy),
+        x: (FuncName, egglog::Value, Option<Self::MetaTy>),
+        y: (FuncName, egglog::Value, Option<Self::MetaTy>),
     ) {
+        let x = (x.0, x.1, x.2.expect("meta not found"));
+        let y = (y.0, y.1, y.2.expect("meta not found"));
         self.slotted_ctx.push_pending(SlotPendingOps::Union(x, y))
     }
 

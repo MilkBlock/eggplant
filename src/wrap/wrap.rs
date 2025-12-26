@@ -281,7 +281,7 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
         inputs: Vec<FuncValueMeta<Self>>,
-        output: (FuncName, egglog::Value, Self::MetaTy),
+        output: (FuncName, egglog::Value, Option<Self::MetaTy>),
     ) {
     }
     #[allow(unused)]
@@ -1022,15 +1022,15 @@ pub trait FromPlainValuesMetas<PR: PatRecSgl> {
 pub trait Insertable<T>: Clone {
     type MetaTy;
     fn to_value(&self, ctx: &RuleCtx) -> Value<T>;
-    fn meta(&self) -> Self::MetaTy;
+    fn meta(&self) -> Option<Self::MetaTy>;
 }
 impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for (I, M) {
     type MetaTy = M;
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
     }
-    fn meta(&self) -> Self::MetaTy {
-        self.1.clone()
+    fn meta(&self) -> Option<Self::MetaTy> {
+        Some(self.1.clone())
     }
 }
 impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for &(I, M) {
@@ -1038,8 +1038,8 @@ impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for &(I, M) {
     fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
         self.0.to_value(ctx)
     }
-    fn meta(&self) -> Self::MetaTy {
-        self.1.clone()
+    fn meta(&self) -> Option<Self::MetaTy> {
+        Some(self.1.clone())
     }
 }
 pub trait RetypeValue {
@@ -1093,8 +1093,8 @@ impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
     fn to_value(&self, ctx: &RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
     }
-    fn meta(&self) -> Self::MetaTy {
-        panic!("Boxed base don't have meta")
+    fn meta(&self) -> Option<Self::MetaTy> {
+        None
     }
 }
 

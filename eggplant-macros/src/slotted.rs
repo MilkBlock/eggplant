@@ -545,8 +545,8 @@ pub fn slotted_dsl(
                                 fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                                     #W::Value::new(self.erase())
                                 }
-                                fn meta(&self) -> Self::MetaTy{
-                                    panic!("pure value don't have any meta")
+                                fn meta(&self) -> Option<Self::MetaTy>{
+                                    None
                                 }
                             }
                             impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
