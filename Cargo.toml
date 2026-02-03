@@ -40,10 +40,10 @@ itertools.workspace = true
 crossbeam.workspace = true
 indexmap.workspace = true
 
-[[bin]]
-name = "viewer_example"
-path = "src/viewer_example.rs"
-required-features = ["viewer"]
+# [[bin]]
+# name = "viewer_example"
+# path = "src/viewer_example.rs"
+# required-features = ["viewer"]
 
 [workspace]
 members = ["eggplant-macros", "eggplant-transpiler", "eggplant-egui_graphs"]

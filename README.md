@@ -174,7 +174,7 @@ Here's the complete code for implementing addition, subtraction, multiplication,
 ```rust
 use eggplant::{prelude::*, tx_rx_vt_pr};
 
-#[eggplant::ty]
+#[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
     Mul { l: Expr, r: Expr },
@@ -187,12 +187,6 @@ tx_rx_vt_pr!(MyTx, MyPatRec);
 
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
-        #[eggplant::pat_vars]
-        struct $pat_name {
-            l: Const,
-            r: Const,
-            p: $ty,
-        }
         MyTx::add_rule(
             stringify!($pat_name),
             $ruleset,
@@ -200,6 +194,12 @@ macro_rules! prop {
                 let l = Const::query();
                 let r = Const::query();
                 let p = $ty::query(&l, &r);
+                #[eggplant::pat_vars]
+                struct $pat_name {
+                    l: Const,
+                    r: Const,
+                    p: $ty,
+                }
                 $pat_name::new(l, r, p)
             },
             |ctx, values| {

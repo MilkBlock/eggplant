@@ -936,12 +936,26 @@ pub fn dsl(
                             }
                         }
                     }
-                    // impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
-                    //     fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
-                    //         self._itself
-                    //     }
-                    // }
+
                     impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
+                        type MetaTy = ();
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                            #W::Value::new(self._itself.val)
+                        }
+                        fn meta(&self) -> Option<Self::MetaTy>{
+                            None
+                        }
+                    }
+                    impl #W::Insertable<#name_node<(),#variant_marker>> for &#valued_variant_name {
+                        type MetaTy = ();
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                            #W::Value::new(self._itself.val)
+                        }
+                        fn meta(&self) -> Option<Self::MetaTy>{
+                            None
+                        }
+                    }
+                    impl #W::Insertable<#name_node<(),#variant_marker>> for &&#valued_variant_name {
                         type MetaTy = ();
                         fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                             #W::Value::new(self._itself.val)
