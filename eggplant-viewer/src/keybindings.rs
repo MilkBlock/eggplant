@@ -9,6 +9,10 @@ pub enum Command {
     ToggleNavMode,
     FitToScreenOnce,
     PanToGraph,
+    /// Cycle layout algorithm (Hierarchical <-> Force)
+    CycleLayout,
+    /// Cycle edge routing style (Straight -> Curved -> OxdrawClass -> ...)
+    CycleStyle,
     AddNodes(u32),
     RemoveNodes(u32),
     SwapNodes(u32),
@@ -73,6 +77,14 @@ pub fn dispatch(ctx: &Context) -> Vec<Command> {
             } else if !i.modifiers.any() {
                 cmds.push(Command::FitToScreenOnce);
             }
+        }
+        // Ctrl+S (or Cmd+S on macOS): cycle layout
+        if i.key_pressed(Key::S) && (i.modifiers.ctrl || i.modifiers.command) {
+            cmds.push(Command::CycleLayout);
+        }
+        // Ctrl+A (or Cmd+A): cycle edge routing style
+        if i.key_pressed(Key::A) && (i.modifiers.ctrl || i.modifiers.command) {
+            cmds.push(Command::CycleStyle);
         }
         // Esc: close modal if open
         if i.key_pressed(Key::Escape) {

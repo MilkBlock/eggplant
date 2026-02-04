@@ -146,6 +146,8 @@ pub struct EGraphApp {
     pub pan_to_graph_pending: bool,
     // Event handler for custom UI extensions
     pub event_handler: Box<dyn EventHandle>,
+    // one-shot route replan requested by keybinding
+    pub(crate) replan_routes_once_pending: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -245,6 +247,15 @@ impl EGraphApp {
     pub fn ui_layout_section(&mut self, ui: &mut Ui) {
         CollapsingHeader::new("Layout").default_open(true).show(ui, |ui| {
             // Layout selection
+            ui.horizontal(|ui| {
+                ui.label("Algorithm:");
+                if ui.button("Hierarchical").clicked() {
+                    self.selected_layout = DemoLayout::Hierarchical;
+                }
+                if ui.button("Force").clicked() {
+                    self.selected_layout = DemoLayout::Force;
+                }
+            });
 
             ui.add_space(SECTION_SPACING);
             // Inline settings for the selected layout
@@ -500,6 +511,36 @@ impl EGraphApp {
             ui.horizontal(|ui| {
                 ui.checkbox(&mut self.settings_style.edge_deemphasis, "edge_deemphasis");
                 info_icon(ui, "Dim non-selected edges to highlight current selection.");
+            });
+            ui.add_space(2.0);
+            ui.horizontal(|ui| {
+                ui.label("edge_router");
+                if ui.button("Straight").clicked() {
+                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::Straight;
+                    let mut meta = eggplant_egui_graphs::Metadata::load(ui);
+                    meta.replan_pending = true;
+                    meta.save(ui);
+                }
+                if ui.button("Curved").clicked() {
+                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::Curved;
+                    let mut meta = eggplant_egui_graphs::Metadata::load(ui);
+                    meta.replan_pending = true;
+                    meta.save(ui);
+                }
+                if ui.button("OxdrawClass").clicked() {
+                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::OxdrawClass;
+                    // trigger replan on next frame
+                    let mut meta = eggplant_egui_graphs::Metadata::load(ui);
+                    meta.replan_pending = true;
+                    meta.save(ui);
+                }
+                if ui.button("OxdrawFull").clicked() {
+                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::OxdrawFull;
+                    let mut meta = eggplant_egui_graphs::Metadata::load(ui);
+                    meta.replan_pending = true;
+                    meta.save(ui);
+                }
+                info_icon(ui, "Switch edge routing: Straight, Curved, or OxdrawClass.");
             });
         });
     }
@@ -968,8 +1009,9 @@ impl App for EGraphApp {
                 .with_fit_to_screen_enabled(self.settings_navigation.fit_to_screen_enabled)
                 .with_zoom_speed(self.settings_navigation.zoom_speed)
                 .with_fit_to_screen_padding(self.settings_navigation.fit_to_screen_padding);
-            let mut style_builder =
-                SettingsStyle::new().with_labels_always(self.settings_style.labels_always);
+            let mut style_builder = SettingsStyle::new()
+                .with_labels_always(self.settings_style.labels_always)
+                .with_edge_router_kind(self.settings_style.edge_router_kind);
             if self.settings_style.edge_deemphasis {
                 style_builder =
                     style_builder.with_edge_stroke_hook(|selected, _order, stroke, _style| {
@@ -1054,6 +1096,13 @@ impl App for EGraphApp {
             if self.fit_to_screen_once_pending && self.settings_navigation.fit_to_screen_enabled {
                 self.settings_navigation.fit_to_screen_enabled = false;
                 self.fit_to_screen_once_pending = false;
+            }
+            // 3) If a keybinding requested route replan, set metadata flag to replan in next frame
+            if self.replan_routes_once_pending {
+                let mut meta = Metadata::load(ui);
+                meta.replan_pending = true;
+                meta.save(ui);
+                self.replan_routes_once_pending = false;
             }
 
             #[cfg(feature = "events")]
@@ -1384,7 +1433,7 @@ impl EGraphApp {
                     self.reset_requested = true;
                     self.notify_info("Reset all");
                 }
-                Command::ToggleNavMode => {
+                        Command::ToggleNavMode => {
                     // Switch zoom&pan and fit_to_screen (mutually exclusive)
                     let enable_zoom_pan = !self.settings_navigation.zoom_and_pan_enabled;
                     self.settings_navigation.zoom_and_pan_enabled = enable_zoom_pan;
@@ -1394,6 +1443,35 @@ impl EGraphApp {
                     } else {
                         self.notify_info("Toggle fit to screen");
                     }
+                }
+                Command::CycleLayout => {
+                    // Toggle layout mode and schedule a one-shot re-run + route replan
+                    self.selected_layout = match self.selected_layout {
+                        DemoLayout::Hierarchical => DemoLayout::Force,
+                        DemoLayout::Force => DemoLayout::Hierarchical,
+                    };
+                    if matches!(self.selected_layout, DemoLayout::Hierarchical) {
+                        let mut st = LayoutHierarchicalState::default();
+                        st.triggered = false;
+                        self.pending_layout = Some(spec::PendingLayout::Hier(st));
+                    } else {
+                        self.pending_layout = None;
+                    }
+                    self.replan_routes_once_pending = true;
+                    self.notify_info("Switched layout (Ctrl+S)");
+                }
+                Command::CycleStyle => {
+                    use eggplant_egui_graphs::EdgeRouterKind as ERK;
+                    let next = match self.settings_style.edge_router_kind {
+                        ERK::Straight => ERK::Curved,
+                        ERK::Curved => ERK::OxdrawClass,
+                        ERK::OxdrawClass => ERK::Straight,
+                        ERK::OxdrawFull => ERK::Straight, // keep Full out of the default cycle unless you want it
+                    };
+                    self.settings_style.edge_router_kind = next;
+                    // Once switch style, trigger a one-time route replan
+                    self.replan_routes_once_pending = true;
+                    self.notify_info("Switched style (Ctrl+A)");
                 }
                 Command::FitToScreenOnce => {
                     // Enable fit_to_screen for a single frame then disable it after draw.

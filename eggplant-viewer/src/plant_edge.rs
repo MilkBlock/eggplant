@@ -4,6 +4,7 @@ use eggplant_egui_graphs::{
 use egui::{Color32, Pos2, Shape, Stroke, Vec2, epaint::CircleShape};
 use itertools::Itertools;
 use petgraph::Directed;
+use eggplant_egui_graphs::EdgeRouterKind;
 
 const TIP_ANGLE: f32 = std::f32::consts::TAU / 20.;
 const TIP_SIZE: f32 = 7.;
@@ -31,7 +32,11 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
         ctx: &DrawContext,
     ) -> Vec<egui::Shape> {
         let mut res = vec![];
-        let (start, end) = match start_maybe_inner {
+        // Preserve node indices for route key
+        let start_idx = start.id().index() as u128;
+        let end_idx = end.id().index() as u128;
+
+        let (pos_start, pos_end) = match start_maybe_inner {
             MaybeInner::Itself => (start.location(), end.location()),
             MaybeInner::Inner {
                 inner_pos:
@@ -79,47 +84,67 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
                 }
             }
         };
-        let (x_dist, y_dist) = (end.x - start.x, end.y - start.y);
-        let (_dx, _dy) = (x_dist, y_dist);
-
-        let mut points_line;
-
         let mut stroke = Stroke::new(self.default_impl.width, EDGE_COLOR);
-        points_line = vec![start, end];
-
         stroke.width = ctx.meta.canvas_to_screen_size(stroke.width);
-        points_line = points_line
+
+        // If oxdraw routing (Class or Full) is active and a preplanned polyline exists, draw that.
+        if matches!(ctx.style.edge_router_kind(), EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull) {
+            if let Some(routes) = ctx.routes {
+                let key = (start_idx << 64) ^ (end_idx << 32) ^ (self.default_impl.order as u128);
+                if let Some(screen_pts) = routes.get(&key) {
+                    for w in screen_pts.windows(2) {
+                        res.push(Shape::line_segment([w[0], w[1]], stroke));
+                    }
+                    // dot the first point to indicate start
+                    res.push(Shape::Circle(CircleShape::filled(
+                        screen_pts[0],
+                        ctx.meta.canvas_to_screen_size(self.default_impl.width * 1.),
+                        Color32::GOLD,
+                    )));
+                    // arrow tip
+                    if screen_pts.len() >= 2 {
+                        let endp = *screen_pts.last().unwrap();
+                        let prev = screen_pts[screen_pts.len() - 2];
+                        let tip_dir = (endp - prev).normalized();
+                        let arrow_tip_dir_1 = rotate_vector(tip_dir, TIP_ANGLE) * TIP_SIZE;
+                        let arrow_tip_dir_2 = rotate_vector(tip_dir, -TIP_ANGLE) * TIP_SIZE;
+                        let tip_start_1 = endp - arrow_tip_dir_1;
+                        let tip_start_2 = endp - arrow_tip_dir_2;
+                        res.push(Shape::convex_polygon(
+                            vec![endp, tip_start_1, tip_start_2],
+                            stroke.color,
+                            Stroke::default(),
+                        ));
+                    }
+                    return res;
+                }
+            }
+        }
+
+        // Fallback: straight segment
+        let points_line = vec![pos_start, pos_end]
             .iter()
             .map(|p| ctx.meta.canvas_to_screen_pos(*p))
-            .collect();
-        res.push(Shape::line_segment(
-            [points_line[0], points_line[1]],
-            stroke,
-        ));
-        // dot it so that we can see which enode as start
+            .collect::<Vec<_>>();
+        res.push(Shape::line_segment([points_line[0], points_line[1]], stroke));
+        // start dot
         res.push(Shape::Circle(CircleShape::filled(
             points_line[0],
             ctx.meta.canvas_to_screen_size(self.default_impl.width * 1.),
             Color32::GOLD,
         )));
-
-        let tip_dir = (end - start).normalized();
-
+        // tip based on canvas positions
+        let tip_dir = (pos_end - pos_start).normalized();
         let arrow_tip_dir_1 = rotate_vector(tip_dir, TIP_ANGLE) * TIP_SIZE;
         let arrow_tip_dir_2 = rotate_vector(tip_dir, -TIP_ANGLE) * TIP_SIZE;
-
-        let tip_start_1 = end - arrow_tip_dir_1;
-        let tip_start_2 = end - arrow_tip_dir_2;
-
-        let mut points_tip = vec![end, tip_start_1, tip_start_2];
-
-        points_tip = points_tip
+        let tip_start_1 = pos_end - arrow_tip_dir_1;
+        let tip_start_2 = pos_end - arrow_tip_dir_2;
+        let points_tip = vec![tip_start_1, tip_start_2, pos_end]
             .iter()
             .map(|p| ctx.meta.canvas_to_screen_pos(*p))
-            .collect();
-
+            .collect::<Vec<_>>();
         res.push(Shape::convex_polygon(
-            points_tip,
+            vec![points_tip[2], points_tip[0], points_tip[1]],
             stroke.color,
             Stroke::default(),
         ));

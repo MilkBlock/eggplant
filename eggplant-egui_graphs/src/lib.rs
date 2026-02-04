@@ -33,7 +33,7 @@ pub use layouts::hierarchical::{
     State as LayoutHierarchicalState,
 };
 pub use layouts::{Layout, LayoutState};
-pub use settings::{SettingsInteraction, SettingsNavigation, SettingsStyle};
+pub use settings::{EdgeRouterKind, SettingsInteraction, SettingsNavigation, SettingsStyle};
 
 #[cfg(feature = "events")]
 pub mod events;

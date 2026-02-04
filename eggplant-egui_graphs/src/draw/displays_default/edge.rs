@@ -123,6 +123,52 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
             return self.loop_shapes(start, ctx, stroke, color, label_visible);
         }
 
+        // Check if oxdraw routing is enabled (Class or Full); if so, draw a polyline with fixed endpoints
+        // from the preplanned route cache provided by the DrawContext.
+        if matches!(ctx.style.edge_router_kind(), crate::settings::EdgeRouterKind::OxdrawClass | crate::settings::EdgeRouterKind::OxdrawFull) {
+            if let Some(routes) = ctx.routes {
+                let key = ((start.id().index() as u128) << 64)
+                    ^ ((end.id().index() as u128) << 32)
+                    ^ (self.order as u128);
+                if let Some(screen_pts) = routes.get(&key) {
+                    let mut shapes = Vec::new();
+                    for w in screen_pts.windows(2) {
+                        shapes.push(egui::Shape::line_segment([w[0], w[1]], stroke));
+                    }
+                    if ctx.is_directed && screen_pts.len() >= 2 {
+                        use egui::Vec2 as V2;
+                        let end = *screen_pts.last().unwrap();
+                        let prev = screen_pts[screen_pts.len() - 2];
+                        let dir = (end - prev).normalized();
+                        let tip_size = self.tip_size;
+                        let angle = self.tip_angle;
+                        let rot = |v: V2, a: f32| V2::new(a.cos() * v.x - a.sin() * v.y, a.sin() * v.x + a.cos() * v.y);
+                        let v1 = rot(dir, angle) * tip_size;
+                        let v2 = rot(dir, -angle) * tip_size;
+                        let p1 = end - v1;
+                        let p2 = end - v2;
+                        shapes.push(egui::Shape::convex_polygon(
+                            vec![end, p1, p2],
+                            stroke.color,
+                            egui::Stroke::NONE,
+                        ));
+                    }
+                    if label_visible {
+                        let anchor = screen_pts[screen_pts.len() / 2];
+                        let galley = ctx.ctx.fonts(|f| {
+                            f.layout_no_wrap(
+                                self.label_text.clone(),
+                                FontId::new(12.0, FontFamily::Monospace),
+                                color,
+                            )
+                        });
+                        shapes.push(Self::label_shape(galley, anchor, color));
+                    }
+                    return shapes;
+                }
+            }
+        }
+
         let dir = (end.location() - start.location()).normalized();
         if self.order == 0 {
             return self.straight_shapes(start, end, ctx, dir);

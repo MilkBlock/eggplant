@@ -1,4 +1,5 @@
 use crate::{DisplayNode, Node, node_size};
+use crate::settings::EdgeRouterKind;
 use egui::{Id, Pos2, Rect, Vec2};
 use petgraph::Directed;
 use serde::{Deserialize, Serialize};
@@ -56,6 +57,15 @@ pub struct Metadata {
     pub last_draw_time_ms: f32,
     /// State of bounds iteration
     bounds: Bounds,
+    /// Cached edge routes (in canvas coordinates) for the current router.
+    #[serde(default)]
+    pub routes_canvas: Option<std::collections::HashMap<u128, Vec<Pos2>>>,
+    /// Router that produced `routes_canvas`.
+    #[serde(default)]
+    pub last_router: Option<EdgeRouterKind>,
+    /// Whether we should recompute routes on next frame.
+    #[serde(default)]
+    pub replan_pending: bool,
 }
 
 impl Default for Metadata {
@@ -68,6 +78,9 @@ impl Default for Metadata {
             last_step_time_ms: 0.0,
             last_draw_time_ms: 0.0,
             bounds: Bounds::default(),
+            routes_canvas: None,
+            last_router: None,
+            replan_pending: true,
         }
     }
 }

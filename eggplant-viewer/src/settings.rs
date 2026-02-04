@@ -32,6 +32,7 @@ impl Default for SettingsInteraction {
 pub struct SettingsStyle {
     pub labels_always: bool,
     pub edge_deemphasis: bool,
+    pub edge_router_kind: eggplant_egui_graphs::EdgeRouterKind,
 }
 
 // Navigation & viewport parameters

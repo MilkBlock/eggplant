@@ -233,6 +233,7 @@ impl EGraphApp {
             settings_style: settings::SettingsStyle {
                 labels_always: false,
                 edge_deemphasis: true,
+                edge_router_kind: eggplant_egui_graphs::EdgeRouterKind::Straight,
             },
             metrics: MetricsRecorder::new(),
             // Start with side panel hidden by default
@@ -277,6 +278,7 @@ impl EGraphApp {
             fit_to_screen_once_pending: false,
             pan_to_graph_pending: false,
             event_handler,
+            replan_routes_once_pending: false,
         };
 
         // Web: if URL hash contains g=<example_name>, load that example graph automatically

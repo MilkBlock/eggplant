@@ -3,10 +3,11 @@ use std::marker::PhantomData;
 use crate::{
     DisplayEdge, DisplayNode, FruchtermanReingold, Graph,
     draw::{DefaultEdgeShape, DefaultNodeShape, DrawContext, MaybeInner},
+    draw::router::{plan_oxdraw_class, plan_oxdraw_full},
     elements::IndexTy,
     layouts::{self, Layout, LayoutState},
     metadata::Metadata,
-    settings::{SettingsInteraction, SettingsNavigation, SettingsStyle},
+    settings::{SettingsInteraction, SettingsNavigation, SettingsStyle, EdgeRouterKind},
 };
 
 use egui::{Id, PointerButton, Pos2, Rect, Response, Sense, Ui, Vec2, Widget};
@@ -233,6 +234,42 @@ where
 
         // Measure draw time (exclude layout step): start after layout, stop after draw
         let t_draw0 = Instant::now();
+        // Precompute oxdraw routes only when requested (toggle or drag release),
+        // otherwise reuse cached canvas routes from metadata.
+        let router_kind = self.settings_style.edge_router_kind();
+        let mut routes_screen: Option<std::collections::HashMap<u128, Vec<egui::Pos2>>> = None;
+        let need_router = matches!(router_kind, EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull);
+        if need_router {
+            let need_replan = meta.replan_pending || meta.last_router != Some(router_kind) || meta.routes_canvas.is_none();
+            if need_replan {
+                let canvas_routes = if router_kind == EdgeRouterKind::OxdrawClass {
+                    plan_oxdraw_class(self.g, &self.settings_style, 0.0)
+                } else {
+                    plan_oxdraw_full(
+                        self.g,
+                        &self.settings_style,
+                        0.0,
+                        crate::draw::router::GridParams::default(),
+                    )
+                };
+                meta.routes_canvas = Some(canvas_routes);
+                meta.last_router = Some(router_kind);
+                meta.replan_pending = false;
+            }
+            if let Some(ref canvas_routes) = meta.routes_canvas {
+                let mut out = std::collections::HashMap::new();
+                for (k, v) in canvas_routes.iter() {
+                    let pts: Vec<egui::Pos2> = v.iter().map(|p| meta.canvas_to_screen_pos(*p)).collect();
+                    out.insert(*k, pts);
+                }
+                routes_screen = Some(out);
+            }
+        } else {
+            // Clear cache when not using router to avoid stale memory growth
+            meta.routes_canvas = None;
+            meta.last_router = None;
+            meta.replan_pending = false;
+        }
         crate::draw::drawer::ConcreteDrawer::<Nd, Ed, S, L>::new(
             self.g,
             &DrawContext {
@@ -241,6 +278,7 @@ where
                 meta: &meta,
                 is_directed: true,
                 style: &self.settings_style,
+                routes: routes_screen.as_ref(),
             },
         )
         .draw();
@@ -252,7 +290,8 @@ where
         meta.first_frame = false;
         meta.save(ui);
 
-        ui.ctx().request_repaint();
+        // Only repaint continuously while dragging (to keep interaction smooth).
+        if self.g.dragged_node().is_some() { ui.ctx().request_repaint(); }
 
         resp
     }
@@ -798,6 +837,8 @@ where
         if resp.drag_stopped() && self.g.dragged_node().is_some() {
             let n_idx = self.g.dragged_node().unwrap();
             self.set_drag_end(n_idx);
+            // Plan routes once on mouse release
+            meta.replan_pending = true;
         }
     }
 

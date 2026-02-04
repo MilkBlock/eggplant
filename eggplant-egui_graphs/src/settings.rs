@@ -192,6 +192,8 @@ pub struct SettingsStyle {
     // Optional user-provided hook to override edge stroke styling.
     // Signature: `(selected, order, current_stroke, egui_style) -> new Stroke`.
     pub(crate) edge_stroke_hook: Option<EdgeStrokeHook>,
+    // Edge routing strategy for drawing.
+    pub(crate) edge_router_kind: EdgeRouterKind,
 }
 
 impl core::fmt::Debug for SettingsStyle {
@@ -268,6 +270,14 @@ impl SettingsStyle {
         self.edge_stroke_hook = Some(std::sync::Arc::new(f));
         self
     }
+
+    /// Select edge router algorithm used when drawing edges.
+    pub fn with_edge_router_kind(mut self, k: EdgeRouterKind) -> Self {
+        self.edge_router_kind = k;
+        self
+    }
+
+    pub fn edge_router_kind(&self) -> EdgeRouterKind { self.edge_router_kind }
 }
 
 /// Type alias for the node stroke hook closure to keep type signatures concise.
@@ -286,3 +296,19 @@ pub type NodeStrokeHook = std::sync::Arc<
 /// Type alias for the edge stroke hook closure to keep type signatures concise.
 pub type EdgeStrokeHook =
     std::sync::Arc<dyn Fn(bool, usize, egui::Stroke, &egui::Style) -> egui::Stroke + Send + Sync>;
+
+/// Available edge routing algorithms.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum EdgeRouterKind {
+    Straight,
+    Curved,
+    /// Oxdraw-like router considering only CLASS label boxes and edge-edge collisions.
+    OxdrawClass,
+    /// Full orthogonal oxdraw-style router (grid + A*), obeying this project's
+    /// constraints (CLASS boxes + edges as obstacles, fixed endpoints).
+    OxdrawFull,
+}
+
+impl Default for EdgeRouterKind {
+    fn default() -> Self { EdgeRouterKind::Straight }
+}

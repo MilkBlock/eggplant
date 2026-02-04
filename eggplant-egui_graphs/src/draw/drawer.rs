@@ -1,6 +1,8 @@
 use std::marker::PhantomData;
 
 use egui::{Context, Painter, Shape};
+use std::vec::Vec;
+use std::collections::HashMap;
 use petgraph::Directed;
 
 use crate::{
@@ -18,6 +20,8 @@ pub struct DrawContext<'a> {
     pub style: &'a SettingsStyle,
     pub is_directed: bool,
     pub meta: &'a Metadata,
+    /// Optional per-frame cache of preplanned polylines for oxdraw routing.
+    pub routes: Option<&'a HashMap<u128, Vec<egui::Pos2>>>,
 }
 
 pub(crate) struct Drawer<'a, Nd, Ed, S, L>
@@ -30,6 +34,7 @@ where
     ctx: &'a DrawContext<'a>,
     g: &'a mut Graph<Nd, Ed>,
     delayed: Vec<Shape>,
+    routes_screen: Option<std::collections::HashMap<u128, Vec<egui::Pos2>>>,
 
     _marker: PhantomData<(Nd, Ed, L, S)>,
 }
@@ -46,6 +51,7 @@ where
             ctx,
             g,
             delayed: Vec::new(),
+            routes_screen: None,
             _marker: PhantomData,
         }
     }
