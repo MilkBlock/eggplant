@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use std::cmp::Ordering;
-use std::collections::{BinaryHeap, HashSet};
 
 use egui::{Pos2, Vec2};
 use petgraph::stable_graph::NodeIndex;
@@ -122,101 +120,13 @@ fn compute_edge_anchors<Nd: DisplayNode<Directed>>(
     }
 }
 
-// ===========================
-// Full orthogonal (grid + A*)
-// ===========================
-
-#[derive(Clone, Copy)]
-pub struct GridParams {
-    pub cell: f32,          // grid cell size in canvas units
-    pub pad: f32,           // padding around graph bounds in canvas units
-    pub margin: f32,        // inflate obstacles (canvas units)
-    pub turn_penalty: f32,  // extra cost per 90° turn
-    pub cross_penalty: f32, // extra cost for stepping through reserved edge cells
-    pub max_w: usize,       // cap grid width in cells
-    pub max_h: usize,       // cap grid height in cells
-}
-
-impl Default for GridParams {
-    fn default() -> Self {
-        GridParams {
-            cell: 12.0,
-            pad: 60.0,
-            margin: 6.0,
-            turn_penalty: 4.0,
-            cross_penalty: 8.0,
-            max_w: 400,
-            max_h: 400,
-        }
-    }
-}
-
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-enum Dir { U, D, L, R }
-
-impl Dir {
-    fn delta(self) -> (i32, i32) {
-        match self { Dir::U => (0,-1), Dir::D => (0,1), Dir::L => (-1,0), Dir::R => (1,0) }
-    }
-    fn all() -> [Dir;4] { [Dir::U, Dir::D, Dir::L, Dir::R] }
-}
-
-#[derive(Clone)]
-struct Grid {
-    origin: Pos2,
-    cell: f32,
-    w: usize,
-    h: usize,
-    blocked: Vec<u8>, // 0 free; 1 obstacle; 2 reserved edge (softer)
-}
-
-impl Grid {
-    fn idx(&self, x: i32, y: i32) -> Option<usize> {
-        if x<0 || y<0 { return None; }
-        let (x,y) = (x as usize, y as usize);
-        if x>=self.w || y>=self.h { None } else { Some(y*self.w + x) }
-    }
-    fn mark_rect(&mut self, min: Pos2, max: Pos2, val: u8, inflate: f32) {
-        let inflate = inflate.max(0.0);
-        let xmin = (min.x.min(max.x) - self.origin.x - inflate).floor() / self.cell;
-        let ymin = (min.y.min(max.y) - self.origin.y - inflate).floor() / self.cell;
-        let xmax = (max.x.max(min.x) - self.origin.x + inflate).ceil() / self.cell;
-        let ymax = (max.y.max(min.y) - self.origin.y + inflate).ceil() / self.cell;
-        let (xi0, yi0) = (xmin as i32, ymin as i32);
-        let (xi1, yi1) = (xmax as i32, ymax as i32);
-        for y in yi0..=yi1 { for x in xi0..=xi1 {
-            if let Some(i) = self.idx(x,y) {
-                self.blocked[i] = self.blocked[i].max(val);
-            }
-        }}
-    }
-    fn world_to_cell(&self, p: Pos2) -> (i32,i32) {
-        let x = ((p.x - self.origin.x)/self.cell).round() as i32;
-        let y = ((p.y - self.origin.y)/self.cell).round() as i32;
-        (x,y)
-    }
-    fn cell_center(&self, x: i32, y: i32) -> Pos2 {
-        Pos2::new(
-            self.origin.x + (x as f32)*self.cell,
-            self.origin.y + (y as f32)*self.cell,
-        )
-    }
-}
-
-#[derive(Clone, Copy, PartialEq)]
-struct AStarNode { f: f32, g: f32, x: i32, y: i32, dir: Dir }
-
-impl Eq for AStarNode {}
-impl Ord for AStarNode { fn cmp(&self, other: &Self) -> Ordering { other.f.partial_cmp(&self.f).unwrap_or(Ordering::Equal) } }
-impl PartialOrd for AStarNode { fn partial_cmp(&self, other:&Self)->Option<Ordering>{ Some(self.cmp(other)) } }
-
-fn heuristic(ax:i32, ay:i32, bx:i32, by:i32) -> f32 { ((ax-bx).abs() + (ay-by).abs()) as f32 }
+// (A* grid router removed) – kept only geometric helpers used by both routers below.
 
 pub fn plan_oxdraw_full<Nd, Ed>(
     g: &Graph<Nd, Ed>,
     style: &SettingsStyle,
     class_y_shift_canvas: f32,
-    params: GridParams,
+    _params: (),
 ) -> HashMap<u128, Vec<Pos2>>
 where
     Nd: DisplayNode<Directed>,
@@ -226,117 +136,360 @@ where
         return HashMap::new();
     }
 
-    // Build world bounds from nodes
-    let mut min = Pos2::new(f32::INFINITY, f32::INFINITY);
-    let mut max = Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY);
-    for (_idx, n) in g.nodes_iter() {
-        let p = n.location();
-        if p.x < min.x { min.x = p.x };
-        if p.y < min.y { min.y = p.y };
-        if p.x > max.x { max.x = p.x };
-        if p.y > max.y { max.y = p.y };
-    }
-    if !min.x.is_finite() { return HashMap::new(); }
-    min.x -= params.pad; min.y -= params.pad; max.x += params.pad; max.y += params.pad;
-    let w = (((max.x-min.x)/params.cell).ceil() as usize).min(params.max_w).max(8);
-    let h = (((max.y-min.y)/params.cell).ceil() as usize).min(params.max_h).max(8);
-    let origin = Pos2::new(min.x, min.y);
-    let mut grid = Grid { origin, cell: params.cell, w, h, blocked: vec![0; w*h] };
+    // -----------------------------
+    // oxdraw-style heuristic router
+    // -----------------------------
 
-    // Obstacles: CLASS boxes shifted upward
-    for (_idx, n) in g.nodes_iter() {
-        let c0 = n.location();
-        let c = Pos2::new(c0.x, c0.y - class_y_shift_canvas);
-        let half_w = 20.0; let half_h = 6.0;
-        let a = Pos2::new(c.x - half_w, c.y - half_h);
-        let b = Pos2::new(c.x + half_w, c.y + half_h);
-        grid.mark_rect(a, b, 1, params.margin);
+    // Temporary debug switch: ignore node volume (no node-collision checks, no endpoint trimming)
+    const IGNORE_NODE_VOLUME: bool = true;
+
+    // Heuristic constants mirrored from ~/Repos/oxdraw/src/lib.rs
+    const EDGE_BIDIRECTIONAL_OFFSET: f32 = 28.0;
+    const EDGE_BIDIRECTIONAL_STUB: f32 = 48.0;
+    const EDGE_BIDIRECTIONAL_OFFSET_STEP: f32 = 12.0;
+    const EDGE_BIDIRECTIONAL_STUB_STEP: f32 = 18.0;
+    const EDGE_SINGLE_OFFSET: f32 = 32.0;
+    const EDGE_SINGLE_STUB: f32 = 56.0;
+    const EDGE_SINGLE_OFFSET_STEP: f32 = 14.0;
+    const EDGE_SINGLE_STUB_STEP: f32 = 20.0;
+    const EDGE_COLLISION_MARGIN: f32 = 6.0;
+    const EDGE_COLLISION_MAX_ITER: usize = 6;
+
+    // Approximate node rectangles (CLASS boxes) used for collision checks
+    // to be consistent with earlier A* obstacles. Apply optional vertical shift.
+    #[inline]
+    fn node_rect(center: Pos2, class_y_shift_canvas: f32) -> (Pos2, Pos2) {
+        let c = Pos2::new(center.x, center.y - class_y_shift_canvas);
+        let half_w = 20.0;
+        let half_h = 6.0;
+        (Pos2::new(c.x - half_w, c.y - half_h), Pos2::new(c.x + half_w, c.y + half_h))
     }
 
-    // Plan per edge with A* (orthogonal). Use reserved cells for already routed edges.
+    #[inline]
+    fn inflate(min: Pos2, max: Pos2, m: f32) -> (Pos2, Pos2) {
+        (
+            Pos2::new(min.x - m, min.y - m),
+            Pos2::new(max.x + m, max.y + m),
+        )
+    }
+
+    // Build node bounds map once.
+    let mut node_bounds: HashMap<NodeIndex<IndexTy>, (Pos2, Pos2)> = HashMap::new();
+    if !IGNORE_NODE_VOLUME {
+        for (idx, n) in g.nodes_iter() {
+            node_bounds.insert(idx, node_rect(n.location(), class_y_shift_canvas));
+        }
+    }
+
+    // Existing routes to consider for "edge-edge" intersection penalty
     let mut routes: HashMap<u128, Vec<Pos2>> = HashMap::new();
+
+    // Deterministic edge order to reduce oscillation
     let mut edges: Vec<_> = g.edges_iter().collect();
     edges.sort_by_key(|(eid, _)| eid.index());
 
+    // Group potential bidirectional pairs (min,max) -> Vec<(edge_idx,bool(is_forward))>
+    let mut pairings: HashMap<(NodeIndex<IndexTy>, NodeIndex<IndexTy>), Vec<(petgraph::stable_graph::EdgeIndex<IndexTy>, bool)>> = HashMap::new();
+    for (eidx, _e) in &edges {
+        if let Some((s, t)) = g.edge_endpoints(*eidx) {
+            let (a, b) = if s.index() <= t.index() { (s, t) } else { (t, s) };
+            let is_forward = s.index() <= t.index();
+            pairings.entry((a, b)).or_default().push((*eidx, is_forward));
+        }
+    }
+
+    // Helper: evaluate candidate path and pick best by (node_collision, intersections, length)
+    fn poly_len(pts: &[Pos2]) -> u32 { super::router::polyline_length(pts) as u32 }
+
+    fn build_route(from: Pos2, mids: &[Pos2], to: Pos2) -> Vec<Pos2> {
+        let mut v = Vec::with_capacity(mids.len() + 2);
+        v.push(from);
+        v.extend_from_slice(mids);
+        v.push(to);
+        v
+    }
+
+    fn route_collides_with_nodes(
+        route: &[Pos2],
+        node_bounds: &HashMap<NodeIndex<IndexTy>, (Pos2, Pos2)>,
+        skip_a: NodeIndex<IndexTy>,
+        skip_b: NodeIndex<IndexTy>,
+    ) -> bool {
+        if route.len() < 2 { return false; }
+        if node_bounds.is_empty() { return false; }
+        for w in route.windows(2) {
+            let a = w[0];
+            let b = w[1];
+            for (nid, &(min, max)) in node_bounds {
+                if *nid == skip_a || *nid == skip_b { continue; }
+                let (min_i, max_i) = inflate(min, max, EDGE_COLLISION_MARGIN);
+                if rect_intersects_segment(min_i, max_i, a, b) { return true; }
+            }
+        }
+        false
+    }
+
+    fn evaluate_candidate(
+        candidate_mids: Vec<Pos2>,
+        from: Pos2,
+        to: Pos2,
+        node_bounds: &HashMap<NodeIndex<IndexTy>, (Pos2, Pos2)>,
+        skip_a: NodeIndex<IndexTy>,
+        skip_b: NodeIndex<IndexTy>,
+        existing: &HashMap<u128, Vec<Pos2>>,
+        current_best: &mut (u8, u32, u32),
+        current_points: &mut Option<Vec<Pos2>>,
+    ) -> bool {
+        let mut r = build_route(from, &candidate_mids, to);
+        simplify(&mut r);
+        let node_col = route_collides_with_nodes(&r, node_bounds, skip_a, skip_b) as u8;
+        let inter = count_route_intersections(&r, existing) as u32;
+        let len = poly_len(&r);
+        let metric = (node_col, inter, len);
+        if metric < *current_best {
+            *current_best = metric;
+            *current_points = Some(r);
+        }
+        metric == (0, 0, len)
+    }
+
+    fn generate_bidir_points(from: Pos2, to: Pos2, offset: f32, stub: f32, normal_sign: f32) -> Vec<Pos2> {
+        let v = to - from;
+        let dist = v.length();
+        if dist <= f32::EPSILON { return Vec::new(); }
+        let t = v / dist;
+        let n = Vec2::new(-t.y, t.x) * normal_sign;
+        let off = n * offset;
+        let stub_c = stub.min(dist / 2.0 - 1.0).max(0.0);
+        if stub_c <= 0.0 {
+            return vec![(from + to.to_vec2()) * 0.5 + off];
+        }
+        let stub_v = t * stub_c;
+        let first = from + stub_v + off;
+        let middle = (from + to.to_vec2()) * 0.5 + off;
+        let second = to - stub_v + off;
+        vec![first, middle, second]
+    }
+
+    fn generate_axis_detours(from: Pos2, to: Pos2) -> Vec<Vec<Pos2>> {
+        // Clearance tuned to the CLASS box + margin
+        let vertical_clearance = 12.0 + EDGE_COLLISION_MARGIN * 4.0;   // height(=12) + margin
+        let horizontal_clearance = 40.0 + EDGE_COLLISION_MARGIN * 4.0; // width(=40) + margin
+
+        let mut cands = Vec::new();
+        let horizontal_span = (from.x - to.x).abs();
+        let vertical_span = (from.y - to.y).abs();
+        if horizontal_span > 20.0 {
+            // above
+            let y = from.y.min(to.y) - vertical_clearance;
+            cands.push(vec![Pos2::new(from.x, y), Pos2::new(to.x, y)]);
+            // below
+            let y2 = from.y.max(to.y) + vertical_clearance;
+            cands.push(vec![Pos2::new(from.x, y2), Pos2::new(to.x, y2)]);
+        }
+        if vertical_span > 12.0 {
+            // left
+            let x = from.x.min(to.x) - horizontal_clearance;
+            cands.push(vec![Pos2::new(x, from.y), Pos2::new(x, to.y)]);
+            // right
+            let x2 = from.x.max(to.x) + horizontal_clearance;
+            cands.push(vec![Pos2::new(x2, from.y), Pos2::new(x2, to.y)]);
+        }
+        cands
+    }
+
+    // Trim first/last points to node shape boundaries using DisplayNode geometry.
+    fn trim_endpoints<Nd: DisplayNode<Directed>>(
+        start_node: &crate::Node<Directed, Nd>,
+        end_node: &crate::Node<Directed, Nd>,
+        route: &mut Vec<Pos2>,
+        start_is_inner: bool,
+    ) {
+        if route.len() < 2 { return; }
+        // start
+        let s_center = start_node.location();
+        let s_next = route[1];
+        let s_dir = s_next - s_center;
+        if !start_is_inner {
+            // Keep oxdraw-viewer's "yellow port" dot stable when the start is an inner anchor
+            route[0] = start_node.display().closest_boundary_point(s_dir);
+        }
+        // end
+        let e_center = end_node.location();
+        let last_idx = route.len() - 1;
+        let e_prev = route[last_idx - 1];
+        let e_dir = e_prev - e_center;
+        route[last_idx] = end_node.display().closest_boundary_point(e_dir);
+    }
+
+    // Main pass: try to resolve bidirectional pairs first (best visual symmetry),
+    // then plan remaining edges individually.
+
+    // Track which edges have been routed by their `EdgeIndex` so we don't duplicate work
+    use std::collections::HashSet as StdHashSet;
+    let mut routed_edges: StdHashSet<petgraph::stable_graph::EdgeIndex<IndexTy>> = StdHashSet::new();
+
+    // 1) Handle pairs
+    for ((_, _), entries) in pairings.iter() {
+        let fwd: Vec<_> = entries.iter().copied().filter(|(_, f)| *f).collect();
+        let bwd: Vec<_> = entries.iter().copied().filter(|(_, f)| !*f).collect();
+        if fwd.is_empty() || bwd.is_empty() { continue; }
+        // Use only the first pair for symmetry; others fall back to single-edge logic below
+        let (f_eidx, _) = fwd[0];
+        let (b_eidx, _) = bwd[0];
+        if routed_edges.contains(&f_eidx) || routed_edges.contains(&b_eidx) { continue; }
+
+        // Resolve pair with mirrored offsets
+        let (sf, tf) = match g.edge_endpoints(f_eidx) { Some(v) => v, None => continue };
+        let (sb, tb) = match g.edge_endpoints(b_eidx) { Some(v) => v, None => continue };
+        let sn = g.node(sf).unwrap();
+        let tn = g.node(tf).unwrap();
+        let snb = g.node(sb).unwrap();
+        let tnb = g.node(tb).unwrap();
+        let ef = g.edge(f_eidx).unwrap();
+        let eb = g.edge(b_eidx).unwrap();
+
+        let (from, to) = compute_edge_anchors::<Nd>(sn, tn, ef.start_maybe_inner());
+        let (from_b, to_b) = compute_edge_anchors::<Nd>(snb, tnb, eb.start_maybe_inner());
+
+        // If anchors are degenerate or pairs aren't opposite, skip symmetric handling
+        let v = to - from; if v.length_sq() <= f32::EPSILON { continue; }
+
+        let distance = v.length();
+        let base_offset = (distance * 0.25).min(EDGE_BIDIRECTIONAL_OFFSET);
+        let base_stub = (distance * 0.25).min(EDGE_BIDIRECTIONAL_STUB);
+        if base_offset <= 0.0 || base_stub <= 0.0 { continue; }
+
+        let mut best_f: Option<Vec<Pos2>> = None;
+        let mut best_b: Option<Vec<Pos2>> = None;
+        let mut best_metric = (u8::MAX, u32::MAX, u32::MAX);
+
+        for attempt in 0..=EDGE_COLLISION_MAX_ITER {
+            let off = (base_offset + attempt as f32 * EDGE_BIDIRECTIONAL_OFFSET_STEP)
+                .min((distance * 0.5) - EDGE_COLLISION_MARGIN)
+                .max(base_offset);
+            let stub = (base_stub + attempt as f32 * EDGE_BIDIRECTIONAL_STUB_STEP)
+                .min((distance * 0.5) - EDGE_COLLISION_MARGIN)
+                .max(base_stub);
+
+            let f_mids = generate_bidir_points(from, to, off, stub, 1.0);
+            let mut b_mids = generate_bidir_points(from_b, to_b, off, stub, -1.0);
+            b_mids.reverse();
+
+            let mut cur_best = best_metric;
+            let mut cur_points: Option<Vec<Pos2>> = None;
+            let done_f = evaluate_candidate(
+                f_mids.clone(), from, to, &node_bounds, sf, tf, &routes, &mut cur_best, &mut cur_points,
+            );
+            let route_f = cur_points.clone();
+
+            let done_b = evaluate_candidate(
+                b_mids.clone(), from_b, to_b, &node_bounds, sb, tb, &routes, &mut cur_best, &mut cur_points,
+            );
+            if let Some(rf) = route_f { best_f = Some(rf); }
+            if let Some(cb) = cur_points { best_b = Some(cb); }
+            best_metric = cur_best;
+
+            if done_f && done_b { break; }
+        }
+
+        // If still not perfect, try axis detours for each side independently
+        if best_f.is_none() || best_metric.0 > 0 {
+            for cand in generate_axis_detours(from, to) {
+                let mut cur_best = best_metric;
+                let mut cur_points: Option<Vec<Pos2>> = None;
+                let done = evaluate_candidate(
+                    cand.clone(), from, to, &node_bounds, sf, tf, &routes, &mut cur_best, &mut cur_points,
+                );
+                if let Some(r) = cur_points { best_f = Some(r); best_metric = cur_best; }
+                if done { break; }
+            }
+        }
+        if best_b.is_none() || best_metric.0 > 0 {
+            for cand in generate_axis_detours(from_b, to_b) {
+                let mut cur_best = best_metric;
+                let mut cur_points: Option<Vec<Pos2>> = None;
+                let done = evaluate_candidate(
+                    cand.clone(), from_b, to_b, &node_bounds, sb, tb, &routes, &mut cur_best, &mut cur_points,
+                );
+                if let Some(r) = cur_points { best_b = Some(r); best_metric = cur_best; }
+                if done { break; }
+            }
+        }
+
+        // Fallback: straight lines
+        let route_key_f = route_key(sf, tf, ef.order());
+        let route_key_b = route_key(sb, tb, eb.order());
+        let mut rf = best_f.unwrap_or_else(|| vec![from, to]);
+        let mut rb = best_b.unwrap_or_else(|| vec![from_b, to_b]);
+        let start_is_inner_f = matches!(ef.start_maybe_inner(), MaybeInner::Inner { .. });
+        let start_is_inner_b = matches!(eb.start_maybe_inner(), MaybeInner::Inner { .. });
+        if !IGNORE_NODE_VOLUME {
+            trim_endpoints::<Nd>(sn, tn, &mut rf, start_is_inner_f);
+            trim_endpoints::<Nd>(snb, tnb, &mut rb, start_is_inner_b);
+        }
+        routes.insert(route_key_f, rf);
+        routes.insert(route_key_b, rb);
+
+        routed_edges.insert(f_eidx);
+        routed_edges.insert(b_eidx);
+    }
+
+    // 2) Plan the rest individually
     for (eidx, e) in edges.into_iter() {
+        if routed_edges.contains(&eidx) { continue; }
         let (s_idx, t_idx) = match g.edge_endpoints(eidx) { Some(v) => v, None => continue };
         let s_node = g.node(s_idx).unwrap();
         let t_node = g.node(t_idx).unwrap();
-        // Use the same anchors as PlantEdge/plan_oxdraw_class
-        let (start_p, end_p) = compute_edge_anchors::<Nd>(s_node, t_node, e.start_maybe_inner());
-        let v = end_p - start_p;
-        if !v.x.is_finite() || !v.y.is_finite() { continue; }
-        let dir = if v.length_sq() <= f32::EPSILON { Dir::R } else {
-            let dv = v.normalized();
-            if dv.x.abs() >= dv.y.abs() { if dv.x>=0.0 { Dir::R } else { Dir::L } } else { if dv.y>=0.0 { Dir::D } else { Dir::U } }
-        };
-        let (sx, sy) = grid.world_to_cell(start_p);
-        let (tx, ty) = grid.world_to_cell(end_p);
+        let (from, to) = compute_edge_anchors::<Nd>(s_node, t_node, e.start_maybe_inner());
+        let v = to - from; if v.length_sq() <= f32::EPSILON { continue; }
+        let distance = v.length();
 
-        // A* with direction state
-        let mut open = BinaryHeap::new();
-        let mut came_from: HashMap<(i32,i32,Dir),(i32,i32,Dir)> = HashMap::new();
-        let mut g_score: HashMap<(i32,i32,Dir), f32> = HashMap::new();
-        let start = (sx, sy, dir);
-        let h0 = heuristic(sx, sy, tx, ty);
-        open.push(AStarNode { f: h0, g: 0.0, x: sx, y: sy, dir });
-        g_score.insert(start, 0.0);
+        let mut best_metric = (u8::MAX, u32::MAX, u32::MAX);
+        let mut best: Option<Vec<Pos2>> = None;
 
-        let mut found: Option<(i32,i32,Dir)> = None;
-        let mut guard = 0usize;
-        while let Some(cur) = open.pop() {
-            guard += 1; if guard > (grid.w*grid.h*4).min(200_000) { break; }
-            if cur.x == tx && cur.y == ty { found = Some((cur.x, cur.y, cur.dir)); break; }
-            for ndir in Dir::all() {
-                let (dx,dy) = ndir.delta();
-                let nx = cur.x + dx; let ny = cur.y + dy;
-                if let Some(i) = grid.idx(nx, ny) {
-                    // Hard obstacle
-                    if grid.blocked[i] == 1 { continue; }
-                    let turn = if ndir as u8 == cur.dir as u8 { 0.0 } else { params.turn_penalty };
-                    let cross = if grid.blocked[i] >= 2 { params.cross_penalty } else { 0.0 };
-                    let tentative = cur.g + 1.0 + turn + cross;
-                    let key = (nx, ny, ndir);
-                    let old = g_score.get(&key).copied().unwrap_or(f32::INFINITY);
-                    if tentative + 1e-6 < old {
-                        g_score.insert(key, tentative);
-                        came_from.insert(key, (cur.x, cur.y, cur.dir));
-                        let f = tentative + heuristic(nx, ny, tx, ty);
-                        open.push(AStarNode { f, g: tentative, x: nx, y: ny, dir: ndir });
-                    }
-                }
+        // Try both sides with iterative offsets
+        for &sign in &[1.0_f32, -1.0_f32] {
+            let base_offset = (distance * 0.25).min(EDGE_SINGLE_OFFSET);
+            let base_stub = (distance * 0.25).min(EDGE_SINGLE_STUB);
+            if base_offset <= 0.0 || base_stub <= 0.0 { continue; }
+            for attempt in 0..=EDGE_COLLISION_MAX_ITER {
+                let off = (base_offset + attempt as f32 * EDGE_SINGLE_OFFSET_STEP)
+                    .min((distance * 0.5) - EDGE_COLLISION_MARGIN)
+                    .max(base_offset);
+                let stub = (base_stub + attempt as f32 * EDGE_SINGLE_STUB_STEP)
+                    .min((distance * 0.5) - EDGE_COLLISION_MARGIN)
+                    .max(base_stub);
+                let mids = generate_bidir_points(from, to, off, stub, sign);
+                let mut cur_best = best_metric;
+                let mut cur_points: Option<Vec<Pos2>> = None;
+                let done = evaluate_candidate(
+                    mids, from, to, &node_bounds, s_idx, t_idx, &routes, &mut cur_best, &mut cur_points,
+                );
+                if let Some(r) = cur_points { best = Some(r); best_metric = cur_best; }
+                if done { break; }
             }
         }
 
-        let key_u128 = ((s_idx.index() as u128) << 64) ^ ((t_idx.index() as u128) << 32) ^ (e.order() as u128);
-        if let Some(goal) = found {
-            // Reconstruct
-            let mut seq: Vec<(i32,i32)> = vec![(goal.0, goal.1)];
-            let mut cur = goal;
-            while let Some(prev) = came_from.get(&cur) { cur = *prev; seq.push((cur.0, cur.1)); if cur.0==sx && cur.1==sy { break; } }
-            seq.reverse();
-            // To canvas & simplify colinear
-            let mut pts: Vec<Pos2> = seq.iter().map(|(x,y)| grid.cell_center(*x,*y)).collect();
-            simplify(&mut pts);
-            routes.insert(key_u128, pts.clone());
-            // Reserve the path cells (soft) for next edges
-            for (x,y) in seq { if let Some(i) = grid.idx(x,y) { grid.blocked[i] = grid.blocked[i].max(2); } }
-        } else {
-            // Fallback: if start/end非对齐，插入一个L型拐点，保证“有折线”。
-            let aligned = (sx == tx) || (sy == ty);
-            if !aligned {
-                let cand1 = (sx, ty); let cand2 = (tx, sy);
-                let ok1 = cand1.0>=0 && cand1.1>=0 && grid.idx(cand1.0, cand1.1).map(|i| grid.blocked[i] != 1).unwrap_or(false);
-                let ok2 = cand2.0>=0 && cand2.1>=0 && grid.idx(cand2.0, cand2.1).map(|i| grid.blocked[i] != 1).unwrap_or(false);
-                let mid = if ok1 { cand1 } else if ok2 { cand2 } else { (sx, sy) };
-                let mut pts = vec![start_p, grid.cell_center(mid.0, mid.1), end_p];
-                simplify(&mut pts);
-                routes.insert(key_u128, pts);
-            } else {
-                // 仍然直线
-                routes.insert(key_u128, vec![start_p, end_p]);
+        // Try axis detours if needed
+        if best.is_none() || best_metric.0 > 0 {
+            for cand in generate_axis_detours(from, to) {
+                let mut cur_best = best_metric;
+                let mut cur_points: Option<Vec<Pos2>> = None;
+                let done = evaluate_candidate(
+                    cand, from, to, &node_bounds, s_idx, t_idx, &routes, &mut cur_best, &mut cur_points,
+                );
+                if let Some(r) = cur_points { best = Some(r); best_metric = cur_best; }
+                if done { break; }
             }
         }
+
+        let mut r = best.unwrap_or_else(|| vec![from, to]);
+        if !IGNORE_NODE_VOLUME {
+            let start_is_inner = matches!(e.start_maybe_inner(), MaybeInner::Inner { .. });
+            trim_endpoints::<Nd>(s_node, t_node, &mut r, start_is_inner);
+        }
+        routes.insert(route_key(s_idx, t_idx, e.order()), r);
     }
 
     routes

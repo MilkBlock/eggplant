@@ -304,8 +304,8 @@ pub enum EdgeRouterKind {
     Curved,
     /// Oxdraw-like router considering only CLASS label boxes and edge-edge collisions.
     OxdrawClass,
-    /// Full orthogonal oxdraw-style router (grid + A*), obeying this project's
-    /// constraints (CLASS boxes + edges as obstacles, fixed endpoints).
+    /// Full oxdraw-style heuristic router (offset+stub + detours), obeying this
+    /// project's constraints (CLASS boxes as obstacles, fixed endpoints, inner-anchor support).
     OxdrawFull,
     /// Smooth rendering of oxdraw polylines (Catmull-Rom interpolation rendered as cubic Beziers).
     OxdrawSmooth,

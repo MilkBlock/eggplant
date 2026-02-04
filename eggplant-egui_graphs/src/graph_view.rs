@@ -265,7 +265,7 @@ where
                             self.g,
                             &self.settings_style,
                             0.0,
-                            crate::draw::router::GridParams::default(),
+                            (),
                         )
                     }
                     _ => Default::default(),
