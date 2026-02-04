@@ -229,6 +229,20 @@ where
         // Handle node drag before navigation so pan doesn't kick in on the first frame
         // when starting a node drag.
         self.handle_node_drag(&resp, &mut meta, eff);
+
+        // On left-mouse release anywhere, schedule a one-shot edge routing replan.
+        // This matches the requirement to avoid per-frame routing and update on release.
+        let mut left_released = false;
+        ui.ctx().input(|i| {
+            for ev in &i.events {
+                if let egui::Event::PointerButton { button, pressed, .. } = ev {
+                    if *button == PointerButton::Primary && !*pressed { left_released = true; }
+                }
+            }
+        });
+        if left_released {
+            meta.replan_pending = true;
+        }
         self.handle_navigation(ui, &resp, &mut meta, eff);
         self.handle_click(&resp, &mut meta, eff);
 
