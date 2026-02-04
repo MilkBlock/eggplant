@@ -87,13 +87,41 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
         let mut stroke = Stroke::new(self.default_impl.width, EDGE_COLOR);
         stroke.width = ctx.meta.canvas_to_screen_size(stroke.width);
 
-        // If oxdraw routing (Class or Full) is active and a preplanned polyline exists, draw that.
-        if matches!(ctx.style.edge_router_kind(), EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull) {
+        // If oxdraw routing (Class / Full / Smooth) is active and a preplanned polyline exists, draw that.
+        if matches!(ctx.style.edge_router_kind(), EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth) {
             if let Some(routes) = ctx.routes {
                 let key = (start_idx << 64) ^ (end_idx << 32) ^ (self.default_impl.order as u128);
                 if let Some(screen_pts) = routes.get(&key) {
-                    for w in screen_pts.windows(2) {
-                        res.push(Shape::line_segment([w[0], w[1]], stroke));
+                    match ctx.style.edge_router_kind() {
+                        EdgeRouterKind::OxdrawSmooth => {
+                            if screen_pts.len() == 1 {
+                                // single point (degenerate)
+                            } else if screen_pts.len() == 2 {
+                                res.push(Shape::line_segment([screen_pts[0], screen_pts[1]], stroke));
+                            } else {
+                                // Duplicate endpoints for tangents
+                                let mut p = Vec::with_capacity(screen_pts.len() + 2);
+                                p.push(screen_pts[0]);
+                                p.extend_from_slice(screen_pts);
+                                p.push(*screen_pts.last().unwrap());
+                                for i in 0..(p.len() - 3) {
+                                    let p0 = p[i];
+                                    let p1 = p[i + 1];
+                                    let p2 = p[i + 2];
+                                    let p3 = p[i + 3];
+                                    let c1 = p1 + (p2 - p0) * (1.0 / 6.0);
+                                    let c2 = p2 - (p3 - p1) * (1.0 / 6.0);
+                                    res.push(Shape::CubicBezier(egui::epaint::CubicBezierShape::from_points_stroke(
+                                        [p1, c1, c2, p2], false, egui::Color32::TRANSPARENT, stroke
+                                    )));
+                                }
+                            }
+                        }
+                        _ => {
+                            for w in screen_pts.windows(2) {
+                                res.push(Shape::line_segment([w[0], w[1]], stroke));
+                            }
+                        }
                     }
                     // dot the first point to indicate start
                     res.push(Shape::Circle(CircleShape::filled(

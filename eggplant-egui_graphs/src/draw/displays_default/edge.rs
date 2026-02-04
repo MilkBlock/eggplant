@@ -123,17 +123,48 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
             return self.loop_shapes(start, ctx, stroke, color, label_visible);
         }
 
-        // Check if oxdraw routing is enabled (Class or Full); if so, draw a polyline with fixed endpoints
-        // from the preplanned route cache provided by the DrawContext.
-        if matches!(ctx.style.edge_router_kind(), crate::settings::EdgeRouterKind::OxdrawClass | crate::settings::EdgeRouterKind::OxdrawFull) {
+        // If oxdraw routing (Class/Full/Smooth) is active and a preplanned polyline exists, draw that.
+        if matches!(ctx.style.edge_router_kind(), crate::settings::EdgeRouterKind::OxdrawClass | crate::settings::EdgeRouterKind::OxdrawFull | crate::settings::EdgeRouterKind::OxdrawSmooth) {
             if let Some(routes) = ctx.routes {
                 let key = ((start.id().index() as u128) << 64)
                     ^ ((end.id().index() as u128) << 32)
                     ^ (self.order as u128);
                 if let Some(screen_pts) = routes.get(&key) {
                     let mut shapes = Vec::new();
-                    for w in screen_pts.windows(2) {
-                        shapes.push(egui::Shape::line_segment([w[0], w[1]], stroke));
+                    match ctx.style.edge_router_kind() {
+                        crate::settings::EdgeRouterKind::OxdrawSmooth => {
+                            // Catmull-Rom to cubic Bézier conversion; clamp for small polylines
+                            let pts = screen_pts;
+                            if pts.len() >= 2 {
+                                // For 2 points, just a line
+                                if pts.len() == 2 {
+                                    shapes.push(egui::Shape::line_segment([pts[0], pts[1]], stroke));
+                                } else {
+                                    // Duplicate endpoints for tangents
+                                    let mut p = Vec::with_capacity(pts.len() + 2);
+                                    p.push(pts[0]);
+                                    p.extend_from_slice(pts);
+                                    p.push(*pts.last().unwrap());
+                                    for i in 0..(p.len() - 3) {
+                                        let p0 = p[i];
+                                        let p1 = p[i + 1];
+                                        let p2 = p[i + 2];
+                                        let p3 = p[i + 3];
+                                        // Catmull-Rom to cubic Bezier (uniform, alpha=0)
+                                        let c1 = p1 + (p2 - p0) * (1.0 / 6.0);
+                                        let c2 = p2 - (p3 - p1) * (1.0 / 6.0);
+                                        shapes.push(egui::Shape::CubicBezier(egui::epaint::CubicBezierShape::from_points_stroke(
+                                            [p1, c1, c2, p2], false, egui::Color32::TRANSPARENT, stroke
+                                        )));
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            for w in screen_pts.windows(2) {
+                                shapes.push(egui::Shape::line_segment([w[0], w[1]], stroke));
+                            }
+                        }
                     }
                     if ctx.is_directed && screen_pts.len() >= 2 {
                         use egui::Vec2 as V2;

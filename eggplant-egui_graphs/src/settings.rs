@@ -307,6 +307,8 @@ pub enum EdgeRouterKind {
     /// Full orthogonal oxdraw-style router (grid + A*), obeying this project's
     /// constraints (CLASS boxes + edges as obstacles, fixed endpoints).
     OxdrawFull,
+    /// Smooth rendering of oxdraw polylines (Catmull-Rom interpolation rendered as cubic Beziers).
+    OxdrawSmooth,
 }
 
 impl Default for EdgeRouterKind {

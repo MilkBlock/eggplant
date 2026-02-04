@@ -534,6 +534,12 @@ impl EGraphApp {
                     meta.replan_pending = true;
                     meta.save(ui);
                 }
+                if ui.button("OxdrawSmooth").clicked() {
+                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::OxdrawSmooth;
+                    let mut meta = eggplant_egui_graphs::Metadata::load(ui);
+                    meta.replan_pending = true;
+                    meta.save(ui);
+                }
                 if ui.button("OxdrawFull").clicked() {
                     self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::OxdrawFull;
                     let mut meta = eggplant_egui_graphs::Metadata::load(ui);
@@ -1465,8 +1471,9 @@ impl EGraphApp {
                     let next = match self.settings_style.edge_router_kind {
                         ERK::Straight => ERK::Curved,
                         ERK::Curved => ERK::OxdrawClass,
-                        ERK::OxdrawClass => ERK::Straight,
-                        ERK::OxdrawFull => ERK::Straight, // keep Full out of the default cycle unless you want it
+                        ERK::OxdrawClass => ERK::OxdrawSmooth,
+                        ERK::OxdrawSmooth => ERK::Straight,
+                        ERK::OxdrawFull => ERK::Straight, // keep Full out of the default cycle unless requested
                     };
                     self.settings_style.edge_router_kind = next;
                     // Once switch style, trigger a one-time route replan

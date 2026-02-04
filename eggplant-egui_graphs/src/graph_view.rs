@@ -252,19 +252,23 @@ where
         // otherwise reuse cached canvas routes from metadata.
         let router_kind = self.settings_style.edge_router_kind();
         let mut routes_screen: Option<std::collections::HashMap<u128, Vec<egui::Pos2>>> = None;
-        let need_router = matches!(router_kind, EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull);
+        let need_router = matches!(router_kind, EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth);
         if need_router {
             let need_replan = meta.replan_pending || meta.last_router != Some(router_kind) || meta.routes_canvas.is_none();
             if need_replan {
-                let canvas_routes = if router_kind == EdgeRouterKind::OxdrawClass {
-                    plan_oxdraw_class(self.g, &self.settings_style, 0.0)
-                } else {
-                    plan_oxdraw_full(
-                        self.g,
-                        &self.settings_style,
-                        0.0,
-                        crate::draw::router::GridParams::default(),
-                    )
+                let canvas_routes = match router_kind {
+                    EdgeRouterKind::OxdrawClass => {
+                        plan_oxdraw_class(self.g, &self.settings_style, 0.0)
+                    }
+                    EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth => {
+                        plan_oxdraw_full(
+                            self.g,
+                            &self.settings_style,
+                            0.0,
+                            crate::draw::router::GridParams::default(),
+                        )
+                    }
+                    _ => Default::default(),
                 };
                 meta.routes_canvas = Some(canvas_routes);
                 meta.last_router = Some(router_kind);
