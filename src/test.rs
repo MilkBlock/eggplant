@@ -49,7 +49,8 @@ mod tests {
 mod proofs_api_tests {
     use crate::{self as eggplant, instances::tx_rx_vt_pr::TxRxVTPR};
     use eggplant::prelude::*;
-    use egglog::prelude::exprs;
+    use egglog::ast::Expr;
+    use egglog::span;
 
     #[eggplant::dsl]
     pub enum ProofExpr {
@@ -140,9 +141,56 @@ mod proofs_api_tests {
         assert!(!proof.trim().is_empty());
         assert!(proof.contains("(name \"@MulPat\")"));
 
-        // NOTE: `value_equiv_expr_ast` depends on proof-mode `eval_expr` returning a stable witness
-        // value for a surface AST. That path is currently unstable under term encoding, so we
-        // test it separately once egglog exposes a “lookup committed value for AST” primitive.
+        // 2) Expr-AST-based APIs: call them with surface constructor ASTs.
+        //
+        // NOTE: In term-encoding mode, “surface AST -> committed Value” is not guaranteed to be
+        // stable yet (tracked in #t42). These calls are best-effort and may return an error; the
+        // regression we care about here is that they remain safe to call.
+        let mul_ast = Expr::Call(
+            span!(),
+            "ProofMul".to_owned(),
+            vec![
+                Expr::Call(
+                    span!(),
+                    "ProofConst".to_owned(),
+                    vec![Expr::Lit(span!(), egglog::ast::Literal::Int(3))],
+                ),
+                Expr::Call(
+                    span!(),
+                    "ProofConst".to_owned(),
+                    vec![Expr::Lit(span!(), egglog::ast::Literal::Int(2))],
+                ),
+            ],
+        );
+        let const6_ast = Expr::Call(
+            span!(),
+            "ProofConst".to_owned(),
+            vec![Expr::Lit(span!(), egglog::ast::Literal::Int(6))],
+        );
+        let _ = MyTxProof::sgl().value_equiv_expr_ast("ProofExpr", expected_value, const6_ast.clone());
+        let _ = MyTxProof::sgl().prove_eq_pretty_expr_ast("ProofExpr", mul_ast, const6_ast);
+
+        // 3) Regression: proof export should work for non-canonical values too (class-id/canon-rep keying).
+        let (rep, non_rep) = {
+            let egraph = MyTxProof::sgl().egraph.lock().unwrap();
+            let sort = egraph.get_sort_by_name("ProofExpr").unwrap().clone();
+            let rep = egraph.get_canonical_value(mul_value, &sort);
+            let non_rep = if mul_value != rep {
+                Some(mul_value)
+            } else if expected_value != rep {
+                Some(expected_value)
+            } else {
+                None
+            };
+            (rep, non_rep)
+        };
+        if let Some(non_rep) = non_rep {
+            let proof_nonrep = MyTxProof::sgl()
+                .prove_eq_pretty_raw("ProofExpr", non_rep, rep)
+                .expect("prove_eq_pretty_raw(nonrep, rep) should succeed");
+            assert!(!proof_nonrep.trim().is_empty());
+            assert!(proof_nonrep.contains("(name \"@MulPat\")"));
+        }
     }
 }
 // #[cfg(test)]
