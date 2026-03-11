@@ -303,18 +303,6 @@ impl TxRxVTPR {
         }
     }
 
-    fn flush_pending_proof_unions(&self, egraph: &mut EGraph) {
-        if !egraph.are_proofs_enabled() {
-            return;
-        }
-
-        // Maintain UF proof closure.
-        for ruleset in ["@single_parent", "@parent"] {
-            if let Err(err) = egglog::prelude::run_ruleset(egraph, ruleset) {
-                log::debug!("flush_pending_proof_unions: maintenance failed {ruleset}: {err:?}");
-            }
-        }
-    }
     /// this tracing is implemented by Proof Table writing, which is quick but without full proof
     // pub fn new_with_fast_proof() -> Self {
     //     let tx = Self {
@@ -1047,7 +1035,6 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                 //
                 // Use egglog's schedule runner for saturation, then extract the `RunReport`.
                 let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
-                self.flush_pending_proof_unions(&mut egraph);
                 outputs
                     .into_iter()
                     .find_map(|o| match o {
@@ -1057,18 +1044,43 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                     .unwrap_or_default()
             }
             RunConfig::Times(times) => {
-                let mut run_report = RunReport::default();
-                for _ in 0..times {
-                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
-                    self.flush_pending_proof_unions(&mut egraph);
-                    run_report.union(iter_report);
+                if egraph.are_proofs_enabled() {
+                    let mut run_report = RunReport::default();
+                    for _ in 0..times {
+                        let outputs =
+                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        let iter_report = outputs
+                            .into_iter()
+                            .find_map(|o| match o {
+                                egglog::CommandOutput::RunSchedule(report) => Some(report),
+                                _ => None,
+                            })
+                            .unwrap_or_default();
+                        run_report.union(iter_report);
+                    }
+                    run_report
+                } else {
+                    let mut run_report = RunReport::default();
+                    for _ in 0..times {
+                        let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
+                        run_report.union(iter_report);
+                    }
+                    run_report
                 }
-                run_report
             }
             RunConfig::Once => {
-                let run_report = egraph.step_rules(ruleset_id.0).unwrap();
-                self.flush_pending_proof_unions(&mut egraph);
-                run_report
+                if egraph.are_proofs_enabled() {
+                    let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                    outputs
+                        .into_iter()
+                        .find_map(|o| match o {
+                            egglog::CommandOutput::RunSchedule(report) => Some(report),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                } else {
+                    egraph.step_rules(ruleset_id.0).unwrap()
+                }
             }
         }
     }
