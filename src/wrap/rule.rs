@@ -11,12 +11,23 @@ use egglog::{
     sort::{EqSort, Sort},
     span,
 };
-use egglog::{ContainerValue, RunReport};
-use std::cell::UnsafeCell;
+use egglog::ContainerValue;
+use egglog_reports::RunReport;
+use std::collections::HashSet;
+use std::cell::{RefCell, UnsafeCell};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
 use wrap::Value;
+
+pub(crate) fn empty_premise_proofs() -> Arc<[egglog::Value]> {
+    static EMPTY: std::sync::OnceLock<Arc<[egglog::Value]>> = std::sync::OnceLock::new();
+    Arc::clone(EMPTY.get_or_init(|| Arc::from(Vec::<egglog::Value>::new().into_boxed_slice())))
+}
+
+thread_local! {
+    pub(crate) static CURRENT_PREMISE_PROOFS: RefCell<Option<Arc<[egglog::Value]>>> = RefCell::new(None);
+}
 
 // eggplant rule context is a wrapper of egglog rule context.
 // it contains the Tx to which the rule is applied
@@ -156,12 +167,18 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
     }
-    pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
+    pub fn union<T0: EgglogTy, T1: EgglogTy>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
         let x = x.to_value(&self);
         let y = y.to_value(&self);
-        self.hook.0.as_ref().map(|hook| hook.on_union(x.val, y.val));
+        self.hook
+            .0
+            .as_ref()
+            .map(|hook| hook.on_union(x.val, y.val));
         unsafe {
-            (*self.rule_ctx.get()).union(x.val, y.val);
+            let premise_proofs = CURRENT_PREMISE_PROOFS
+                .with(|cell| cell.borrow().clone())
+                .unwrap_or_else(empty_premise_proofs);
+            (*self.rule_ctx.get()).union_typed(T0::TY_NAME, x.val, y.val, premise_proofs.as_ref());
         }
     }
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
@@ -296,6 +313,19 @@ impl FactsBuilder {
     /// procedural macro call this function to add atom
     pub fn add_table_fact(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
         self.table_facts.push((query_table, vars));
+    }
+
+    pub fn vars_with_sorts(&self) -> Vec<(VarName, SortName)> {
+        let mut out = Vec::new();
+        let mut seen: HashSet<&str> = HashSet::new();
+        for (_table, vars) in self.table_facts.iter() {
+            for (var, sort) in vars.iter() {
+                if seen.insert(var.as_str()) {
+                    out.push((var.clone(), sort.clone()));
+                }
+            }
+        }
+        out
     }
 
     /// Build comparison constraint atom

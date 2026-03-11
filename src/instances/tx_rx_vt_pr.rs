@@ -5,16 +5,21 @@ use crate::{
 use core::panic;
 use dashmap::DashMap;
 use egglog::{
-    EGraph, RunReport, SerializeConfig,
+    EGraph, SerializeConfig,
     ast::Facts,
     prelude::{add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
 };
+use egglog_reports::RunReport;
 use egglog::{
     ast::{RustSpan, Span},
     prelude::rust_rule,
 };
+use egglog::ast::{Expr, Fact};
+use crate::wrap::rule::{CURRENT_PREMISE_PROOFS, empty_premise_proofs};
+use egglog::ast::Command;
+use std::collections::HashSet;
 use graphviz_rust::dot_structures::Attribute;
 use petgraph::prelude::StableDiGraph;
 use std::{
@@ -41,6 +46,14 @@ pub struct TxRxVTPR {
     sym2value_map: Arc<DashMap<Sym, egglog::Value>>,
     // proof_store: Mutex<ProofStore>,
     commit_counter: Mutex<u32>,
+}
+
+#[derive(Clone)]
+struct PremiseProofSpec {
+    /// Freshened name of the `{Ctor}ViewProof` function (e.g. `@MulViewProof`).
+    view_proof_func: Arc<str>,
+    /// Key variables for the view proof lookup: input vars followed by the output var.
+    key_vars: Arc<[Arc<str>]>,
 }
 
 #[allow(unused)]
@@ -174,6 +187,27 @@ impl TxRxVTPR {
             staged_new_map: Mutex::new(IndexMap::default()),
             checkpoints: Mutex::new(vec![]),
             sym2value_map: Arc::new(DashMap::new()),
+            commit_counter: Mutex::new(0),
+        };
+        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        for def in type_defs {
+            tx.send(TxCommand::NativeCommand { command: def });
+        }
+        tx
+    }
+    pub fn new_with_proof() -> Self {
+        let tx = Self {
+            egraph: Arc::new(Mutex::new({
+                let mut e = EGraph::new_with_proofs();
+                Self::add_eggplant_sorts(&mut e);
+                e
+            })),
+            registry: EgglogTypeRegistry::new_with_inventory(),
+            map: DashMap::new(),
+            staged_set_map: DashMap::new(),
+            staged_new_map: Mutex::new(IndexMap::default()),
+            checkpoints: Mutex::new(vec![]),
+            sym2value_map: Arc::new(DashMap::new()),
             // proof_store: Mutex::new(ProofStore::default()),
             commit_counter: Mutex::new(0),
         };
@@ -183,10 +217,102 @@ impl TxRxVTPR {
         }
         tx
     }
+    /// Return a pretty proof that two values are equal for the given sort.
+    ///
+    /// This API is only for proofs mode (`new_with_proof`) and extracts
+    /// proof text from `CommandOutput::ProveExists`.
+    pub fn prove_eq_pretty_raw(
+        &self,
+        sort_name: &str,
+        lhs: egglog::Value,
+        rhs: egglog::Value,
+    ) -> Result<String, egglog::Error> {
+        let mut egraph = self.egraph.lock().unwrap();
+        if !egraph.are_proofs_enabled() {
+            return Err(egglog::Error::BackendError(
+                "prove_eq_pretty_raw requires EGraph::new_with_proofs".into(),
+            ));
+        }
+        egraph.prove_values_equal_pretty(sort_name, lhs, rhs)
+    }
+
+    pub fn prove_eq_pretty<T: EgglogTy>(
+        &self,
+        lhs: Value<T>,
+        rhs: Value<T>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_eq_pretty_raw(T::TY_NAME, lhs.val, rhs.val)
+    }
+
+    /// Prove an equality between two *surface* expressions (AST).
+    ///
+    /// `sort_name` selects which UF/UFProof tables to use for exporting the proof.
+    pub fn prove_eq_pretty_expr_ast(
+        &self,
+        sort_name: &str,
+        lhs: egglog::ast::Expr,
+        rhs: egglog::ast::Expr,
+    ) -> Result<String, egglog::Error> {
+        let mut egraph = self.egraph.lock().unwrap();
+        if !egraph.are_proofs_enabled() {
+            return Err(egglog::Error::BackendError(
+                "prove_eq_pretty_expr_ast requires EGraph::new_with_proofs".into(),
+            ));
+        }
+
+        egraph.push();
+        let res = (|| {
+            let (_lhs_sort, lhs_value) = egraph.eval_expr(&lhs)?;
+            let (_rhs_sort, rhs_value) = egraph.eval_expr(&rhs)?;
+            egraph.prove_values_equal_pretty(sort_name, lhs_value, rhs_value)
+        })();
+        egraph.pop()?;
+        res
+    }
+
+    /// Check whether an e-graph `Value` is in the same e-class as a given surface expression (AST).
+    ///
+    /// This evaluates `expr` using egglog's `eval_expr` (inside a `push/pop` scope) and compares
+    /// canonical representatives for `sort_name`.
+    pub fn value_equiv_expr_ast(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        expr: egglog::ast::Expr,
+    ) -> Result<bool, egglog::Error> {
+        let mut egraph = self.egraph.lock().unwrap();
+        let sort = egraph
+            .get_sort_by_name(sort_name)
+            .ok_or_else(|| egglog::Error::BackendError(format!("unknown sort {sort_name}")))?
+            .clone();
+
+        egraph.push();
+        let res = (|| {
+            let (_expr_sort, expr_value) = egraph.eval_expr(&expr)?;
+            let v0 = egraph.get_canonical_value(value, &sort);
+            let v1 = egraph.get_canonical_value(expr_value, &sort);
+            Ok(v0 == v1)
+        })();
+        egraph.pop()?;
+        res
+    }
     fn add_eggplant_sorts(e: &mut EGraph) {
         egglog::prelude::add_base_sort(e, StaticStrSort, span!()).unwrap();
         for sort_fn in inventory::iter::<UserBaseSort> {
             (sort_fn.sort_insert_fn)(e)
+        }
+    }
+
+    fn flush_pending_proof_unions(&self, egraph: &mut EGraph) {
+        if !egraph.are_proofs_enabled() {
+            return;
+        }
+
+        // Maintain UF proof closure.
+        for ruleset in ["@single_parent", "@parent"] {
+            if let Err(err) = egglog::prelude::run_ruleset(egraph, ruleset) {
+                log::debug!("flush_pending_proof_unions: maintenance failed {ruleset}: {err:?}");
+            }
         }
     }
     /// this tracing is implemented by Proof Table writing, which is quick but without full proof
@@ -592,6 +718,7 @@ impl TxCommit for TxRxVTPR {
 
         let sym2value_map = Arc::clone(&self.sym2value_map);
         let topo_sorted_nodes_clone = topo_sorted_nodes.clone();
+        let backup_staged_new_syms_for_rule = backup_staged_new_syms.clone();
         log::debug!("sorted to be {:?}", topo_sorted_nodes);
         let map_clone = self.map.clone();
 
@@ -608,7 +735,7 @@ impl TxCommit for TxRxVTPR {
             move |ctx, _| {
                 let ctx = RuleCtx::new(ctx, hook.clone());
                 let sym2value_map = sym2value_map.clone();
-                for &sym in &backup_staged_new_syms {
+                for &sym in &backup_staged_new_syms_for_rule {
                     log::debug!("topo_insert:{}", sym);
                     if let Some(node) = map_clone.get(&sym) {
                         // add node to egraph using native_egglog API
@@ -642,6 +769,7 @@ impl TxCommit for TxRxVTPR {
         // execute commit rule
         let rst = run_ruleset(&mut egraph, &ruleset_name);
         log::debug!("Commit Rule execution results: {:?}", rst);
+
         *self.commit_counter.lock().unwrap() += 1;
     }
 
@@ -698,7 +826,7 @@ impl Rx for TxRxVTPR {
             .unwrap();
         log::debug!("pulled dag: {:?}", term_dag);
 
-        let root_idx = term_dag.lookup(&start_term);
+        let root_idx = start_term;
         log::debug!("term_dag:{:?}, {:?}", term_dag, start_term);
         let mut ret_sym = None;
 
@@ -730,10 +858,10 @@ impl Rx for TxRxVTPR {
             None => {
                 // situtaion 2
                 // func ret a BaseTy
-                SymLit::Lit(match term_dag.get(0) {
+                SymLit::Lit(match term_dag.get(root_idx) {
                     egglog::Term::Lit(literal) => literal.clone(),
                     _ => {
-                        panic!("termdag[0] should be a literal")
+                        panic!("root term should be a literal")
                     }
                 })
             }
@@ -775,15 +903,84 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
 
-        let facts = PR::pat2fact_builder(pat_id).build(&egraph);
-        let vars = pat_vars.to_str_arcsort(&egraph);
+        let mut facts_builder = PR::pat2fact_builder(pat_id);
+        let extra_var_sorts = facts_builder.vars_with_sorts();
+        let facts = facts_builder.build(&egraph);
+        let mut vars = pat_vars.to_str_arcsort(&egraph);
+        if !extra_var_sorts.is_empty() {
+            let mut existing: HashSet<String> = vars.iter().map(|(n, _)| n.clone()).collect();
+            for (var, sort_name) in extra_var_sorts {
+                if existing.contains(&var) {
+                    continue;
+                }
+                existing.insert(var.clone());
+                let sort = egraph
+                    .get_sort_by_name(&sort_name)
+                    .cloned()
+                    .unwrap_or(Arc::new(egglog::sort::EqSort { name: sort_name.clone() }) as Arc<dyn egglog::sort::Sort>);
+                vars.push((var, sort));
+            }
+        }
         log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);
 
+        let rust_rule_name = Arc::<str>::from(rule_name.to_owned());
+
+        let premise_specs: Arc<[PremiseProofSpec]> = if egraph.are_proofs_enabled() {
+            let mut specs = Vec::new();
+            for fact in facts.iter() {
+                let Fact::Eq(_, lhs, rhs) = fact else {
+                    continue;
+                };
+                let (out, head, args) = match (lhs, rhs) {
+                    (Expr::Var(_, out), Expr::Call(_, head, args)) => (out, head, args),
+                    (Expr::Call(_, head, args), Expr::Var(_, out)) => (out, head, args),
+                    _ => continue,
+                };
+                let mut key_vars: Vec<Arc<str>> = Vec::with_capacity(args.len() + 1);
+                for arg in args.iter() {
+                    match arg {
+                        Expr::Var(_, v) => key_vars.push(Arc::<str>::from(v.clone())),
+                        _ => {
+                            // Constraint facts (lits, prim calls, etc.) aren't currently wired
+                            // into callback-side proof tagging.
+                            key_vars.clear();
+                            break;
+                        }
+                    }
+                }
+                if key_vars.is_empty() {
+                    continue;
+                }
+                key_vars.push(Arc::<str>::from(out.clone()));
+
+                let view_proof_func = match egraph.proof_view_proof_name(head) {
+                    Ok(name) => Arc::<str>::from(name.to_owned()),
+                    Err(_) => {
+                        // Not all facts correspond to term-encoding view rows (constraints,
+                        // primitives, etc.). Only capture premise proofs for rows with a view proof.
+                        continue;
+                    }
+                };
+                specs.push(PremiseProofSpec {
+                    view_proof_func,
+                    key_vars: Arc::from(key_vars.into_boxed_slice()),
+                });
+            }
+            Arc::from(specs.into_boxed_slice())
+        } else {
+            Arc::from(Vec::<PremiseProofSpec>::new().into_boxed_slice())
+        };
+        let binding_var_names: Arc<[Arc<str>]> = Arc::from(
+            vars.iter()
+                .map(|(n, _)| Arc::<str>::from(n.clone()))
+                .collect::<Vec<_>>()
+                .into_boxed_slice(),
+        );
         let hook = RuleHookObj(ctx_hook);
         let rst = rust_rule(
             &mut egraph,
-            rule_name,
+            rust_rule_name.as_ref(),
             rule_set.0,
             &vars
                 .iter()
@@ -792,11 +989,39 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
             Facts(facts),
             move |ctx, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
+                let premise_proofs: Arc<[egglog::Value]> = if premise_specs.is_empty() {
+                    empty_premise_proofs()
+                } else {
+                    let mut bindings: HashMap<&str, egglog::Value> =
+                        HashMap::with_capacity(binding_var_names.len());
+                    for (name, value) in binding_var_names.iter().zip(values.iter().copied()) {
+                        bindings.insert(name.as_ref(), value);
+                    }
+                    let mut proofs = Vec::with_capacity(premise_specs.len());
+                    for spec in premise_specs.iter() {
+                        let mut key = Vec::with_capacity(spec.key_vars.len());
+                        for var in spec.key_vars.iter() {
+                            let v = *bindings
+                                .get(var.as_ref())
+                                .unwrap_or_else(|| panic!("missing var binding {}", var));
+                            key.push(v);
+                        }
+                        let prf = ctx.ctx.insert(spec.view_proof_func.as_ref(), &key);
+                        proofs.push(prf);
+                    }
+                    Arc::from(proofs.into_boxed_slice())
+                };
+                CURRENT_PREMISE_PROOFS.with(|cell| {
+                    *cell.borrow_mut() = Some(Arc::clone(&premise_proofs));
+                });
                 let valued_pat_vars = P::Valued::from_plain_values_metas(
                     &mut values.iter().cloned(),
                     &mut std::iter::repeat(PR::MetaTy::default()),
                 );
                 action(&mut ctx, &valued_pat_vars);
+                CURRENT_PREMISE_PROOFS.with(|cell| {
+                    *cell.borrow_mut() = None;
+                });
                 Some(())
             },
         );
@@ -814,26 +1039,35 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
         let mut egraph = self.egraph.lock().unwrap();
         match until {
             RunConfig::Sat => {
-                let mut run_report = RunReport::default();
-                loop {
-                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
-                    let updated = iter_report.updated;
-                    run_report.union(iter_report);
-                    if !updated {
-                        break run_report;
-                    }
-                }
+                // `step_rules` only runs this ruleset's rule ids and does not execute egglog's
+                // maintenance schedule (rebuild/uf updates, etc.).
+                //
+                // In proofs / term-encoding mode this can lead to rules seeing an empty/stale
+                // view of the database (e.g. `num_matches=0` for obvious matches).
+                //
+                // Use egglog's schedule runner for saturation, then extract the `RunReport`.
+                let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                self.flush_pending_proof_unions(&mut egraph);
+                outputs
+                    .into_iter()
+                    .find_map(|o| match o {
+                        egglog::CommandOutput::RunSchedule(report) => Some(report),
+                        _ => None,
+                    })
+                    .unwrap_or_default()
             }
             RunConfig::Times(times) => {
                 let mut run_report = RunReport::default();
                 for _ in 0..times {
                     let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
+                    self.flush_pending_proof_unions(&mut egraph);
                     run_report.union(iter_report);
                 }
                 run_report
             }
             RunConfig::Once => {
                 let run_report = egraph.step_rules(ruleset_id.0).unwrap();
+                self.flush_pending_proof_unions(&mut egraph);
                 run_report
             }
         }

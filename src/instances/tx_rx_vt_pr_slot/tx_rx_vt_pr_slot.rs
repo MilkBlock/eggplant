@@ -8,12 +8,13 @@ use crate::{
 use core::panic;
 use dashmap::DashMap;
 use egglog::{
-    EGraph, RunReport, SerializeConfig,
+    EGraph, SerializeConfig,
     ast::Facts,
     prelude::{add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
 };
+use egglog_reports::RunReport;
 use egglog::{
     ast::{RustSpan, Span},
     prelude::rust_rule,
@@ -173,6 +174,30 @@ impl SlottedTxRxVTPR {
         let tx = Self {
             egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
+                Self::add_eggplant_sorts(&mut e);
+                // turn off semi naive
+                e.seminaive = false;
+                e
+            })),
+            registry: EgglogTypeRegistry::new_with_inventory(),
+            map: DashMap::new(),
+            staged_set_map: DashMap::new(),
+            staged_new_map: Mutex::new(IndexMap::default()),
+            checkpoints: Mutex::new(vec![]),
+            sym2value_map: Arc::new(DashMap::new()),
+            commit_counter: Mutex::new(0),
+            sym2meta: Default::default(),
+        };
+        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        for def in type_defs {
+            tx.send(TxCommand::NativeCommand { command: def });
+        }
+        tx
+    }
+    pub fn new_with_proof() -> Self {
+        let tx = Self {
+            egraph: Arc::new(Mutex::new({
+                let mut e = EGraph::new_with_proofs();
                 Self::add_eggplant_sorts(&mut e);
                 // turn off semi naive
                 e.seminaive = false;
@@ -737,7 +762,7 @@ impl Rx for SlottedTxRxVTPR {
             .unwrap();
         log::debug!("pulled dag: {:?}", term_dag);
 
-        let root_idx = term_dag.lookup(&start_term);
+        let root_idx = start_term;
         log::debug!("term_dag:{:?}, {:?}", term_dag, start_term);
         let mut ret_sym = None;
 
@@ -772,10 +797,10 @@ impl Rx for SlottedTxRxVTPR {
             None => {
                 // situtaion 2
                 // func ret a BaseTy
-                SymLit::Lit(match term_dag.get(0) {
+                SymLit::Lit(match term_dag.get(root_idx) {
                     egglog::Term::Lit(literal) => literal.clone(),
                     _ => {
-                        panic!("termdag[0] should be a literal")
+                        panic!("root term should be a literal")
                     }
                 })
             }
