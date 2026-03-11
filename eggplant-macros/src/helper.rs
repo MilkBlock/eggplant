@@ -12,7 +12,7 @@ use syn::{
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
-pub const EGGLOG_BASE_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "& 'static str"];
+pub const EGGLOG_BASE_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "StaticStr"];
 pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 4] = [
     LazyTokenStream::new(|| "String::new()".to_owned()),
     LazyTokenStream::new(|| "0".to_owned()),

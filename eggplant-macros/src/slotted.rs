@@ -1028,8 +1028,7 @@ pub fn slotted_dsl(
                                     #(#to_term_match_arms)*,
                                 }
                             }else{
-                                let term = term_dag.var(sym2ph_name.get(&self.cur_sym()).unwrap().to_string());
-                                let term_id = term_dag.lookup(&term);
+                                let term_id = term_dag.var(sym2ph_name.get(&self.cur_sym()).unwrap().to_string());
                                 sym2term.insert(self.cur_sym(), term_id);
                                 term_id
                             }

@@ -245,12 +245,18 @@ impl EgglogTypeRegistry {
                             output: output.to_string(),
                         },
                         merge: Some(GenericExpr::Var(span!(), "new".to_owned())),
+                        hidden: false,
+                        let_binding: false,
                     });
                 }
                 _ => {}
             }
         }
         commands
+    }
+
+    pub fn variant_to_type_name(&self, variant_name: &str) -> Option<&'static str> {
+        self.variant2type_map.get(variant_name).copied()
     }
     /// warnning: This funciton returns things like Expr<(),Num> which means you should reform
     /// it into () after
@@ -299,7 +305,7 @@ impl BaseSort for StaticStrSort {
     type Base = &'static str;
 
     fn name(&self) -> &str {
-        "& 'static str"
+        "StaticStr"
     }
 
     fn reconstruct_termdag(
@@ -307,9 +313,8 @@ impl BaseSort for StaticStrSort {
         base_values: &egglog::sort::BaseValues,
         value: egglog::Value,
         term_dag: &mut TermDag,
-    ) -> Term {
+    ) -> TermId {
         let str: &'static str = base_values.unwrap(value);
-        let term = term_dag.lit(Literal::String(str.to_string()));
-        term
+        term_dag.lit(Literal::String(str.to_string()))
     }
 }

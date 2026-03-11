@@ -19,14 +19,12 @@ pub fn to_term_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> Toke
         |complex_ident, _| {
             Some(quote! {
                 let #complex_ident = sym2term.get(&#complex_ident.erase()).cloned().unwrap();
-                let #complex_ident = term_dag.get(#complex_ident).clone();
             })
         },
     );
     quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
         #(#body)*
-        let term =term_dag.app(stringify!(#variant_name).to_string(),vec![#( #variant_idents ),* ]);
-        let term_id = term_dag.lookup(&term);
+        let term_id =term_dag.app(stringify!(#variant_name).to_string(),vec![#( #variant_idents ),* ]);
         sym2term.insert(self.cur_sym(), term_id);
         term_id
     }}

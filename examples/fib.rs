@@ -21,7 +21,7 @@ fn main() {
             ctx.set_fib(2, 3);
         },
     );
-    Fib::<MyTx>::get(&2);
     MyTx::run_ruleset(ruleset, RunConfig::Once);
+    Fib::<MyTx>::get(&2);
     MyTx::egraph_to_dot("egraph.dot");
 }

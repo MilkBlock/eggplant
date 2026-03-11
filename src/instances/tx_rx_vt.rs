@@ -590,7 +590,7 @@ impl Rx for TxRxVT {
         let mut term2sym = HashMap::new();
         let (term_dag, start_term, cost) = egraph.extract_value(sort, value.val).unwrap();
 
-        let root_idx = term_dag.lookup(&start_term);
+        let root_idx = start_term;
         log::debug!("term_dag:{:?}, {:?}", term_dag, start_term);
         let mut ret_sym = None;
 
@@ -621,10 +621,10 @@ impl Rx for TxRxVT {
             None => {
                 // situtaion 2
                 // func ret a BaseTy
-                SymLit::Lit(match term_dag.get(0) {
+                SymLit::Lit(match term_dag.get(root_idx) {
                     egglog::Term::Lit(literal) => literal.clone(),
                     _ => {
-                        panic!("termdag[0] should be a literal")
+                        panic!("root term should be a literal")
                     }
                 })
             }

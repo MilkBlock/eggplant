@@ -1143,8 +1143,7 @@ pub fn dsl(
                                     #(#to_term_match_arms)*,
                                 }
                             }else{
-                                let term = term_dag.var(sym2ph_name.get(&self.cur_sym()).unwrap().to_string());
-                                let term_id = term_dag.lookup(&term);
+                                let term_id = term_dag.var(sym2ph_name.get(&self.cur_sym()).unwrap().to_string());
                                 sym2term.insert(self.cur_sym(), term_id);
                                 term_id
                             }
@@ -1554,11 +1553,10 @@ pub fn base_ty(
                 base_values: &egglog::sort::BaseValues,
                 value: egglog::Value,
                 term_dag: &mut egglog::TermDag,
-            ) -> egglog::Term {
+            ) -> egglog::TermId {
                 use #EP::prelude::FromBase;
                 let op: #E::sort::Boxed< #ident #t_g> = base_values.unwrap(value);
-                let term = term_dag.lit(egglog::ast::Literal::from_base(&op.0));
-                term
+                term_dag.lit(egglog::ast::Literal::from_base(&op.0))
             }
         }
         impl #i_g #W::FromBase<#ident #t_g> #w_c for egglog::ast::Literal { fn from_base(base: &#ident<#t_g>) -> Self { egglog::ast::Literal::String(serde_json::to_string(&base).unwrap()) } }
