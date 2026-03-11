@@ -448,6 +448,29 @@ where
         let mut best_metric = (u8::MAX, u32::MAX, u32::MAX);
         let mut best: Option<Vec<Pos2>> = None;
 
+        // 先尝试直线（能直就直）
+        {
+            let mut cur_best = best_metric;
+            let mut cur_points: Option<Vec<Pos2>> = None;
+            let perfect = evaluate_candidate(
+                Vec::new(), from, to, &node_bounds, s_idx, t_idx, &routes, &mut cur_best, &mut cur_points,
+            );
+            if let Some(r) = cur_points.clone() {
+                best = Some(r);
+                best_metric = cur_best;
+            }
+            // 若无碰撞且无交叉，直接采用直线
+            if perfect {
+                let mut r = best.unwrap();
+                if !IGNORE_NODE_VOLUME {
+                    let start_is_inner = matches!(e.start_maybe_inner(), MaybeInner::Inner { .. });
+                    trim_endpoints::<Nd>(s_node, t_node, &mut r, start_is_inner);
+                }
+                routes.insert(route_key(s_idx, t_idx, e.order()), r);
+                continue;
+            }
+        }
+
         // Try both sides with iterative offsets
         for &sign in &[1.0_f32, -1.0_f32] {
             let base_offset = (distance * 0.25).min(EDGE_SINGLE_OFFSET);
