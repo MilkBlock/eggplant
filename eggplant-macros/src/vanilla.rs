@@ -73,21 +73,27 @@ pub fn func(
                 };
                 let (set_fn, set_fn_decl, set_fn_pr, set_fn_decl_pr) =
                     ctx_set_fn_ts(&variant, &output, &name_func);
+                let (read_fn, read_fn_decl, read_fn_pr, read_fn_decl_pr) =
+                    ctx_read_fn_ts(&variant, &output, &name_func);
                 let ctx_trait_name = format_ident!("{}RuleCtx", name_func);
                 let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_func);
 
                 quote! {
                     pub trait #ctx_trait_name {
                         #set_fn_decl
+                        #read_fn_decl
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
                         #set_fn
+                        #read_fn
                     }
                     pub trait #pr_ctx_trait_name {
                         #set_fn_decl_pr
+                        #read_fn_decl_pr
                     }
                     impl<PR:PatRecSgl> #pr_ctx_trait_name for #W::PRRuleCtx<'_,'_,'_, PR> {
                         #set_fn_pr
+                        #read_fn_pr
                     }
                 }
             };

@@ -43,6 +43,49 @@ mod tests {
         MyTx::run_ruleset(ruleset, RunConfig::Once);
         assert_eq!(*executed.lock().unwrap(), true);
     }
+
+    #[test]
+    fn func_ctx_read_smoke() {
+        tx_rx_vt_pr!(MyTxRead, MyPatRecRead);
+
+        #[eggplant::func(output=i64)]
+        struct FibRead {
+            x: i64,
+        }
+
+        let init = MyTxRead::new_ruleset("init");
+        MyTxRead::add_rule(
+            "init",
+            init,
+            || {
+                #[eggplant::pat_vars_catch]
+                struct Unit {}
+            },
+            |ctx, _pat| {
+                ctx.set_fib_read(1, 1);
+                ctx.set_fib_read(2, 2);
+            },
+        );
+        MyTxRead::run_ruleset(init, RunConfig::Once);
+
+        let use_read = MyTxRead::new_ruleset("use_read");
+        MyTxRead::add_rule(
+            "use_read",
+            use_read,
+            || {
+                #[eggplant::pat_vars_catch]
+                struct Unit {}
+            },
+            |ctx, _pat| {
+                let v1 = ctx.read_fib_read(1);
+                let v2 = ctx.devalue(ctx.read_fib_read_value(2));
+                ctx.set_fib_read(3, v1 + v2);
+            },
+        );
+        MyTxRead::run_ruleset(use_read, RunConfig::Once);
+
+        assert_eq!(FibRead::<MyTxRead>::get(&3), 3);
+    }
 }
 
 #[cfg(test)]
