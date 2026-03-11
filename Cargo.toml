@@ -31,6 +31,7 @@ eggplant-viewer = { workspace = true, optional = true }
 eggplant-egui_graphs = { workspace = true, optional = true }
 eframe = { workspace = true, optional = true }
 egglog.workspace = true
+egglog-reports.workspace = true
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
 graphviz-rust = "0.9.5"
@@ -39,6 +40,16 @@ serde_json.workspace = true
 itertools.workspace = true
 crossbeam.workspace = true
 indexmap.workspace = true
+
+[dev-dependencies]
+divan = { package = "codspeed-divan-compat", version = "4.0.3" }
+glob = "0.3"
+mimalloc = "0.1"
+rayon = "1.10"
+
+[[bench]]
+name = "ci_benchmarking"
+harness = false
 
 # [[bin]]
 # name = "viewer_example"
@@ -64,7 +75,8 @@ eggplant-macros = { path = "eggplant-macros", version = "0.2.7" }
 eggplant-viewer = { path = "eggplant-viewer" }
 eggplant-egui_graphs = { path = "eggplant-egui_graphs" }
 eggplant-transpiler = { path = "eggplant-transpiler", version = "0.2.7" }
-egglog = { path = "../stable/serialize_raw" }
+egglog = { path = "../stable/egglog_sync_serialize_raw" }
+egglog-reports = { path = "../stable/egglog_sync_serialize_raw/egglog-reports" }
 itertools = "0.14.0"
 indexmap = { version = "2.12.0", features = ["serde"] }
 
