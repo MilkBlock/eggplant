@@ -26,7 +26,24 @@ pub(crate) fn empty_premise_proofs() -> Arc<[egglog::Value]> {
 }
 
 thread_local! {
-    pub(crate) static CURRENT_PREMISE_PROOFS: RefCell<Option<Arc<[egglog::Value]>>> = RefCell::new(None);
+    pub(crate) static CURRENT_PREMISE_PROOFS: RefCell<Vec<Arc<[egglog::Value]>>> = RefCell::new(Vec::new());
+}
+
+pub(crate) struct PremiseProofScope;
+
+impl PremiseProofScope {
+    pub(crate) fn enter(premise_proofs: Arc<[egglog::Value]>) -> Self {
+        CURRENT_PREMISE_PROOFS.with(|cell| cell.borrow_mut().push(premise_proofs));
+        PremiseProofScope
+    }
+}
+
+impl Drop for PremiseProofScope {
+    fn drop(&mut self) {
+        CURRENT_PREMISE_PROOFS.with(|cell| {
+            let _ = cell.borrow_mut().pop();
+        });
+    }
 }
 
 // eggplant rule context is a wrapper of egglog rule context.
@@ -176,7 +193,7 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
             .map(|hook| hook.on_union(x.val, y.val));
         unsafe {
             let premise_proofs = CURRENT_PREMISE_PROOFS
-                .with(|cell| cell.borrow().clone())
+                .with(|cell| cell.borrow().last().cloned())
                 .unwrap_or_else(empty_premise_proofs);
             (*self.rule_ctx.get()).union_typed(T0::TY_NAME, x.val, y.val, premise_proofs.as_ref());
         }

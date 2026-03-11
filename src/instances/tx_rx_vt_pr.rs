@@ -17,7 +17,7 @@ use egglog::{
     prelude::rust_rule,
 };
 use egglog::ast::{Expr, Fact};
-use crate::wrap::rule::{CURRENT_PREMISE_PROOFS, empty_premise_proofs};
+use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
 use egglog::ast::Command;
 use std::collections::HashSet;
 use graphviz_rust::dot_structures::Attribute;
@@ -999,17 +999,12 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                     }
                     Arc::from(proofs.into_boxed_slice())
                 };
-                CURRENT_PREMISE_PROOFS.with(|cell| {
-                    *cell.borrow_mut() = Some(Arc::clone(&premise_proofs));
-                });
+                let _premise_scope = PremiseProofScope::enter(Arc::clone(&premise_proofs));
                 let valued_pat_vars = P::Valued::from_plain_values_metas(
                     &mut values.iter().cloned(),
                     &mut std::iter::repeat(PR::MetaTy::default()),
                 );
                 action(&mut ctx, &valued_pat_vars);
-                CURRENT_PREMISE_PROOFS.with(|cell| {
-                    *cell.borrow_mut() = None;
-                });
                 Some(())
             },
         );
