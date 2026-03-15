@@ -23,6 +23,13 @@ eggplant-macros.workspace = true
 # egglog = { git = "https://github.com/MilkBlock/egglog", rev = "41710d945bb01b3ed5a4c17ff432b235763a9ef6" }
 egglog = { git = "https://github.com/MilkBlock/egglog" }
 
+[dev-dependencies]
+divan = { package = "codspeed-divan-compat", version = "4.0.3" }
+
+[[bench]]
+name = "insert_1000_func"
+harness = false
+
 [workspace]
 members = ["eggplant-macros"]
 resolver = "2"                # recommended 2021 Edition

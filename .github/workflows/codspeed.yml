@@ -1,0 +1,46 @@
+name: CodSpeed
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  benches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-codspeed
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-codspeed@4.0.1
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build benchmarks
+        run: cargo codspeed build --bench insert_1000_func
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@v4
+        with:
+          run: cargo codspeed run --bench insert_1000_func
+          mode: simulation
