@@ -1358,12 +1358,43 @@ dependencies = [
  "clap",
  "csv",
  "dyn-clone",
- "egglog-add-primitive",
- "egglog-ast",
- "egglog-bridge",
- "egglog-core-relations",
- "egglog-numeric-id",
- "egglog-reports",
+ "egglog-add-primitive 2.0.0",
+ "egglog-ast 2.0.0",
+ "egglog-bridge 2.0.0",
+ "egglog-core-relations 2.0.0",
+ "egglog-numeric-id 2.0.0",
+ "egglog-reports 2.0.0",
+ "egraph-serialize",
+ "env_logger",
+ "hashbrown 0.16.0",
+ "im-rc",
+ "indexmap",
+ "log",
+ "mimalloc",
+ "num",
+ "ordered-float 5.1.0",
+ "rayon",
+ "rustc-hash 2.1.1",
+ "serde_json",
+ "thiserror 2.0.17",
+ "web-time",
+]
+
+[[package]]
+name = "egglog"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
+dependencies = [
+ "chrono",
+ "clap",
+ "csv",
+ "dyn-clone",
+ "egglog-add-primitive 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-ast 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-bridge 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-core-relations 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-numeric-id 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-reports 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
  "egraph-serialize",
  "env_logger",
  "hashbrown 0.16.0",
@@ -1389,8 +1420,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "egglog-add-primitive"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
+dependencies = [
+ "quote",
+ "syn 2.0.107",
+]
+
+[[package]]
 name = "egglog-ast"
 version = "2.0.0"
+dependencies = [
+ "ordered-float 5.1.0",
+]
+
+[[package]]
+name = "egglog-ast"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
 dependencies = [
  "ordered-float 5.1.0",
 ]
@@ -1401,10 +1449,34 @@ version = "2.0.0"
 dependencies = [
  "anyhow",
  "dyn-clone",
- "egglog-core-relations",
- "egglog-numeric-id",
- "egglog-reports",
- "egglog-union-find",
+ "egglog-core-relations 2.0.0",
+ "egglog-numeric-id 2.0.0",
+ "egglog-reports 2.0.0",
+ "egglog-union-find 2.0.0",
+ "hashbrown 0.16.0",
+ "indexmap",
+ "log",
+ "num-rational",
+ "once_cell",
+ "ordered-float 5.1.0",
+ "petgraph 0.8.3",
+ "rayon",
+ "smallvec",
+ "thiserror 2.0.17",
+ "web-time",
+]
+
+[[package]]
+name = "egglog-bridge"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
+dependencies = [
+ "anyhow",
+ "dyn-clone",
+ "egglog-core-relations 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-numeric-id 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-reports 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-union-find 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
  "hashbrown 0.16.0",
  "indexmap",
  "log",
@@ -1423,7 +1495,18 @@ name = "egglog-concurrency"
 version = "2.0.0"
 dependencies = [
  "arc-swap",
- "egglog-numeric-id",
+ "egglog-numeric-id 2.0.0",
+ "rayon",
+ "smallvec",
+]
+
+[[package]]
+name = "egglog-concurrency"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
+dependencies = [
+ "arc-swap",
+ "egglog-numeric-id 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
  "rayon",
  "smallvec",
 ]
@@ -1438,10 +1521,40 @@ dependencies = [
  "crossbeam-queue",
  "dashmap",
  "dyn-clone",
- "egglog-concurrency",
- "egglog-numeric-id",
- "egglog-reports",
- "egglog-union-find",
+ "egglog-concurrency 2.0.0",
+ "egglog-numeric-id 2.0.0",
+ "egglog-reports 2.0.0",
+ "egglog-union-find 2.0.0",
+ "fixedbitset 0.5.7",
+ "hashbrown 0.16.0",
+ "indexmap",
+ "log",
+ "num",
+ "once_cell",
+ "petgraph 0.8.3",
+ "rand 0.9.2",
+ "rayon",
+ "rustc-hash 2.1.1",
+ "smallvec",
+ "thiserror 2.0.17",
+ "web-time",
+]
+
+[[package]]
+name = "egglog-core-relations"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
+dependencies = [
+ "anyhow",
+ "bumpalo",
+ "crossbeam",
+ "crossbeam-queue",
+ "dashmap",
+ "dyn-clone",
+ "egglog-concurrency 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-numeric-id 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-reports 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-union-find 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
  "fixedbitset 0.5.7",
  "hashbrown 0.16.0",
  "indexmap",
@@ -1465,8 +1578,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "egglog-numeric-id"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
+dependencies = [
+ "rayon",
+]
+
+[[package]]
 name = "egglog-reports"
 version = "2.0.0"
+dependencies = [
+ "clap",
+ "hashbrown 0.16.0",
+ "indexmap",
+ "rustc-hash 2.1.1",
+ "serde",
+ "serde_json",
+ "web-time",
+]
+
+[[package]]
+name = "egglog-reports"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
 dependencies = [
  "clap",
  "hashbrown 0.16.0",
@@ -1482,8 +1617,18 @@ name = "egglog-union-find"
 version = "2.0.0"
 dependencies = [
  "crossbeam",
- "egglog-concurrency",
- "egglog-numeric-id",
+ "egglog-concurrency 2.0.0",
+ "egglog-numeric-id 2.0.0",
+]
+
+[[package]]
+name = "egglog-union-find"
+version = "2.0.0"
+source = "git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25#afd5c0752b3cd0bc15d3e234273a18220787ee25"
+dependencies = [
+ "crossbeam",
+ "egglog-concurrency 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-numeric-id 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
 ]
 
 [[package]]
@@ -1495,8 +1640,10 @@ dependencies = [
  "dashmap",
  "derive_more",
  "eframe",
- "egglog",
- "egglog-reports",
+ "egglog 2.0.0",
+ "egglog 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
+ "egglog-reports 2.0.0",
+ "egglog-reports 2.0.0 (git+https://github.com/egraphs-good/egglog.git?rev=afd5c0752b3cd0bc15d3e234273a18220787ee25)",
  "eggplant-egui_graphs",
  "eggplant-macros",
  "eggplant-viewer",
@@ -1525,7 +1672,7 @@ dependencies = [
  "criterion",
  "crossbeam",
  "eframe",
- "egglog",
+ "egglog 2.0.0",
  "egui",
  "getrandom 0.2.16",
  "indexmap",
@@ -1572,7 +1719,7 @@ dependencies = [
  "chrono",
  "crossbeam",
  "eframe",
- "egglog",
+ "egglog 2.0.0",
  "eggplant-egui_graphs",
  "egui",
  "egui_extras",

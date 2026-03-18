@@ -11,6 +11,29 @@ pub trait IntoConstraintFact: 'static + std::fmt::Debug {
     fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact>;
 }
 
+/// A constraint that asserts a primitive fact call, e.g. `(vec-contains (vec-of 1 2 3) 2)`.
+///
+/// This is used for egglog primitives whose "result" is `Unit` (i.e. they succeed/fail as a
+/// predicate), so they appear in egglog `check` as a bare call, not an equality to `true`.
+#[derive(derive_more::Debug, Clone)]
+pub struct FactCallConstraint {
+    op: &'static str,
+    operands: Vec<HandleTy>,
+}
+
+impl IntoConstraintFact for FactCallConstraint {
+    fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact> {
+        vec![Fact::Fact(Expr::Call(
+            span!(),
+            self.op.to_string(),
+            self.operands
+                .iter()
+                .map(|h| h.to_resolved_expr(egraph))
+                .collect(),
+        ))]
+    }
+}
+
 pub trait AsHandle {
     type Target: EgglogTy;
     fn as_handle(&self) -> HandleToConstrain<Self::Target>;
@@ -33,6 +56,35 @@ where
                 lit: Literal::from_base(self),
             },
             _p: PhantomData,
+        }
+    }
+}
+
+/// Convert values/handles into an untyped [`HandleTy`] for building primitive-call constraints.
+pub trait IntoHandleTy {
+    fn into_handle_ty(self) -> HandleTy;
+}
+
+impl<T: EgglogTy> IntoHandleTy for HandleToConstrain<T> {
+    fn into_handle_ty(self) -> HandleTy {
+        self.handle
+    }
+}
+
+impl<T: EgglogTy> IntoHandleTy for &HandleToConstrain<T> {
+    fn into_handle_ty(self) -> HandleTy {
+        self.clone().handle
+    }
+}
+
+impl<T> IntoHandleTy for &T
+where
+    Literal: FromBase<T>,
+    T: EgglogTy + Clone,
+{
+    fn into_handle_ty(self) -> HandleTy {
+        HandleTy::Literal {
+            lit: Literal::from_base(self),
         }
     }
 }
@@ -357,6 +409,35 @@ impl<T: EgglogTy> HandleToConstrain<T> {
         self.handle.to_resolved_expr(egraph)
     }
 }
+
+/// Build a primitive-call handle (e.g. `to-string`, `and`, `bool-<`) to be used in constraints.
+///
+/// Example:
+/// ```rust
+/// use eggplant::prelude::*;
+/// let h = prim_call::<bool>("and", vec![(&true).into_handle_ty(), (&false).into_handle_ty()]);
+/// let c = h.eq(&false);
+/// ```
+#[track_caller]
+pub fn prim_call<Out: EgglogTy>(
+    op: &'static str,
+    operands: Vec<HandleTy>,
+) -> HandleToConstrain<Out> {
+    HandleToConstrain {
+        handle: HandleTy::Expr {
+            op,
+            operands: operands.into_iter().map(|h| Box::new(h)).collect(),
+        },
+        _p: PhantomData,
+    }
+}
+
+/// Build a primitive fact-call constraint to be used in patterns.
+#[track_caller]
+pub fn prim_fact(op: &'static str, operands: Vec<HandleTy>) -> FactCallConstraint {
+    FactCallConstraint { op, operands }
+}
+
 impl<T: EgglogTy> Clone for HandleToConstrain<T> {
     fn clone(&self) -> Self {
         Self {

@@ -2,12 +2,12 @@ use std::marker::PhantomData;
 
 use crate::{
     DisplayEdge, DisplayNode, FruchtermanReingold, Graph,
-    draw::{DefaultEdgeShape, DefaultNodeShape, DrawContext, MaybeInner},
     draw::router::{plan_oxdraw_class, plan_oxdraw_full},
+    draw::{DefaultEdgeShape, DefaultNodeShape, DrawContext, MaybeInner},
     elements::IndexTy,
     layouts::{self, Layout, LayoutState},
     metadata::Metadata,
-    settings::{SettingsInteraction, SettingsNavigation, SettingsStyle, EdgeRouterKind},
+    settings::{EdgeRouterKind, SettingsInteraction, SettingsNavigation, SettingsStyle},
 };
 
 use egui::{Id, PointerButton, Pos2, Rect, Response, Sense, Ui, Vec2, Widget};
@@ -235,8 +235,13 @@ where
         let mut left_released = false;
         ui.ctx().input(|i| {
             for ev in &i.events {
-                if let egui::Event::PointerButton { button, pressed, .. } = ev {
-                    if *button == PointerButton::Primary && !*pressed { left_released = true; }
+                if let egui::Event::PointerButton {
+                    button, pressed, ..
+                } = ev
+                {
+                    if *button == PointerButton::Primary && !*pressed {
+                        left_released = true;
+                    }
                 }
             }
         });
@@ -252,21 +257,21 @@ where
         // otherwise reuse cached canvas routes from metadata.
         let router_kind = self.settings_style.edge_router_kind();
         let mut routes_screen: Option<std::collections::HashMap<u128, Vec<egui::Pos2>>> = None;
-        let need_router = matches!(router_kind, EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth);
+        let need_router = matches!(
+            router_kind,
+            EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth
+        );
         if need_router {
-            let need_replan = meta.replan_pending || meta.last_router != Some(router_kind) || meta.routes_canvas.is_none();
+            let need_replan = meta.replan_pending
+                || meta.last_router != Some(router_kind)
+                || meta.routes_canvas.is_none();
             if need_replan {
                 let canvas_routes = match router_kind {
                     EdgeRouterKind::OxdrawClass => {
                         plan_oxdraw_class(self.g, &self.settings_style, 0.0)
                     }
                     EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth => {
-                        plan_oxdraw_full(
-                            self.g,
-                            &self.settings_style,
-                            0.0,
-                            (),
-                        )
+                        plan_oxdraw_full(self.g, &self.settings_style, 0.0, ())
                     }
                     _ => Default::default(),
                 };
@@ -277,7 +282,8 @@ where
             if let Some(ref canvas_routes) = meta.routes_canvas {
                 let mut out = std::collections::HashMap::new();
                 for (k, v) in canvas_routes.iter() {
-                    let pts: Vec<egui::Pos2> = v.iter().map(|p| meta.canvas_to_screen_pos(*p)).collect();
+                    let pts: Vec<egui::Pos2> =
+                        v.iter().map(|p| meta.canvas_to_screen_pos(*p)).collect();
                     out.insert(*k, pts);
                 }
                 routes_screen = Some(out);
@@ -309,7 +315,9 @@ where
         meta.save(ui);
 
         // Only repaint continuously while dragging (to keep interaction smooth).
-        if self.g.dragged_node().is_some() { ui.ctx().request_repaint(); }
+        if self.g.dragged_node().is_some() {
+            ui.ctx().request_repaint();
+        }
 
         resp
     }

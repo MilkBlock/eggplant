@@ -1,7 +1,7 @@
 use crate::{FuncOffset, draw::MaybeInner};
+use egui;
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use egui;
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct ViewNode {

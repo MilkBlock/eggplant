@@ -1,9 +1,12 @@
+use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
 use crate::{
     etc::{Escape, quote, topo_sort},
     wrap::*,
 };
 use core::panic;
 use dashmap::DashMap;
+use egglog::ast::Command;
+use egglog::ast::{Expr, Fact};
 use egglog::{
     EGraph, SerializeConfig,
     ast::Facts,
@@ -11,17 +14,14 @@ use egglog::{
     span,
     util::{IndexMap, IndexSet},
 };
-use egglog_reports::RunReport;
 use egglog::{
     ast::{RustSpan, Span},
     prelude::rust_rule,
 };
-use egglog::ast::{Expr, Fact};
-use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
-use egglog::ast::Command;
-use std::collections::HashSet;
+use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
 use petgraph::prelude::StableDiGraph;
+use std::collections::HashSet;
 use std::{
     collections::HashMap,
     path::Path,
@@ -70,6 +70,39 @@ impl TxRxVTPR {
         let mut egraph = self.egraph.lock().unwrap();
         self.sym2value_map.clear();
         *egraph = EGraph::default();
+    }
+
+    /// Reset all runtime state for benchmarking.
+    ///
+    /// This clears:
+    /// - the underlying egglog `EGraph`,
+    /// - all committed/staged node graphs and checkpoints,
+    /// - the sym→value cache, and
+    /// - the commit counter.
+    ///
+    /// Note: pattern recorders and the global type inventory are not reset.
+    pub fn reset_for_bench(&self) {
+        self.map.clear();
+        self.staged_set_map.clear();
+        self.staged_new_map.lock().unwrap().clear();
+        self.checkpoints.lock().unwrap().clear();
+        self.sym2value_map.clear();
+        *self.commit_counter.lock().unwrap() = 0;
+
+        // Reset the underlying egraph but keep the schema in sync with the current inventory.
+        // Otherwise rule registration (typechecking) will panic because sorts are missing.
+        let proofs_enabled = self.egraph.lock().unwrap().are_proofs_enabled();
+        let mut egraph = if proofs_enabled {
+            EGraph::new_with_proofs()
+        } else {
+            EGraph::default()
+        };
+        Self::add_eggplant_sorts(&mut egraph);
+        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        egraph
+            .run_program(type_defs)
+            .expect("reset_for_bench: failed to (re)register type definitions");
+        *self.egraph.lock().unwrap() = egraph;
     }
     // collect all lastest ancestors of cur_sym, without cur_sym
     pub fn collect_latest_ancestors(&self, cur_sym: Sym, index_set: &mut IndexSet<Sym>) {
@@ -905,7 +938,9 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                 let sort = egraph
                     .get_sort_by_name(&sort_name)
                     .cloned()
-                    .unwrap_or(Arc::new(egglog::sort::EqSort { name: sort_name.clone() }) as Arc<dyn egglog::sort::Sort>);
+                    .unwrap_or(Arc::new(egglog::sort::EqSort {
+                        name: sort_name.clone(),
+                    }) as Arc<dyn egglog::sort::Sort>);
                 vars.push((var, sort));
             }
         }
@@ -914,7 +949,8 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
 
         let rust_rule_name = Arc::<str>::from(rule_name.to_owned());
 
-        let premise_specs: Arc<[PremiseProofSpec]> = if egraph.are_proofs_enabled() {
+        let proofs_enabled = egraph.are_proofs_enabled();
+        let premise_specs: Arc<[PremiseProofSpec]> = if proofs_enabled {
             let mut specs = Vec::new();
             for fact in facts.iter() {
                 let Fact::Eq(_, lhs, rhs) = fact else {
@@ -977,29 +1013,33 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
             Facts(facts),
             move |ctx, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
-                let premise_proofs: Arc<[egglog::Value]> = if premise_specs.is_empty() {
-                    empty_premise_proofs()
-                } else {
-                    let mut bindings: HashMap<&str, egglog::Value> =
-                        HashMap::with_capacity(binding_var_names.len());
-                    for (name, value) in binding_var_names.iter().zip(values.iter().copied()) {
-                        bindings.insert(name.as_ref(), value);
-                    }
-                    let mut proofs = Vec::with_capacity(premise_specs.len());
-                    for spec in premise_specs.iter() {
-                        let mut key = Vec::with_capacity(spec.key_vars.len());
-                        for var in spec.key_vars.iter() {
-                            let v = *bindings
-                                .get(var.as_ref())
-                                .unwrap_or_else(|| panic!("missing var binding {}", var));
-                            key.push(v);
+                let _premise_scope = if proofs_enabled {
+                    let premise_proofs: Arc<[egglog::Value]> = if premise_specs.is_empty() {
+                        empty_premise_proofs()
+                    } else {
+                        let mut bindings: HashMap<&str, egglog::Value> =
+                            HashMap::with_capacity(binding_var_names.len());
+                        for (name, value) in binding_var_names.iter().zip(values.iter().copied()) {
+                            bindings.insert(name.as_ref(), value);
                         }
-                        let prf = ctx.ctx.insert(spec.view_proof_func.as_ref(), &key);
-                        proofs.push(prf);
-                    }
-                    Arc::from(proofs.into_boxed_slice())
+                        let mut proofs = Vec::with_capacity(premise_specs.len());
+                        for spec in premise_specs.iter() {
+                            let mut key = Vec::with_capacity(spec.key_vars.len());
+                            for var in spec.key_vars.iter() {
+                                let v = *bindings
+                                    .get(var.as_ref())
+                                    .unwrap_or_else(|| panic!("missing var binding {}", var));
+                                key.push(v);
+                            }
+                            let prf = ctx.ctx.insert(spec.view_proof_func.as_ref(), &key);
+                            proofs.push(prf);
+                        }
+                        Arc::from(proofs.into_boxed_slice())
+                    };
+                    Some(PremiseProofScope::enter(premise_proofs))
+                } else {
+                    None
                 };
-                let _premise_scope = PremiseProofScope::enter(Arc::clone(&premise_proofs));
                 let valued_pat_vars = P::Valued::from_plain_values_metas(
                     &mut values.iter().cloned(),
                     &mut std::iter::repeat(PR::MetaTy::default()),
@@ -1022,21 +1062,28 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
         let mut egraph = self.egraph.lock().unwrap();
         match until {
             RunConfig::Sat => {
-                // `step_rules` only runs this ruleset's rule ids and does not execute egglog's
-                // maintenance schedule (rebuild/uf updates, etc.).
-                //
-                // In proofs / term-encoding mode this can lead to rules seeing an empty/stale
-                // view of the database (e.g. `num_matches=0` for obvious matches).
-                //
-                // Use egglog's schedule runner for saturation, then extract the `RunReport`.
-                let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
-                outputs
-                    .into_iter()
-                    .find_map(|o| match o {
-                        egglog::CommandOutput::RunSchedule(report) => Some(report),
-                        _ => None,
-                    })
-                    .unwrap_or_default()
+                let mut run_report = RunReport::default();
+                loop {
+                    let iter_report = if egraph.are_proofs_enabled() {
+                        let outputs =
+                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        outputs
+                            .into_iter()
+                            .find_map(|o| match o {
+                                egglog::CommandOutput::RunSchedule(report) => Some(report),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        egraph.step_rules(ruleset_id.0).unwrap()
+                    };
+                    let updated = iter_report.updated;
+                    run_report.union(iter_report);
+                    if !updated {
+                        break;
+                    }
+                }
+                run_report
             }
             RunConfig::Times(times) => {
                 if egraph.are_proofs_enabled() {

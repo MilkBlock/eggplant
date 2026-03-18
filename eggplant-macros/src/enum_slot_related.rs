@@ -191,32 +191,32 @@ pub fn ctx_insert_fn_ts_with_pr_without_meta(
             fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
         },
         // pr insert fn
-                quote! {
-                    #[track_caller]
-                    #[allow(non_camel_case_types)]
-                    fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
-                        use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
-                        #(
-                            let #func_value_meta_field_idents =
-                                (#complex_generic_idents::TY_NAME,
-                                    #complex_field_idents.to_value(&self.ctx).val,
-                                    #complex_field_idents.meta());
-                        )*
-                        
-                        // we expect all metadata to be present for slotted/PR insertion
-                        let __merged = PR::MetaTy::merge(&mut vec![ #(#complex_field_idents.meta().expect("Metadata missing for merge")),* ].into_iter());
-                        
-                        let __meta = SlotMetaBase::Inner{
-                            inner: __merged.clone()
-                        };
-                        let __val = self.ctx.#insert_fn_name(#(#field_idents),*);
-                        PR::on_ctx_insert(
-                            vec![#(#func_value_meta_field_idents),*],
-                            (<#variant_marker as EgglogEnumVariantTy>::TY_NAME, __val.val , Some(__merged.clone()))
-                        );
-                        (__val,__merged)
-                    }
-                },
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
+                use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
+                #(
+                    let #func_value_meta_field_idents =
+                        (#complex_generic_idents::TY_NAME,
+                            #complex_field_idents.to_value(&self.ctx).val,
+                            #complex_field_idents.meta());
+                )*
+
+                // we expect all metadata to be present for slotted/PR insertion
+                let __merged = PR::MetaTy::merge(&mut vec![ #(#complex_field_idents.meta().expect("Metadata missing for merge")),* ].into_iter());
+
+                let __meta = SlotMetaBase::Inner{
+                    inner: __merged.clone()
+                };
+                let __val = self.ctx.#insert_fn_name(#(#field_idents),*);
+                PR::on_ctx_insert(
+                    vec![#(#func_value_meta_field_idents),*],
+                    (<#variant_marker as EgglogEnumVariantTy>::TY_NAME, __val.val , Some(__merged.clone()))
+                );
+                (__val,__merged)
+            }
+        },
         // pr insert decl
         quote! {
             #[track_caller]

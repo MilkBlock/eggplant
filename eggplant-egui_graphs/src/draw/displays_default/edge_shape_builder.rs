@@ -1,6 +1,6 @@
 use std::f32::consts::PI;
 
-use egui::{epaint::CubicBezierShape, Color32, Pos2, Shape, Stroke, Vec2};
+use egui::{Color32, Pos2, Shape, Stroke, Vec2, epaint::CubicBezierShape};
 
 use crate::Metadata;
 

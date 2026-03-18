@@ -33,12 +33,16 @@ pub fn to_term_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> Toke
 pub fn add_table_fact_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
     let _variant_idents = variant2field_ident(variant);
     let variant_name = &variant.ident;
-    let var_names = variant2mapped_ident_type_list(
+    // IMPORTANT: treat user-defined container sorts as complex (succ) rather than basic fields.
+    // Otherwise, constructor queries will invent fresh placeholder vars for container fields,
+    // which prevents users from binding them via `query(&container_var)` and can even make
+    // explicit container leaf vars unbound in the rule body.
+    let var_names = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _| Some(quote! {format!("{}{}", self.cur_sym(), stringify!(#basic))}),
         |_, _| Some(quote!(succs.next().unwrap().to_string())),
     );
-    let sort_names = variant2mapped_ident_type_list(
+    let sort_names = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_, basic_type| Some(quote!(<#basic_type as EgglogTy>::TY_NAME.to_string())),
         |_, complex_type| Some(quote!(<#complex_type as EgglogTy>::TY_NAME.to_string())),
@@ -59,12 +63,14 @@ pub fn add_table_fact_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) 
 pub fn collect_var_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
     let _variant_idents = variant2field_ident(variant);
     let variant_name = &variant.ident;
-    let var_names = variant2mapped_ident_type_list(
+    // Same rule as `add_table_fact_match_arms_ts`: container sorts are treated as complex and
+    // should not introduce extra "field vars" like `{node_sym}a0`.
+    let var_names = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _| Some(quote! {format!("{}{}", self.cur_sym(), stringify!(#basic))}),
         |_, _| None,
     );
-    let var_types = variant2mapped_ident_type_list(
+    let var_types = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_, basic_type| Some(quote! {#basic_type}),
         |_, _| None,
@@ -227,11 +233,15 @@ pub fn query_fn_ts(
     name_counter: &Ident,
 ) -> (TokenStream, Ident, Vec<TokenStream>, Vec<TokenStream>) {
     let query_fn_args: Vec<TokenStream> = variant2ref_node_list_except_basic(&variant);
-    let query_fn_idents: Vec<TokenStream> = variant2mapped_ident_type_list(
-        &variant,
-        |_, _| None,
-        |complex, _| Some(quote! {#complex.cur_sym()}),
-    );
+    // IMPORTANT: container sorts must be treated as "complex" here.
+    // Otherwise, `query_*` will ignore container inputs and produce fresh placeholder vars,
+    // which then makes any explicit container leaf vars in the pattern unbound in the rule body.
+    let query_fn_idents: Vec<TokenStream> =
+        variant2mapped_ident_type_list_view_container_as_complex(
+            &variant,
+            |_, _| None,
+            |complex, _| Some(quote! {#complex.cur_sym()}),
+        );
     let ref_node_list_leave_idents = variant2ident_list_except_basic(&variant);
 
     let _query_fn_args = variant2sym_list_except_basic(&variant);
@@ -807,10 +817,7 @@ pub fn ctx_set_fn_ts(
     let set_fn_name = format_ident!("set_{}", variant_name.to_string().to_snake_case());
     let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
 
-    let output_is_basic = matches!(
-        BasicOrComplex::from(output),
-        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
-    );
+    let output_is_basic = BasicOrComplex::from(output).is_basic();
     let output_generic = format_ident!("V_out");
     let output_param_ty = if output_is_basic {
         quote!(impl eggplant::wrap::Insertable<#output>)
@@ -879,13 +886,15 @@ pub fn ctx_read_fn_ts(
     let (_variant_marker, variant_name) = variant2marker_name(variant);
     let read_fn_name = format_ident!("read_{}", variant_name.to_string().to_snake_case());
     let read_value_fn_name = format_ident!("{}_value", read_fn_name);
+    let try_read_fn_name = format_ident!("try_{}", read_fn_name);
+    let try_read_value_fn_name = format_ident!("try_{}", read_value_fn_name);
 
     let returns_base = matches!(
         BasicOrComplex::from(output),
         BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
     );
 
-    let (read_fn, read_fn_decl) = if returns_base {
+    let (read_fn, read_fn_decl, try_read_fn, try_read_fn_decl) = if returns_base {
         (
             quote! {
                 #[track_caller]
@@ -896,17 +905,32 @@ pub fn ctx_read_fn_ts(
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
-                    let out = self.insert(
-                        #func_name::<()>::FUNC_NAME,
-                        &key
-                    );
-                    self._devalue_base::<#output>(out)
+                    let out = self.lookup_expect(#func_name::<()>::FUNC_NAME, &key);
+                    <#output as #W::BoxedValue>::devalue(self, out)
                 }
             },
             quote! {
                 #[track_caller]
                 #[allow(non_camel_case_types)]
                 fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #output;
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output> {
+                    use #W::EgglogFunc;
+                    use #W::Insertable;
+                    let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                    let out = self.lookup(#func_name::<()>::FUNC_NAME, &key)?;
+                    Some(<#output as #W::BoxedValue>::devalue(self, out))
+                }
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output>;
             },
         )
     } else {
@@ -921,16 +945,31 @@ pub fn ctx_read_fn_ts(
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
-                    #W::Value::new(self.insert(
-                        #func_name::<()>::FUNC_NAME,
-                        &key
-                    ))
+                    #W::Value::new(self.lookup_expect(#func_name::<()>::FUNC_NAME, &key))
                 }
             },
             quote! {
                 #[track_caller]
                 #[allow(non_camel_case_types)]
                 fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+                    use #W::EgglogFunc;
+                    use #W::Value;
+                    use #W::Insertable;
+                    let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                    self.lookup(#func_name::<()>::FUNC_NAME, &key).map(#W::Value::new)
+                }
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
             },
         )
     };
@@ -945,16 +984,31 @@ pub fn ctx_read_fn_ts(
             let key = [
                 #(#field_idents.to_value(self).erase()),*
             ];
-            #W::Value::new(self.insert(
-                #func_name::<()>::FUNC_NAME,
-                &key
-            ))
+            #W::Value::new(self.lookup_expect(#func_name::<()>::FUNC_NAME, &key))
+        }
+    };
+    let try_read_value_fn = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+            use #W::EgglogFunc;
+            use #W::Value;
+            use #W::Insertable;
+            let key = [
+                #(#field_idents.to_value(self).erase()),*
+            ];
+            self.lookup(#func_name::<()>::FUNC_NAME, &key).map(#W::Value::new)
         }
     };
     let read_value_decl = quote! {
         #[track_caller]
         #[allow(non_camel_case_types)]
         fn #read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
+    };
+    let try_read_value_decl = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
     };
 
     let read_fn_pr = if returns_base {
@@ -974,11 +1028,35 @@ pub fn ctx_read_fn_ts(
             }
         }
     };
+    let try_read_fn_pr = if returns_base {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output> {
+                self.ctx.#try_read_fn_name(#(#field_idents),*)
+            }
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+                self.ctx.#try_read_fn_name(#(#field_idents),*)
+            }
+        }
+    };
     let read_value_fn_pr = quote! {
         #[track_caller]
         #[allow(non_camel_case_types)]
         fn #read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output> {
             self.ctx.#read_value_fn_name(#(#field_idents),*)
+        }
+    };
+    let try_read_value_fn_pr = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+            self.ctx.#try_read_value_fn_name(#(#field_idents),*)
         }
     };
 
@@ -995,28 +1073,54 @@ pub fn ctx_read_fn_ts(
             fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
         }
     };
+    let try_read_fn_decl_pr = if returns_base {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output>;
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
+        }
+    };
     let read_value_decl_pr = quote! {
         #[track_caller]
         #[allow(non_camel_case_types)]
         fn #read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
+    };
+    let try_read_value_decl_pr = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
     };
 
     (
         quote! {
             #read_fn
             #read_value_fn
+            #try_read_fn
+            #try_read_value_fn
         },
         quote! {
             #read_fn_decl
             #read_value_decl
+            #try_read_fn_decl
+            #try_read_value_decl
         },
         quote! {
             #read_fn_pr
             #read_value_fn_pr
+            #try_read_fn_pr
+            #try_read_value_fn_pr
         },
         quote! {
             #read_fn_decl_pr
             #read_value_decl_pr
+            #try_read_fn_decl_pr
+            #try_read_value_decl_pr
         },
     )
 }

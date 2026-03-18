@@ -4,8 +4,8 @@ use egglog::Value;
 use egglog::prelude::*;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Once;
 use std::sync::Arc;
+use std::sync::Once;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -26,6 +26,21 @@ pub struct EgglogBenchCase {
     pub name: String,
     pub filename: String,
     pub program: String,
+    pub root: PathBuf,
+    pub mode: EgglogRunMode,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum EgglogRunMode {
+    Normal,
+    ProofTesting,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct EgglogBenchSpec<'a> {
+    pub name: &'a str,
+    pub file_stem: &'a str,
+    pub mode: EgglogRunMode,
 }
 
 impl ToString for EgglogBenchCase {
@@ -36,6 +51,8 @@ impl ToString for EgglogBenchCase {
 
 pub fn egglog_bench_cases(glob_pat: &str) -> Vec<EgglogBenchCase> {
     configure_rayon_once();
+
+    let egglog_root = egglog_repo_root();
 
     glob::glob(glob_pat)
         .unwrap()
@@ -52,6 +69,8 @@ pub fn egglog_bench_cases(glob_pat: &str) -> Vec<EgglogBenchCase> {
                 name,
                 filename,
                 program,
+                root: egglog_root.clone(),
+                mode: EgglogRunMode::Normal,
             }
         })
         .collect()
@@ -60,25 +79,147 @@ pub fn egglog_bench_cases(glob_pat: &str) -> Vec<EgglogBenchCase> {
 pub fn bench_egglog_case(case: &EgglogBenchCase) {
     configure_rayon_once();
 
-    let egglog_root = egglog_repo_root();
-    let mut egraph = EGraph::default();
-    egraph.fact_directory = Some(egglog_root.clone());
+    let mut egraph = match case.mode {
+        EgglogRunMode::Normal => EGraph::default(),
+        EgglogRunMode::ProofTesting => EGraph::new_with_proofs().with_proof_testing(),
+    };
+    egraph.fact_directory = Some(case.root.clone());
 
-    let program = rewrite_relative_file_paths(&case.program, &egglog_root);
+    let program = rewrite_relative_file_paths(&case.program, &case.root);
     egraph
         .parse_and_run_program(Some(case.filename.clone()), &program)
         .unwrap();
     // Match egglog's benchmark behavior: include serialization cost.
     egraph.serialize(SerializeConfig::default());
+    // Match egglog's benchmark behavior: do not include drop time.
+    std::mem::forget(egraph);
 }
 
 fn egglog_repo_root() -> PathBuf {
     // eggplant_backup/benches -> eggplant_backup -> stable/egglog_sync_serialize_raw
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../stable/egglog_sync_serialize_raw")
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../stable/egglog_sync_serialize_raw")
 }
 
-fn rewrite_relative_file_paths(program: &str, root: &Path) -> String {
+pub fn upstream_egglog_repo_root() -> PathBuf {
+    // eggplant_backup/benches -> eggplant_backup -> upstream_egglog
+    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../upstream_egglog")
+}
+
+pub fn egglog_bench_cases_selected(
+    glob_pat: &str,
+    names: &[&str],
+    root: PathBuf,
+) -> Vec<EgglogBenchCase> {
+    configure_rayon_once();
+
+    let want: std::collections::HashSet<&str> = names.iter().copied().collect();
+    glob::glob(glob_pat)
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|path| !path.to_string_lossy().contains("fail-typecheck"))
+        .filter(|path| !path.parent().is_some_and(|p| p.ends_with("proofs")))
+        .filter_map(|path: PathBuf| {
+            let name = path.file_stem().unwrap().to_string_lossy().to_string();
+            if !want.contains(name.as_str()) {
+                return None;
+            }
+            let filename = path.to_string_lossy().to_string();
+            let program = std::fs::read_to_string(&filename).unwrap();
+            Some(EgglogBenchCase {
+                name,
+                filename,
+                program,
+                root: root.clone(),
+                mode: EgglogRunMode::Normal,
+            })
+        })
+        .collect()
+}
+
+pub fn egglog_bench_cases_specs(
+    glob_pat: &str,
+    specs: &[EgglogBenchSpec<'_>],
+    root: PathBuf,
+) -> Vec<EgglogBenchCase> {
+    configure_rayon_once();
+
+    fn rel_depth(rel: &str) -> usize {
+        rel.chars().filter(|c| *c == '/').count()
+    }
+
+    let mut by_stem: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+    let mut by_rel: std::collections::HashMap<String, PathBuf> = std::collections::HashMap::new();
+    for path in glob::glob(glob_pat).unwrap().filter_map(Result::ok) {
+        let path = if path.is_relative() {
+            PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(&path)
+        } else {
+            path
+        };
+        if path.to_string_lossy().contains("fail-typecheck") {
+            continue;
+        }
+        if path.parent().is_some_and(|p| p.ends_with("proofs")) {
+            continue;
+        }
+        let stem = path.file_stem().unwrap().to_string_lossy().to_string();
+
+        // Also index by repo-relative filename (e.g. `tests/web-demo/unify.egg`) to disambiguate
+        // collisions where multiple `.egg` files share the same stem.
+        if let Ok(rel) = path.strip_prefix(&root) {
+            by_rel.insert(rel.to_string_lossy().to_string(), path.clone());
+        }
+
+        // Keep stem mapping deterministic: prefer the shallowest relative path under `tests/`
+        // (e.g. `tests/unify.egg` over `tests/web-demo/unify.egg`).
+        match by_stem.get(&stem) {
+            None => {
+                by_stem.insert(stem, path);
+            }
+            Some(existing) => {
+                let existing_rel = existing
+                    .strip_prefix(&root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| existing.to_string_lossy().to_string());
+                let rel = path
+                    .strip_prefix(&root)
+                    .map(|p| p.to_string_lossy().to_string())
+                    .unwrap_or_else(|_| path.to_string_lossy().to_string());
+                if rel_depth(&rel) < rel_depth(&existing_rel)
+                    || (rel_depth(&rel) == rel_depth(&existing_rel) && rel < existing_rel)
+                {
+                    by_stem.insert(stem, path);
+                }
+            }
+        }
+    }
+
+    specs
+        .iter()
+        .map(|spec| {
+            let key = spec.file_stem;
+            let path = if key.contains('/') || key.ends_with(".egg") {
+                by_rel.get(key).unwrap_or_else(|| {
+                    panic!("egglog bench spec requested unknown relative file: {}", key)
+                })
+            } else {
+                by_stem.get(key).unwrap_or_else(|| {
+                    panic!("egglog bench spec requested unknown file_stem: {}", key)
+                })
+            };
+            let filename = path.to_string_lossy().to_string();
+            let program = std::fs::read_to_string(&filename).unwrap();
+            EgglogBenchCase {
+                name: spec.name.to_owned(),
+                filename,
+                program,
+                root: root.clone(),
+                mode: spec.mode,
+            }
+        })
+        .collect()
+}
+
+pub fn rewrite_relative_file_paths(program: &str, root: &Path) -> String {
     // Bench harness runs from eggplant's workspace; some egglog tests use paths relative
     // to the egglog repo root (e.g. `(include "tests/web-demo/path.egg")`). Rewrite those
     // to absolute paths so the benchmark can run from anywhere.

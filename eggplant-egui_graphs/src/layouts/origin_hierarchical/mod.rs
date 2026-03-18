@@ -1,4 +1,3 @@
 mod layout;
 
-pub use layout::{OriginHierarchical as Hierarchical, Orientation, State};
-
+pub use layout::{Orientation, OriginHierarchical as Hierarchical, State};

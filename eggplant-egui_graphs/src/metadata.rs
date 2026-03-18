@@ -1,5 +1,5 @@
-use crate::{DisplayNode, Node, node_size};
 use crate::settings::EdgeRouterKind;
+use crate::{DisplayNode, Node, node_size};
 use egui::{Id, Pos2, Rect, Vec2};
 use petgraph::Directed;
 use serde::{Deserialize, Serialize};

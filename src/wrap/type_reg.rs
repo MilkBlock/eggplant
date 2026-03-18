@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use derive_more::Deref;
 use egglog::{
     EGraph, Term, TermDag, TermId,
-    ast::{Command, GenericExpr, Literal, RustSpan, Schema, Span, Subdatatypes, Variant},
+    ast::{Command, GenericExpr, Literal, Parser, RustSpan, Schema, Span, Subdatatypes, Variant},
     prelude::BaseSort,
-    sort::Q,
+    sort::{Q, Z},
     span, var,
 };
 
@@ -75,8 +75,16 @@ impl<T: EgglogTy> ToStrArcSort for T {
     }
 }
 impl EgglogTy for Q {
-    const TY_NAME: &'static str = "BigRational";
+    // egglog base sort name (see `egglog::sort::BigRatSort`).
+    const TY_NAME: &'static str = "BigRat";
     const TY_NAME_LOWER: &'static str = "big_rational";
+    type Valued = Value<Self>;
+    type EnumVariantMarker = ();
+}
+impl EgglogTy for Z {
+    // egglog base sort name (see `egglog::sort::BigIntSort`).
+    const TY_NAME: &'static str = "BigInt";
+    const TY_NAME_LOWER: &'static str = "big_int";
     type Valued = Value<Self>;
     type EnumVariantMarker = ();
 }
@@ -123,6 +131,8 @@ pub enum Decl {
         name: &'static str,
         input: &'static [&'static str],
         output: &'static str,
+        /// `None` means `:no-merge`. Otherwise this is the merge function name (e.g. `"new"`).
+        merge: Option<&'static str>,
     },
     EgglogRule {
         name: &'static str,
@@ -230,12 +240,14 @@ impl EgglogTypeRegistry {
             span: span!(),
             datatypes: types,
         });
+        let mut parser = Parser::default();
         for decl in inventory::iter::<Decl> {
             match decl {
                 Decl::EgglogFuncTy {
                     name,
                     input,
                     output,
+                    merge,
                 } => {
                     commands.push(Command::Function {
                         span: span!(),
@@ -244,7 +256,11 @@ impl EgglogTypeRegistry {
                             input: input.iter().map(<&str>::to_string).collect(),
                             output: output.to_string(),
                         },
-                        merge: Some(GenericExpr::Var(span!(), "new".to_owned())),
+                        merge: merge.map(|m| {
+                            parser.get_expr_from_string(None, m).unwrap_or_else(|err| {
+                                panic!("failed to parse :merge expr for `{name}`: {err}")
+                            })
+                        }),
                         hidden: false,
                         let_binding: false,
                     });

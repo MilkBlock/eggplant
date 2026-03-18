@@ -107,8 +107,7 @@ fn main() -> Result<(), egglog::Error> {
             }
         },
         |ctx, pat| {
-            let cal =
-                ctx.devalue(pat.l.num) * ctx.devalue(pat.r.num) + ctx.devalue(pat.c.num);
+            let cal = ctx.devalue(pat.l.num) * ctx.devalue(pat.r.num) + ctx.devalue(pat.c.num);
             let op_value = ctx.insert_const(cal);
             ctx.union(pat.p, op_value);
         },
@@ -117,12 +116,16 @@ fn main() -> Result<(), egglog::Error> {
     println!("{:#?}", report);
 
     assert!(
-        report.num_matches_per_rule.get("@MulPat").copied().unwrap_or(0) > 0,
+        report
+            .num_matches_per_rule
+            .get("@MulPat")
+            .copied()
+            .unwrap_or(0)
+            > 0,
         "MulPat should match in proofs mode"
     );
 
-    let proof_mul =
-        MyTxProof::sgl().prove_eq_pretty_raw("Expr", mul_value, expected_mul_value)?;
+    let proof_mul = MyTxProof::sgl().prove_eq_pretty_raw("Expr", mul_value, expected_mul_value)?;
     println!("{proof_mul}");
 
     let proof_expr = MyTxProof::sgl().prove_eq_pretty_raw("Expr", expr_value, expected_value)?;

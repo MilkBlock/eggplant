@@ -516,32 +516,37 @@ impl EGraphApp {
             ui.horizontal(|ui| {
                 ui.label("edge_router");
                 if ui.button("Straight").clicked() {
-                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::Straight;
+                    self.settings_style.edge_router_kind =
+                        eggplant_egui_graphs::EdgeRouterKind::Straight;
                     let mut meta = eggplant_egui_graphs::Metadata::load(ui);
                     meta.replan_pending = true;
                     meta.save(ui);
                 }
                 if ui.button("Curved").clicked() {
-                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::Curved;
+                    self.settings_style.edge_router_kind =
+                        eggplant_egui_graphs::EdgeRouterKind::Curved;
                     let mut meta = eggplant_egui_graphs::Metadata::load(ui);
                     meta.replan_pending = true;
                     meta.save(ui);
                 }
                 if ui.button("OxdrawClass").clicked() {
-                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::OxdrawClass;
+                    self.settings_style.edge_router_kind =
+                        eggplant_egui_graphs::EdgeRouterKind::OxdrawClass;
                     // trigger replan on next frame
                     let mut meta = eggplant_egui_graphs::Metadata::load(ui);
                     meta.replan_pending = true;
                     meta.save(ui);
                 }
                 if ui.button("OxdrawSmooth").clicked() {
-                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::OxdrawSmooth;
+                    self.settings_style.edge_router_kind =
+                        eggplant_egui_graphs::EdgeRouterKind::OxdrawSmooth;
                     let mut meta = eggplant_egui_graphs::Metadata::load(ui);
                     meta.replan_pending = true;
                     meta.save(ui);
                 }
                 if ui.button("OxdrawFull").clicked() {
-                    self.settings_style.edge_router_kind = eggplant_egui_graphs::EdgeRouterKind::OxdrawFull;
+                    self.settings_style.edge_router_kind =
+                        eggplant_egui_graphs::EdgeRouterKind::OxdrawFull;
                     let mut meta = eggplant_egui_graphs::Metadata::load(ui);
                     meta.replan_pending = true;
                     meta.save(ui);
@@ -1439,7 +1444,7 @@ impl EGraphApp {
                     self.reset_requested = true;
                     self.notify_info("Reset all");
                 }
-                        Command::ToggleNavMode => {
+                Command::ToggleNavMode => {
                     // Switch zoom&pan and fit_to_screen (mutually exclusive)
                     let enable_zoom_pan = !self.settings_navigation.zoom_and_pan_enabled;
                     self.settings_navigation.zoom_and_pan_enabled = enable_zoom_pan;

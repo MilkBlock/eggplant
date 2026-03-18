@@ -1,10 +1,10 @@
+use eggplant_egui_graphs::EdgeRouterKind;
 use eggplant_egui_graphs::{
     DefaultEdgeShape, DisplayEdge, DisplayNode, DrawContext, EdgeProps, InnerPos, MaybeInner, Node,
 };
 use egui::{Color32, Pos2, Shape, Stroke, Vec2, epaint::CircleShape};
 use itertools::Itertools;
 use petgraph::Directed;
-use eggplant_egui_graphs::EdgeRouterKind;
 
 const TIP_ANGLE: f32 = std::f32::consts::TAU / 20.;
 const TIP_SIZE: f32 = 7.;
@@ -88,7 +88,10 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
         stroke.width = ctx.meta.canvas_to_screen_size(stroke.width);
 
         // If oxdraw routing (Class / Full / Smooth) is active and a preplanned polyline exists, draw that.
-        if matches!(ctx.style.edge_router_kind(), EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth) {
+        if matches!(
+            ctx.style.edge_router_kind(),
+            EdgeRouterKind::OxdrawClass | EdgeRouterKind::OxdrawFull | EdgeRouterKind::OxdrawSmooth
+        ) {
             if let Some(routes) = ctx.routes {
                 let key = (start_idx << 64) ^ (end_idx << 32) ^ (self.default_impl.order as u128);
                 if let Some(screen_pts) = routes.get(&key) {
@@ -97,7 +100,10 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
                             if screen_pts.len() == 1 {
                                 // single point (degenerate)
                             } else if screen_pts.len() == 2 {
-                                res.push(Shape::line_segment([screen_pts[0], screen_pts[1]], stroke));
+                                res.push(Shape::line_segment(
+                                    [screen_pts[0], screen_pts[1]],
+                                    stroke,
+                                ));
                             } else {
                                 // Duplicate endpoints for tangents
                                 let mut p = Vec::with_capacity(screen_pts.len() + 2);
@@ -111,9 +117,14 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
                                     let p3 = p[i + 3];
                                     let c1 = p1 + (p2 - p0) * (1.0 / 6.0);
                                     let c2 = p2 - (p3 - p1) * (1.0 / 6.0);
-                                    res.push(Shape::CubicBezier(egui::epaint::CubicBezierShape::from_points_stroke(
-                                        [p1, c1, c2, p2], false, egui::Color32::TRANSPARENT, stroke
-                                    )));
+                                    res.push(Shape::CubicBezier(
+                                        egui::epaint::CubicBezierShape::from_points_stroke(
+                                            [p1, c1, c2, p2],
+                                            false,
+                                            egui::Color32::TRANSPARENT,
+                                            stroke,
+                                        ),
+                                    ));
                                 }
                             }
                         }
@@ -154,7 +165,10 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for PlantEdgeShape {
             .iter()
             .map(|p| ctx.meta.canvas_to_screen_pos(*p))
             .collect::<Vec<_>>();
-        res.push(Shape::line_segment([points_line[0], points_line[1]], stroke));
+        res.push(Shape::line_segment(
+            [points_line[0], points_line[1]],
+            stroke,
+        ));
         // start dot
         res.push(Shape::Circle(CircleShape::filled(
             points_line[0],

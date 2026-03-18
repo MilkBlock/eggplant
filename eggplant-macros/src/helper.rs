@@ -12,12 +12,28 @@ use syn::{
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
-pub const EGGLOG_BASE_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "StaticStr"];
-pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 4] = [
+pub const EGGLOG_BASE_TY_LIST: [&'static str; 7] =
+    ["String", "i64", "f64", "bool", "StaticStr", "Q", "Z"];
+fn default_bigrat() -> String {
+    format!(
+        "{}::egglog::sort::Q::new(Default::default())",
+        eggplant_path()
+    )
+}
+fn default_bigint() -> String {
+    format!(
+        "{}::egglog::sort::Z::new(Default::default())",
+        eggplant_path()
+    )
+}
+pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 7] = [
     LazyTokenStream::new(|| "String::new()".to_owned()),
     LazyTokenStream::new(|| "0".to_owned()),
     LazyTokenStream::new(|| "0.".to_owned()),
+    LazyTokenStream::new(|| "false".to_owned()),
     LazyTokenStream::new(|| r#""""#.to_owned()),
+    LazyTokenStream::new(default_bigrat),
+    LazyTokenStream::new(default_bigint),
 ];
 pub struct EgglogUserDefined {
     user_defined: Mutex<UserDefined>,
@@ -40,29 +56,47 @@ impl EgglogUserDefined {
             .lock()
             .unwrap()
     }
-    pub fn set(containers: Vec<Ident>, base_types: Vec<Ident>) {
-        Self::sgl().containers = containers;
-        Self::sgl().base_types = base_types;
+    pub fn extend(containers: Vec<Ident>, base_types: Vec<Ident>) {
+        // Never store `proc_macro`-backed symbols (e.g. Ident/Span) in globals across macro
+        // invocations: they may outlive the compiler session objects and trigger
+        // "use-after-free of `proc_macro` symbol".
+        //
+        // Also: proc-macro expansion order across items is not stable enough to rely on a
+        // "set/overwrite" model. We accumulate user-defined base/container names so later macros
+        // (e.g. `#[eggplant::func]`) can classify types robustly.
+        let user_defined = &mut *Self::sgl();
+        for c in containers {
+            let s = c.to_string();
+            if !user_defined.containers.iter().any(|x| x == &s) {
+                user_defined.containers.push(s);
+            }
+        }
+        for b in base_types {
+            let s = b.to_string();
+            if !user_defined.base_types.iter().any(|x| x == &s) {
+                user_defined.base_types.push(s);
+            }
+        }
     }
     pub fn contain_container(ty: &str) -> bool {
         Self::sgl()
             .containers
             .iter()
-            .position(|x| x.to_string() == ty)
+            .position(|x| x.as_str() == ty)
             .is_some()
     }
     pub fn contain_base_type(ty: &str) -> bool {
         Self::sgl()
             .base_types
             .iter()
-            .position(|x| x.to_string() == ty)
+            .position(|x| x.as_str() == ty)
             .is_some()
     }
 }
 
 pub struct UserDefined {
-    containers: Vec<Ident>,
-    base_types: Vec<Ident>,
+    containers: Vec<String>,
+    base_types: Vec<String>,
 }
 
 pub static E: LazyTokenStream = LazyTokenStream::new(|| format!("{}::egglog", *EP.s));
@@ -295,7 +329,17 @@ impl From<&proc_macro2::TokenStream> for BasicOrComplex {
 }
 impl From<&str> for BasicOrComplex {
     fn from(ty: &str) -> Self {
-        if EGGLOG_BASE_TY_LIST.contains(&ty) {
+        // `TokenStream::to_string()` includes spaces and generics; normalize so we can reliably
+        // match "Foo<T, ()>" against a stored "Foo".
+        let mut ty = ty.replace(' ', "");
+        if let Some((head, _)) = ty.split_once('<') {
+            ty = head.to_owned();
+        }
+        if let Some((_, tail)) = ty.rsplit_once("::") {
+            ty = tail.to_owned();
+        }
+
+        if EGGLOG_BASE_TY_LIST.contains(&ty.as_str()) {
             return BasicOrComplex::BaseType;
         }
         if EgglogUserDefined::contain_base_type(&ty) {

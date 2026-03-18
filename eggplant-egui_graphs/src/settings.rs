@@ -277,7 +277,9 @@ impl SettingsStyle {
         self
     }
 
-    pub fn edge_router_kind(&self) -> EdgeRouterKind { self.edge_router_kind }
+    pub fn edge_router_kind(&self) -> EdgeRouterKind {
+        self.edge_router_kind
+    }
 }
 
 /// Type alias for the node stroke hook closure to keep type signatures concise.
@@ -312,5 +314,7 @@ pub enum EdgeRouterKind {
 }
 
 impl Default for EdgeRouterKind {
-    fn default() -> Self { EdgeRouterKind::Straight }
+    fn default() -> Self {
+        EdgeRouterKind::Straight
+    }
 }

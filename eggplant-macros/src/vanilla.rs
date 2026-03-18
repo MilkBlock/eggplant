@@ -17,6 +17,11 @@ pub fn func(
     #[derive(Debug, FromMeta)]
     struct FuncMeta {
         output: syn::Path,
+        #[darling(default)]
+        no_merge: bool,
+        /// Merge function name (e.g. `"new"` / `"old"`). Ignored if `no_merge=true`.
+        #[darling(default)]
+        merge: Option<syn::LitStr>,
         // sg: Ident,
     }
 
@@ -33,7 +38,15 @@ pub fn func(
     };
 
     let output = args.output.to_token_stream();
-    let output_with_generic = match BasicOrComplex::from(&output) {
+    let merge_decl = if args.no_merge {
+        quote!(None)
+    } else if let Some(merge) = args.merge.as_ref() {
+        quote!(Some(#merge))
+    } else {
+        quote!(Some("new"))
+    };
+    let output_kind = BasicOrComplex::from(&output);
+    let output_with_generic = match output_kind {
         BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
             quote!( #output )
         }
@@ -42,20 +55,24 @@ pub fn func(
         }
     };
 
-    let output_ref = match BasicOrComplex::from(&output_with_generic) {
-        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+    let output_ref = match output_kind {
+        BasicOrComplex::BaseType
+        | BasicOrComplex::UserDefinedBaseType
+        | BasicOrComplex::UserDefinedContainerType => {
             quote!( &#output_with_generic )
         }
-        BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+        BasicOrComplex::ComplexType => {
             quote!(&dyn AsRef<#output_with_generic>)
         }
     };
 
-    let output_whether_as_ref = match BasicOrComplex::from(&output_with_generic) {
-        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+    let output_whether_as_ref = match output_kind {
+        BasicOrComplex::BaseType
+        | BasicOrComplex::UserDefinedBaseType
+        | BasicOrComplex::UserDefinedContainerType => {
             quote!()
         }
-        BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+        BasicOrComplex::ComplexType => {
             quote!(.as_ref())
         }
     };
@@ -83,7 +100,7 @@ pub fn func(
                         #set_fn_decl
                         #read_fn_decl
                     }
-                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_,'_> {
                         #set_fn
                         #read_fn
                     }
@@ -91,7 +108,7 @@ pub fn func(
                         #set_fn_decl_pr
                         #read_fn_decl_pr
                     }
-                    impl<PR:PatRecSgl> #pr_ctx_trait_name for #W::PRRuleCtx<'_,'_,'_, PR> {
+                    impl<PR:PatRecSgl> #pr_ctx_trait_name for #W::PRRuleCtx<'_,'_,'_,'_, PR> {
                         #set_fn_pr
                         #read_fn_pr
                     }
@@ -125,12 +142,53 @@ pub fn func(
                 })
                 .collect::<Vec<_>>();
 
-            let can_query = matches!(BasicOrComplex::from(&output), BasicOrComplex::ComplexType)
-                && input_types
-                    .iter()
-                    .all(|ty| matches!(BasicOrComplex::from(&ty.to_token_stream()), BasicOrComplex::ComplexType));
+            let can_query_complex =
+                matches!(BasicOrComplex::from(&output), BasicOrComplex::ComplexType)
+                    && input_types.iter().all(|ty| {
+                        matches!(
+                            BasicOrComplex::from(&ty.to_token_stream()),
+                            BasicOrComplex::ComplexType
+                        )
+                    });
 
-            let query_impl = if can_query {
+            // Complex-output functions can also be queried when some inputs are base sorts (as `BaseVar`s).
+            // This is needed for patterns like `ExtractedVecOperandHelper(vec, idx) -> TermAndCost`.
+            let can_query_complex_with_base_inputs =
+                matches!(BasicOrComplex::from(&output), BasicOrComplex::ComplexType)
+                    && input_types.iter().all(|ty| {
+                        matches!(
+                            BasicOrComplex::from(&ty.to_token_stream()),
+                            BasicOrComplex::ComplexType
+                                | BasicOrComplex::UserDefinedContainerType
+                                | BasicOrComplex::BaseType
+                                | BasicOrComplex::UserDefinedBaseType
+                        )
+                    });
+
+            // Support function-table queries where the output is a base sort but inputs are complex/container sorts.
+            //
+            // Example from eggcc-extraction: `(VecOperand-length f) -> i64`, where `f: VecOperand` is complex.
+            let can_query_base_from_complex_inputs = matches!(
+                BasicOrComplex::from(&output),
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
+            ) && input_types.iter().all(|ty| {
+                matches!(
+                    BasicOrComplex::from(&ty.to_token_stream()),
+                    BasicOrComplex::ComplexType | BasicOrComplex::UserDefinedContainerType
+                )
+            });
+
+            let can_query_base = matches!(
+                BasicOrComplex::from(&output),
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
+            ) && input_types.iter().all(|ty| {
+                matches!(
+                    BasicOrComplex::from(&ty.to_token_stream()),
+                    BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
+                )
+            });
+
+            let query_impl = if can_query_complex || can_query_complex_with_base_inputs {
                 let input_idents = data_struct
                     .fields
                     .iter()
@@ -143,6 +201,71 @@ pub fn func(
                     })
                     .collect::<Vec<_>>();
                 let output_ty_name = quote!(<#output_with_generic as #W::EgglogTy>::TY_NAME);
+                let w = W.to_token_stream();
+                let input_var_sort_pairs = input_idents
+                    .iter()
+                    .zip(input_types.iter().zip(input_types_with_generic.iter()))
+                    .map(|(ident, (ty_plain, ty))| {
+                        match BasicOrComplex::from(&ty_plain.to_token_stream()) {
+                            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                                quote! {
+                                    (
+                                        #ident.name(),
+                                        <#ty_plain as #W::EgglogTy>::TY_NAME.to_string()
+                                    )
+                                }
+                            }
+                            _ => quote! {
+                                (
+                                    #ident.as_ref().cur_sym().to_string(),
+                                    <#ty as #W::EgglogTy>::TY_NAME.to_string()
+                                )
+                            },
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let query_arg_types = data_struct
+                    .fields
+                    .iter()
+                    .map(|field| &field.ty)
+                    .map(|ty| match BasicOrComplex::from(&ty.to_token_stream()) {
+                        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                            quote!(&#w::BaseVar<#ty, T>)
+                        }
+                        _ => quote!(&dyn AsRef<#ty<T,()>>),
+                    })
+                    .collect::<Vec<_>>();
+                quote! {
+                    impl<T:#W::TxSgl + #W::PatRecSgl> #name_func<T> {
+                        #[track_caller]
+                        pub fn query(#(#input_idents: #query_arg_types),*) -> #output_with_generic {
+                            use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                            let out = <#output_with_generic>::query_leaf();
+                            let mut vars = vec![#(#input_var_sort_pairs),*];
+                            vars.push((out.cur_sym().to_string(), #output_ty_name.to_string()));
+                            T::on_new_table_fact(stringify!(#name_func).to_string(), vars);
+                            out
+                        }
+                    }
+                }
+            } else if can_query_base_from_complex_inputs {
+                // Avoid interpolating the static `W` inside quote repetitions: `quote` may
+                // generate a `let W = ...` binding which is illegal (shadows the static).
+                let w = W.to_token_stream();
+
+                let input_idents = data_struct
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, field)| {
+                        field
+                            .ident
+                            .clone()
+                            .unwrap_or_else(|| format_ident!("arg{i}"))
+                    })
+                    .collect::<Vec<_>>();
+
                 let input_var_sort_pairs = input_idents
                     .iter()
                     .zip(input_types_with_generic.iter())
@@ -155,19 +278,76 @@ pub fn func(
                         }
                     })
                     .collect::<Vec<_>>();
+
+                let output_ty: proc_macro2::TokenStream = output.clone();
                 quote! {
-                    impl<T:#W::TxSgl + #W::PatRecSgl> #name_func<T> {
+                    impl<T:#w::TxSgl + #w::PatRecSgl> #name_func<T> {
                         #[track_caller]
-                        pub fn query(#(#input_idents: #input_ref_types),*) -> #output_with_generic {
-                            use #W::{EgglogNode, EgglogTy, PatRecSgl};
-                            let out = <#output_with_generic>::query_leaf();
-                            T::on_new_table_fact(
-                                stringify!(#name_func).to_string(),
-                                vec![
-                                    #(#input_var_sort_pairs),*,
-                                    (out.cur_sym().to_string(), #output_ty_name.to_string())
-                                ],
-                            );
+                        pub fn query(#(#input_idents: #input_ref_types),*) -> #w::BaseVar<#output_ty, T> {
+                            use #w::{EgglogNode, EgglogTy, PatRecSgl, BaseVar};
+                            let out = BaseVar::<#output_ty, T>::query();
+                            let mut vars = vec![#(#input_var_sort_pairs),*];
+                            vars.push((out.name(), <#output_ty as EgglogTy>::TY_NAME.to_string()));
+                            T::on_new_table_fact(stringify!(#name_func).to_string(), vars);
+                            out
+                        }
+                    }
+                }
+            } else if can_query_base {
+                // Avoid interpolating the static `W` inside quote repetitions: `quote` may
+                // generate a `let W = ...` binding which is illegal (shadows the static).
+                let w = W.to_token_stream();
+
+                let input_idents = data_struct
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, field)| {
+                        field
+                            .ident
+                            .clone()
+                            .unwrap_or_else(|| format_ident!("arg{i}"))
+                    })
+                    .collect::<Vec<_>>();
+
+                let arg_helpers = input_idents
+                    .iter()
+                    .zip(input_types.iter())
+                    .map(|(ident, ty)| {
+                        quote! {
+                            #[track_caller]
+                            pub fn #ident() -> #w::BaseVar<#ty, T> {
+                                #w::BaseVar::<#ty, T>::query_named(stringify!(#ident))
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let input_var_sort_pairs = input_idents
+                    .iter()
+                    .zip(input_types.iter())
+                    .map(|(ident, ty)| {
+                        quote! {
+                            (
+                                #ident.name(),
+                                <#ty as #W::EgglogTy>::TY_NAME.to_string()
+                            )
+                        }
+                    })
+                    .collect::<Vec<_>>();
+
+                let output_ty: proc_macro2::TokenStream = output.clone();
+                quote! {
+                    impl<T:#w::TxSgl + #w::PatRecSgl> #name_func<T> {
+                        #(#arg_helpers)*
+
+                        #[track_caller]
+                        pub fn query(#(#input_idents: &#w::BaseVar<#input_types, T>),*) -> #w::BaseVar<#output_ty, T> {
+                            use #w::{EgglogTy, PatRecSgl, BaseVar};
+                            let out = BaseVar::<#output_ty, T>::query();
+                            let mut vars = vec![#(#input_var_sort_pairs),*];
+                            vars.push((out.name(), <#output_ty as EgglogTy>::TY_NAME.to_string()));
+                            T::on_new_table_fact(stringify!(#name_func).to_string(), vars);
                             out
                         }
                     }
@@ -214,7 +394,8 @@ pub fn func(
                         #W::Decl::EgglogFuncTy{
                             name: stringify!(#name_func),
                             input: &[ #(stringify!(#input_types)),*],
-                            output: &(stringify!(#output))
+                            output: &(stringify!(#output)),
+                            merge: #merge_decl,
                         }
                     }
                 };
@@ -249,10 +430,17 @@ pub fn dsl(
         Ok(v) => v,
         Err(e) => return proc_macro::TokenStream::from(e.write_errors()),
     };
-    EgglogUserDefined::set(args.container, args.base);
+    EgglogUserDefined::extend(args.container, args.base);
 
     let input = parse_macro_input!(item as DeriveInput);
     let name = &input.ident;
+
+    // If we're processing a `#[eggplant::container]` (struct) definition, register the container
+    // name so later macros (e.g. `#[eggplant::func]`) can classify it as a container sort even if
+    // the user didn't list it in a nearby `#[eggplant::dsl(container=...)]` attribute.
+    if matches!(input.data, Data::Struct(_)) {
+        EgglogUserDefined::extend(vec![name.clone()], vec![]);
+    }
 
     let name_snake_case = format_ident!("{}", name.to_string().to_snake_case());
     let name_egglogty_impl = format_ident!("{}", name);
@@ -503,7 +691,7 @@ pub fn dsl(
                         #[track_caller]
                         fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
                     }
-                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_,'_> {
                         #[track_caller]
                         fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
                             use #W::Value;
@@ -515,7 +703,7 @@ pub fn dsl(
                         #[track_caller]
                         fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
                     }
-                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,PR> {
+                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,'_,PR> {
                         #[track_caller]
                         fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
                             self.ctx.intern_container(#field_name)
@@ -723,7 +911,7 @@ pub fn dsl(
                             }
                             impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
                                 type MetaTy = ();
-                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
+                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                                     #W::Value::new(self.erase())
                                 }
                                 fn meta(&self) -> Option<Self::MetaTy>{
@@ -763,6 +951,102 @@ pub fn dsl(
                         #rule_ctx_trait_and_impl
                     }
                 }
+                (true, true) => {
+                    // Container over a base sort (e.g. `(Vec i64)` / `(Set i64)`).
+                    //
+                    // We currently support this as a *value-only* sort wrapper:
+                    // - It participates in type registration via `Decl::EgglogContainerTy`.
+                    // - It can be inserted/devalued via `RuleCtx::{intern_container,devalue}`.
+                    // - Term reconstruction (`term_to_node`) is not supported yet (will panic if used).
+                    //
+                    // This is enough for upstream suite ports that exercise egglog builtin
+                    // `vec-*` / `set-*` operations and for using base containers as fields inside
+                    // other datatypes/functions.
+                    quote! {
+                        #[allow(unused)]
+                        pub struct #name_node<T: #W::NodeDropperSgl =(), V: #W::EgglogEnumVariantTy=()>
+                        where Self: #W::EgglogTy {
+                            _p: std::marker::PhantomData<(T, V)>,
+                        }
+
+                        const _:() = {
+                            use #E::*;
+                            use #INVE;
+                            use std::marker::PhantomData;
+
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> Clone for #name_node<T, V> {
+                                fn clone(&self) -> Self {
+                                    Self { _p: PhantomData }
+                                }
+                            }
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> Copy for #name_node<T, V> {}
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> Default for #name_node<T, V> {
+                                fn default() -> Self {
+                                    Self { _p: PhantomData }
+                                }
+                            }
+
+                            impl<T:#W::NodeDropperSgl> #name_node<T,()> {
+                                #[track_caller]
+                                pub fn new_from_term_dyn(
+                                    _term_id:#E::TermId,
+                                    _term_dag: &#E::TermDag,
+                                    _term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>,
+                                ) -> Box<dyn #W::EgglogNode> {
+                                    panic!("container term reconstruction is not supported for base containers yet")
+                                }
+                            }
+
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::EValue for #name_node<T, V> {
+                                fn get_value_by_eval_string(&self, _egraph: &mut #E::EGraph) -> #E::Value {
+                                    panic!("base-container sort `{}` cannot be evaluated as an expression", <Self as #W::EgglogTy>::TY_NAME)
+                                }
+                                fn get_egglog_expr(&self) -> #E::ast::GenericExpr<String, String> {
+                                    panic!("base-container sort `{}` cannot be rendered as an expression", <Self as #W::EgglogTy>::TY_NAME)
+                                }
+                                fn get_symlit(&self) -> #W::SymLit {
+                                    panic!("base-container sort `{}` has no Sym/Literal representation", <Self as #W::EgglogTy>::TY_NAME)
+                                }
+                            }
+
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::OutputFromLiteral for #name_node<T, V> {
+                                type Output = Self;
+                                fn from_literal(_lit: &#E::ast::Literal) -> Self::Output {
+                                    panic!("base-container sort `{}` cannot be constructed from a literal", <Self as #W::EgglogTy>::TY_NAME)
+                                }
+                            }
+
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::EgglogFuncOutput for #name_node<T, V> {
+                                type Ref<'a> = &'a Self;
+                                fn as_evalue(&self) -> &dyn #W::EValue {
+                                    self
+                                }
+                                fn clone_downcast(&self) -> Self {
+                                    self.clone()
+                                }
+                            }
+
+                            impl<'a, T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::EgglogFuncOutputRef for &'a #name_node<T, V> {
+                                type DeRef = #name_node<T, V>;
+                                fn as_evalue(&self) -> &dyn #W::EValue {
+                                    *self
+                                }
+                                fn deref(&self) -> &Self::DeRef {
+                                    *self
+                                }
+                            }
+
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
+                                type Target = #W::#container_ty<#first_generic>;
+                                fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
+                                    #W::Value::new(val)
+                                }
+                            }
+                        };
+
+                        #rule_ctx_trait_and_impl
+                    }
+                }
                 _ => {
                     panic!("only support complex type container");
                 }
@@ -789,10 +1073,24 @@ pub fn dsl(
             let to_egglog_string_match_arms = data_enum.variants.iter().map(|variant| {
                 let variant_idents = variant2field_ident(variant);
                 let (_variant_marker, variant_name) = variant2marker_name(variant);
-                let s = " {:.3}".repeat(variant_idents.len());
+                // Render base fields via `SymLit` so base sorts don't need `Display`.
+                //
+                // This matters for egglog boxed base sorts like `Q`/`Z` (BigRat/BigInt), which
+                // don't implement `Display` directly.
+                let display_fields = variant2mapped_ident_type_list_view_container_as_complex(
+                    variant,
+                    |ident, _| {
+                        Some(quote! {
+                            #W::SymLit::Lit(#E::ast::Literal::from_base(&*#ident))
+                        })
+                    },
+                    |ident, _| Some(quote! { #ident }),
+                );
+                let s = " {}".repeat(variant_idents.len());
                 let format_str = format!("(let {{}} ({} {}))", variant_name, s);
                 quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
-                    Some(format!(#format_str ,self.node.sym, #(#variant_idents),*))
+                    use #W::FromBase;
+                    Some(format!(#format_str ,self.node.sym, #(#display_fields),*))
                 }}
             });
             let succs_match_arms = data_enum.variants.iter().map(|variant| {
@@ -939,35 +1237,52 @@ pub fn dsl(
                 .iter()
                 .map(|x| query_leaf_fns_tt(x, &name_node, &name_inner, &name_counter))
                 .collect();
+            let placeholder_query_leaf_fn_name = if data_enum
+                .variants
+                .iter()
+                .any(|v| v.ident.to_string().to_snake_case() == "leaf")
+            {
+                format_ident!("query_any_leaf")
+            } else {
+                format_ident!("query_leaf")
+            };
             let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
                 let (variant_marker, variant_name) = variant2marker_name(variant);
 
                 let valued_variant_name = format_ident!("Valued{}", variant_name);
-                let values_with_types = variant2valued_struct_fields(variant);
-                let basic_field_idents = variant2mapped_ident_type_list(
+                // Treat user-defined container sorts as "complex" for pattern binding.
+                // They must flow through succ vars (like other complex fields), otherwise
+                // pattern matching invents extra `{node_sym}{field}` vars and can desync
+                // the `vars` list from `Valued*::from_plain_values` consumption.
+                let values_with_types = variant2mapped_ident_type_list_view_container_as_complex(
+                    variant,
+                    |ident, ty| Some(quote!(#ident: #W::Value<#ty>)),
+                    |_ident, _ty| None,
+                );
+                let basic_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
                     |basic, _| Some(quote!(#basic)),
-                    |_, _| None,
+                    |_complex, _| None,
                 );
-                let complex_field_idents = variant2mapped_ident_type_list(
+                let complex_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
-                    |_, _| None,
+                    |_basic, _| None,
                     |complex, _| Some(quote!(#complex)),
                 );
-                let basic_field_types = variant2mapped_ident_type_list(
+                let basic_field_types = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
-                    |_, basic_type| Some(quote!(#basic_type)),
-                    |_, _| None,
+                    |_ident, basic_type| Some(quote!(#basic_type)),
+                    |_ident, _| None,
                 );
-                let complex_field_types = variant2mapped_ident_type_list(
+                let complex_field_types = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
-                    |_, _| None,
-                    |_, complex_type| Some(quote!(#complex_type)),
+                    |_ident, _| None,
+                    |_ident, complex_type| Some(quote!(#complex_type)),
                 );
-                let value_iter = variant2mapped_ident_type_list(
+                let value_iter = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
                     |basic, _| Some(quote!(#basic: #W::Value::new(vals.next().unwrap()))),
-                    |_, _| None,
+                    |_ident, _| None,
                 );
 
                 quote! {
@@ -997,7 +1312,7 @@ pub fn dsl(
 
                     impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
                         type MetaTy = ();
-                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                             #W::Value::new(self._itself.val)
                         }
                         fn meta(&self) -> Option<Self::MetaTy>{
@@ -1006,7 +1321,7 @@ pub fn dsl(
                     }
                     impl #W::Insertable<#name_node<(),#variant_marker>> for &#valued_variant_name {
                         type MetaTy = ();
-                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                             #W::Value::new(self._itself.val)
                         }
                         fn meta(&self) -> Option<Self::MetaTy>{
@@ -1015,7 +1330,7 @@ pub fn dsl(
                     }
                     impl #W::Insertable<#name_node<(),#variant_marker>> for &&#valued_variant_name {
                         type MetaTy = ();
-                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
                             #W::Value::new(self._itself.val)
                         }
                         fn meta(&self) -> Option<Self::MetaTy>{
@@ -1064,13 +1379,13 @@ pub fn dsl(
                     pub trait #ctx_trait_name {
                         #(#insert_fn_decls)*
                     }
-                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_,'_> {
                         #(#insert_fns)*
                     }
                     pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
                         #(#pr_insert_fn_decls)*
                     }
-                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,PR> {
+                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,'_,PR> {
                         #(#pr_insert_fns)*
                     }
                 }
@@ -1108,7 +1423,7 @@ pub fn dsl(
                     impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
                         #(#query_leaf_fns)*
                         #[track_caller]
-                        pub fn query_leaf() -> self::#name_node<T,()> {
+                        pub fn #placeholder_query_leaf_fn_name() -> self::#name_node<T,()> {
                             let node = #W::Node {
                                 ty: #W::TyPH::PH,
                                 sym: #name_counter.next_sym(),
@@ -1370,7 +1685,7 @@ pub fn dsl(
                 };
                 impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
                     type MetaTy = ();
-                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
+                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
                         #W::Value::new(self.erase())
                     }
                     fn meta(&self) -> Option<Self::MetaTy>{
@@ -1431,6 +1746,32 @@ pub fn pat_vars(
         if !has_pr {
             // append PR: PatRecSgl
             input.generics.params.insert(0, parse_quote!(PR: PatRecSgl));
+        }
+    }
+
+    // In a `#[pat_vars]` struct, treat base-sort fields as pattern variables and rewrite
+    // `T` to `BaseVar<T, PR>` for known base sorts (built-in + user-defined).
+    if let Data::Struct(data_struct) = &mut input.data {
+        for field in &mut data_struct.fields {
+            // Avoid double-wrapping `BaseVar<...>`.
+            if let syn::Type::Path(type_path) = &field.ty
+                && type_path
+                    .path
+                    .segments
+                    .last()
+                    .is_some_and(|seg| seg.ident == "BaseVar")
+            {
+                continue;
+            }
+
+            let ty_ts = field.ty.to_token_stream();
+            match BasicOrComplex::from(&ty_ts) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    let inner_ty = field.ty.clone();
+                    field.ty = parse_quote!(#W::BaseVar<#inner_ty, PR>);
+                }
+                BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {}
+            }
         }
     }
 
@@ -1650,6 +1991,33 @@ pub fn ensure_PR_contained(field: &mut Field) {
     if let syn::Type::Path(type_path) = &mut field.ty {
         // assert have generic append <PR>
         if let Some(last_segment) = type_path.path.segments.last_mut() {
+            // `BaseVar<T, PR>` uses the *second* generic slot for `PR`.
+            if last_segment.ident == "BaseVar" {
+                match &mut last_segment.arguments {
+                    syn::PathArguments::None => {}
+                    syn::PathArguments::AngleBracketed(args) => {
+                        let has_pr = args.args.iter().any(|arg| {
+                            if let syn::GenericArgument::Type(type_arg) = arg
+                                && let syn::Type::Path(arg_path) = type_arg
+                            {
+                                return arg_path.path.segments.last().unwrap().ident == "PR";
+                            }
+                            false
+                        });
+                        if !has_pr {
+                            if args.args.len() == 1 {
+                                args.args.push(syn::GenericArgument::Type(parse_quote!(PR)));
+                            } else if let Some(second_arg) = args.args.iter_mut().nth(1) {
+                                *second_arg = syn::GenericArgument::Type(parse_quote!(PR));
+                            } else {
+                                args.args.push(syn::GenericArgument::Type(parse_quote!(PR)));
+                            }
+                        }
+                    }
+                    syn::PathArguments::Parenthesized(_) => {}
+                }
+                return;
+            }
             // check whether the field has generic
             if last_segment.arguments.is_empty() {
                 // if do not have generic append <PR>

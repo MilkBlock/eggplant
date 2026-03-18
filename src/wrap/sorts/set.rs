@@ -59,7 +59,7 @@ impl<T: EgglogTy> SetContainer<T> {
     pub fn new() -> SetContainer<T> {
         SetContainer {
             inner: egglog::sort::SetContainer {
-                do_rebuild: false,
+                do_rebuild: true,
                 data: Default::default(),
             },
             _p: PhantomData,
@@ -73,7 +73,7 @@ impl<T: EgglogTy> From<BTreeSet<egglog::Value>> for SetContainer<T> {
     fn from(value: BTreeSet<egglog::Value>) -> Self {
         SetContainer {
             inner: egglog::sort::SetContainer {
-                do_rebuild: false,
+                do_rebuild: true,
                 data: value,
             },
             _p: PhantomData,
@@ -85,7 +85,7 @@ impl<T: EgglogTy> From<Vec<Value<T>>> for SetContainer<T> {
     fn from(value: Vec<Value<T>>) -> Self {
         SetContainer {
             inner: egglog::sort::SetContainer {
-                do_rebuild: false,
+                do_rebuild: true,
                 data: unsafe { mem::transmute(value) },
             },
             _p: PhantomData,

@@ -5,6 +5,8 @@ mod literal;
 pub use literal::*;
 mod evalue;
 pub use evalue::*;
+mod base_var;
+pub use base_var::*;
 mod type_reg;
 pub use type_reg::*;
 

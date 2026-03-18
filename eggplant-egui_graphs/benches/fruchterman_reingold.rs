@@ -1,6 +1,6 @@
 use criterion::{BatchSize, Criterion, black_box, criterion_group, criterion_main};
-use eggplant_egui_graphs::{ViewEdge, ViewNode};
 use eggplant_egui_graphs::{Graph, to_graph};
+use eggplant_egui_graphs::{ViewEdge, ViewNode};
 use egui::{Pos2, Rect};
 use petgraph::stable_graph::StableGraph;
 use std::time::Duration;

@@ -3,6 +3,7 @@ use crate::wrap::{
     Insertable, IntoConstraintFact, PatRecSgl, RetypeValue,
 };
 use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
+use egglog::ContainerValue;
 use egglog::ast::{Expr, Fact, ResolvedVar};
 use egglog::{
     BaseValue,
@@ -11,10 +12,9 @@ use egglog::{
     sort::{EqSort, Sort},
     span,
 };
-use egglog::ContainerValue;
 use egglog_reports::RunReport;
-use std::collections::HashSet;
 use std::cell::{RefCell, UnsafeCell};
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::sync::Arc;
@@ -48,12 +48,12 @@ impl Drop for PremiseProofScope {
 
 // eggplant rule context is a wrapper of egglog rule context.
 // it contains the Tx to which the rule is applied
-pub struct PRRuleCtx<'a, 'b, 'c, PR: PatRecSgl> {
-    pub ctx: RuleCtx<'a, 'b, 'c>,
+pub struct PRRuleCtx<'a, 'b, 'c, 'p, PR: PatRecSgl> {
+    pub ctx: RuleCtx<'a, 'b, 'c, 'p>,
     _p: PhantomData<PR>,
 }
-pub struct RuleCtx<'a, 'b, 'c> {
-    pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b>>,
+pub struct RuleCtx<'a, 'b, 'c, 'p> {
+    pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b, 'p>>,
     hook: RuleHookObj,
 }
 unsafe impl Send for RuleHookObj {}
@@ -76,8 +76,8 @@ pub trait RuleCtxHook {
     fn dyn_clone(&self) -> Box<dyn RuleCtxHook>;
 }
 
-impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
-    pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
+impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
+    pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b, 'p>, hook: RuleHookObj) -> Self {
         Self {
             _p: PhantomData::default(),
             ctx: RuleCtx::new(rule_ctx, hook),
@@ -106,6 +106,12 @@ impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
     }
     pub fn insert(&self, table: &'static str, key: &[egglog::Value]) -> egglog::Value {
         self.ctx.insert(table, key)
+    }
+    pub fn lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
+        self.ctx.lookup(table, key)
+    }
+    pub fn lookup_expect(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+        self.ctx.lookup_expect(table, key)
     }
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
         self.ctx.insert_func_tbl(table, key);
@@ -145,8 +151,8 @@ impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
         self.ctx._devalue_base(val)
     }
 }
-impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
-    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
+impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
+    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b, 'p>, hook: RuleHookObj) -> Self {
         RuleCtx {
             rule_ctx: UnsafeCell::new(egglog_ctx),
             hook,
@@ -177,25 +183,48 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+        self.lookup_expect(table, key)
+    }
+    pub fn lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
-        unsafe { (*self.rule_ctx.get()).lookup(table, key).unwrap() }
+        unsafe { (*self.rule_ctx.get()).lookup(table, key) }
+    }
+    pub fn lookup_expect(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+        self.lookup(table, key).unwrap_or_else(|| {
+            panic!(
+                "ctx.lookup_expect: missing row in table `{}` for key (len={}); \
+note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visible until after the rule callback completes or a later ruleset/run.",
+                table,
+                key.len()
+            )
+        })
     }
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
     }
-    pub fn union<T0: EgglogTy, T1: EgglogTy>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
+    pub fn union<T0: EgglogTy, T1: EgglogTy>(
+        &self,
+        x: impl Insertable<T0>,
+        y: impl Insertable<T1>,
+    ) {
         let x = x.to_value(&self);
         let y = y.to_value(&self);
-        self.hook
-            .0
-            .as_ref()
-            .map(|hook| hook.on_union(x.val, y.val));
+        self.hook.0.as_ref().map(|hook| hook.on_union(x.val, y.val));
         unsafe {
-            let premise_proofs = CURRENT_PREMISE_PROOFS
-                .with(|cell| cell.borrow().last().cloned())
-                .unwrap_or_else(empty_premise_proofs);
-            (*self.rule_ctx.get()).union_typed(T0::TY_NAME, x.val, y.val, premise_proofs.as_ref());
+            CURRENT_PREMISE_PROOFS.with(|cell| {
+                let premise_proofs_stack = cell.borrow();
+                if let Some(premise_proofs) = premise_proofs_stack.last() {
+                    (*self.rule_ctx.get()).union_typed(
+                        T0::TY_NAME,
+                        x.val,
+                        y.val,
+                        premise_proofs.as_ref(),
+                    );
+                } else {
+                    (*self.rule_ctx.get()).union(x.val, y.val);
+                }
+            });
         }
     }
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {

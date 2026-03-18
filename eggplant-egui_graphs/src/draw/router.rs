@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 
 use egui::{Pos2, Vec2};
-use petgraph::stable_graph::NodeIndex;
 use petgraph::Directed;
+use petgraph::stable_graph::NodeIndex;
 
 use crate::draw::{DisplayNode, displays::MaybeInner};
 use crate::elements::IndexTy;
@@ -43,7 +43,9 @@ where
         // Determine anchor endpoints consistent with PlantEdge (yellow enode port -> target node center)
         let (start, end) = compute_edge_anchors::<Nd>(s_node, t_node, e.start_maybe_inner());
         let v = end - start;
-        if v.length_sq() <= f32::EPSILON { continue; }
+        if v.length_sq() <= f32::EPSILON {
+            continue;
+        }
         let dir = v.normalized();
         let normal = Vec2::new(-dir.y, dir.x);
         let span = v.length();
@@ -61,9 +63,13 @@ where
                 let first = start + dir * stub + normal * (off * sign);
                 let second = end - dir * stub + normal * (off * sign);
                 let mut pts = vec![start, first, mid, second, end];
-                if !pts.iter().all(|p| p.x.is_finite() && p.y.is_finite()) { continue; }
+                if !pts.iter().all(|p| p.x.is_finite() && p.y.is_finite()) {
+                    continue;
+                }
                 simplify(&mut pts);
-                if !pts.iter().all(|p| p.x.is_finite() && p.y.is_finite()) { continue; }
+                if !pts.iter().all(|p| p.x.is_finite() && p.y.is_finite()) {
+                    continue;
+                }
                 // Only penalize edge-edge crossings, not CLASS boxes
                 let inter = count_route_intersections(&pts, &routes);
                 let len = polyline_length(&pts) as u32;
@@ -71,7 +77,9 @@ where
                 if metric < best_metric {
                     best_metric = metric;
                     best = Some(pts);
-                    if best_metric.1 == 0 { break; }
+                    if best_metric.1 == 0 {
+                        break;
+                    }
                 }
             }
         }
@@ -162,7 +170,10 @@ where
         let c = Pos2::new(center.x, center.y - class_y_shift_canvas);
         let half_w = 20.0;
         let half_h = 6.0;
-        (Pos2::new(c.x - half_w, c.y - half_h), Pos2::new(c.x + half_w, c.y + half_h))
+        (
+            Pos2::new(c.x - half_w, c.y - half_h),
+            Pos2::new(c.x + half_w, c.y + half_h),
+        )
     }
 
     #[inline]
@@ -189,17 +200,29 @@ where
     edges.sort_by_key(|(eid, _)| eid.index());
 
     // Group potential bidirectional pairs (min,max) -> Vec<(edge_idx,bool(is_forward))>
-    let mut pairings: HashMap<(NodeIndex<IndexTy>, NodeIndex<IndexTy>), Vec<(petgraph::stable_graph::EdgeIndex<IndexTy>, bool)>> = HashMap::new();
+    let mut pairings: HashMap<
+        (NodeIndex<IndexTy>, NodeIndex<IndexTy>),
+        Vec<(petgraph::stable_graph::EdgeIndex<IndexTy>, bool)>,
+    > = HashMap::new();
     for (eidx, _e) in &edges {
         if let Some((s, t)) = g.edge_endpoints(*eidx) {
-            let (a, b) = if s.index() <= t.index() { (s, t) } else { (t, s) };
+            let (a, b) = if s.index() <= t.index() {
+                (s, t)
+            } else {
+                (t, s)
+            };
             let is_forward = s.index() <= t.index();
-            pairings.entry((a, b)).or_default().push((*eidx, is_forward));
+            pairings
+                .entry((a, b))
+                .or_default()
+                .push((*eidx, is_forward));
         }
     }
 
     // Helper: evaluate candidate path and pick best by (node_collision, intersections, length)
-    fn poly_len(pts: &[Pos2]) -> u32 { super::router::polyline_length(pts) as u32 }
+    fn poly_len(pts: &[Pos2]) -> u32 {
+        super::router::polyline_length(pts) as u32
+    }
 
     fn build_route(from: Pos2, mids: &[Pos2], to: Pos2) -> Vec<Pos2> {
         let mut v = Vec::with_capacity(mids.len() + 2);
@@ -215,15 +238,23 @@ where
         skip_a: NodeIndex<IndexTy>,
         skip_b: NodeIndex<IndexTy>,
     ) -> bool {
-        if route.len() < 2 { return false; }
-        if node_bounds.is_empty() { return false; }
+        if route.len() < 2 {
+            return false;
+        }
+        if node_bounds.is_empty() {
+            return false;
+        }
         for w in route.windows(2) {
             let a = w[0];
             let b = w[1];
             for (nid, &(min, max)) in node_bounds {
-                if *nid == skip_a || *nid == skip_b { continue; }
+                if *nid == skip_a || *nid == skip_b {
+                    continue;
+                }
                 let (min_i, max_i) = inflate(min, max, EDGE_COLLISION_MARGIN);
-                if rect_intersects_segment(min_i, max_i, a, b) { return true; }
+                if rect_intersects_segment(min_i, max_i, a, b) {
+                    return true;
+                }
             }
         }
         false
@@ -253,10 +284,18 @@ where
         metric == (0, 0, len)
     }
 
-    fn generate_bidir_points(from: Pos2, to: Pos2, offset: f32, stub: f32, normal_sign: f32) -> Vec<Pos2> {
+    fn generate_bidir_points(
+        from: Pos2,
+        to: Pos2,
+        offset: f32,
+        stub: f32,
+        normal_sign: f32,
+    ) -> Vec<Pos2> {
         let v = to - from;
         let dist = v.length();
-        if dist <= f32::EPSILON { return Vec::new(); }
+        if dist <= f32::EPSILON {
+            return Vec::new();
+        }
         let t = v / dist;
         let n = Vec2::new(-t.y, t.x) * normal_sign;
         let off = n * offset;
@@ -273,7 +312,7 @@ where
 
     fn generate_axis_detours(from: Pos2, to: Pos2) -> Vec<Vec<Pos2>> {
         // Clearance tuned to the CLASS box + margin
-        let vertical_clearance = 12.0 + EDGE_COLLISION_MARGIN * 4.0;   // height(=12) + margin
+        let vertical_clearance = 12.0 + EDGE_COLLISION_MARGIN * 4.0; // height(=12) + margin
         let horizontal_clearance = 40.0 + EDGE_COLLISION_MARGIN * 4.0; // width(=40) + margin
 
         let mut cands = Vec::new();
@@ -305,7 +344,9 @@ where
         route: &mut Vec<Pos2>,
         start_is_inner: bool,
     ) {
-        if route.len() < 2 { return; }
+        if route.len() < 2 {
+            return;
+        }
         // start
         let s_center = start_node.location();
         let s_next = route[1];
@@ -327,21 +368,32 @@ where
 
     // Track which edges have been routed by their `EdgeIndex` so we don't duplicate work
     use std::collections::HashSet as StdHashSet;
-    let mut routed_edges: StdHashSet<petgraph::stable_graph::EdgeIndex<IndexTy>> = StdHashSet::new();
+    let mut routed_edges: StdHashSet<petgraph::stable_graph::EdgeIndex<IndexTy>> =
+        StdHashSet::new();
 
     // 1) Handle pairs
     for ((_, _), entries) in pairings.iter() {
         let fwd: Vec<_> = entries.iter().copied().filter(|(_, f)| *f).collect();
         let bwd: Vec<_> = entries.iter().copied().filter(|(_, f)| !*f).collect();
-        if fwd.is_empty() || bwd.is_empty() { continue; }
+        if fwd.is_empty() || bwd.is_empty() {
+            continue;
+        }
         // Use only the first pair for symmetry; others fall back to single-edge logic below
         let (f_eidx, _) = fwd[0];
         let (b_eidx, _) = bwd[0];
-        if routed_edges.contains(&f_eidx) || routed_edges.contains(&b_eidx) { continue; }
+        if routed_edges.contains(&f_eidx) || routed_edges.contains(&b_eidx) {
+            continue;
+        }
 
         // Resolve pair with mirrored offsets
-        let (sf, tf) = match g.edge_endpoints(f_eidx) { Some(v) => v, None => continue };
-        let (sb, tb) = match g.edge_endpoints(b_eidx) { Some(v) => v, None => continue };
+        let (sf, tf) = match g.edge_endpoints(f_eidx) {
+            Some(v) => v,
+            None => continue,
+        };
+        let (sb, tb) = match g.edge_endpoints(b_eidx) {
+            Some(v) => v,
+            None => continue,
+        };
         let sn = g.node(sf).unwrap();
         let tn = g.node(tf).unwrap();
         let snb = g.node(sb).unwrap();
@@ -353,12 +405,17 @@ where
         let (from_b, to_b) = compute_edge_anchors::<Nd>(snb, tnb, eb.start_maybe_inner());
 
         // If anchors are degenerate or pairs aren't opposite, skip symmetric handling
-        let v = to - from; if v.length_sq() <= f32::EPSILON { continue; }
+        let v = to - from;
+        if v.length_sq() <= f32::EPSILON {
+            continue;
+        }
 
         let distance = v.length();
         let base_offset = (distance * 0.25).min(EDGE_BIDIRECTIONAL_OFFSET);
         let base_stub = (distance * 0.25).min(EDGE_BIDIRECTIONAL_STUB);
-        if base_offset <= 0.0 || base_stub <= 0.0 { continue; }
+        if base_offset <= 0.0 || base_stub <= 0.0 {
+            continue;
+        }
 
         let mut best_f: Option<Vec<Pos2>> = None;
         let mut best_b: Option<Vec<Pos2>> = None;
@@ -379,18 +436,40 @@ where
             let mut cur_best = best_metric;
             let mut cur_points: Option<Vec<Pos2>> = None;
             let done_f = evaluate_candidate(
-                f_mids.clone(), from, to, &node_bounds, sf, tf, &routes, &mut cur_best, &mut cur_points,
+                f_mids.clone(),
+                from,
+                to,
+                &node_bounds,
+                sf,
+                tf,
+                &routes,
+                &mut cur_best,
+                &mut cur_points,
             );
             let route_f = cur_points.clone();
 
             let done_b = evaluate_candidate(
-                b_mids.clone(), from_b, to_b, &node_bounds, sb, tb, &routes, &mut cur_best, &mut cur_points,
+                b_mids.clone(),
+                from_b,
+                to_b,
+                &node_bounds,
+                sb,
+                tb,
+                &routes,
+                &mut cur_best,
+                &mut cur_points,
             );
-            if let Some(rf) = route_f { best_f = Some(rf); }
-            if let Some(cb) = cur_points { best_b = Some(cb); }
+            if let Some(rf) = route_f {
+                best_f = Some(rf);
+            }
+            if let Some(cb) = cur_points {
+                best_b = Some(cb);
+            }
             best_metric = cur_best;
 
-            if done_f && done_b { break; }
+            if done_f && done_b {
+                break;
+            }
         }
 
         // If still not perfect, try axis detours for each side independently
@@ -399,10 +478,23 @@ where
                 let mut cur_best = best_metric;
                 let mut cur_points: Option<Vec<Pos2>> = None;
                 let done = evaluate_candidate(
-                    cand.clone(), from, to, &node_bounds, sf, tf, &routes, &mut cur_best, &mut cur_points,
+                    cand.clone(),
+                    from,
+                    to,
+                    &node_bounds,
+                    sf,
+                    tf,
+                    &routes,
+                    &mut cur_best,
+                    &mut cur_points,
                 );
-                if let Some(r) = cur_points { best_f = Some(r); best_metric = cur_best; }
-                if done { break; }
+                if let Some(r) = cur_points {
+                    best_f = Some(r);
+                    best_metric = cur_best;
+                }
+                if done {
+                    break;
+                }
             }
         }
         if best_b.is_none() || best_metric.0 > 0 {
@@ -410,10 +502,23 @@ where
                 let mut cur_best = best_metric;
                 let mut cur_points: Option<Vec<Pos2>> = None;
                 let done = evaluate_candidate(
-                    cand.clone(), from_b, to_b, &node_bounds, sb, tb, &routes, &mut cur_best, &mut cur_points,
+                    cand.clone(),
+                    from_b,
+                    to_b,
+                    &node_bounds,
+                    sb,
+                    tb,
+                    &routes,
+                    &mut cur_best,
+                    &mut cur_points,
                 );
-                if let Some(r) = cur_points { best_b = Some(r); best_metric = cur_best; }
-                if done { break; }
+                if let Some(r) = cur_points {
+                    best_b = Some(r);
+                    best_metric = cur_best;
+                }
+                if done {
+                    break;
+                }
             }
         }
 
@@ -437,12 +542,20 @@ where
 
     // 2) Plan the rest individually
     for (eidx, e) in edges.into_iter() {
-        if routed_edges.contains(&eidx) { continue; }
-        let (s_idx, t_idx) = match g.edge_endpoints(eidx) { Some(v) => v, None => continue };
+        if routed_edges.contains(&eidx) {
+            continue;
+        }
+        let (s_idx, t_idx) = match g.edge_endpoints(eidx) {
+            Some(v) => v,
+            None => continue,
+        };
         let s_node = g.node(s_idx).unwrap();
         let t_node = g.node(t_idx).unwrap();
         let (from, to) = compute_edge_anchors::<Nd>(s_node, t_node, e.start_maybe_inner());
-        let v = to - from; if v.length_sq() <= f32::EPSILON { continue; }
+        let v = to - from;
+        if v.length_sq() <= f32::EPSILON {
+            continue;
+        }
         let distance = v.length();
 
         let mut best_metric = (u8::MAX, u32::MAX, u32::MAX);
@@ -453,7 +566,15 @@ where
             let mut cur_best = best_metric;
             let mut cur_points: Option<Vec<Pos2>> = None;
             let perfect = evaluate_candidate(
-                Vec::new(), from, to, &node_bounds, s_idx, t_idx, &routes, &mut cur_best, &mut cur_points,
+                Vec::new(),
+                from,
+                to,
+                &node_bounds,
+                s_idx,
+                t_idx,
+                &routes,
+                &mut cur_best,
+                &mut cur_points,
             );
             if let Some(r) = cur_points.clone() {
                 best = Some(r);
@@ -475,7 +596,9 @@ where
         for &sign in &[1.0_f32, -1.0_f32] {
             let base_offset = (distance * 0.25).min(EDGE_SINGLE_OFFSET);
             let base_stub = (distance * 0.25).min(EDGE_SINGLE_STUB);
-            if base_offset <= 0.0 || base_stub <= 0.0 { continue; }
+            if base_offset <= 0.0 || base_stub <= 0.0 {
+                continue;
+            }
             for attempt in 0..=EDGE_COLLISION_MAX_ITER {
                 let off = (base_offset + attempt as f32 * EDGE_SINGLE_OFFSET_STEP)
                     .min((distance * 0.5) - EDGE_COLLISION_MARGIN)
@@ -487,10 +610,23 @@ where
                 let mut cur_best = best_metric;
                 let mut cur_points: Option<Vec<Pos2>> = None;
                 let done = evaluate_candidate(
-                    mids, from, to, &node_bounds, s_idx, t_idx, &routes, &mut cur_best, &mut cur_points,
+                    mids,
+                    from,
+                    to,
+                    &node_bounds,
+                    s_idx,
+                    t_idx,
+                    &routes,
+                    &mut cur_best,
+                    &mut cur_points,
                 );
-                if let Some(r) = cur_points { best = Some(r); best_metric = cur_best; }
-                if done { break; }
+                if let Some(r) = cur_points {
+                    best = Some(r);
+                    best_metric = cur_best;
+                }
+                if done {
+                    break;
+                }
             }
         }
 
@@ -500,10 +636,23 @@ where
                 let mut cur_best = best_metric;
                 let mut cur_points: Option<Vec<Pos2>> = None;
                 let done = evaluate_candidate(
-                    cand, from, to, &node_bounds, s_idx, t_idx, &routes, &mut cur_best, &mut cur_points,
+                    cand,
+                    from,
+                    to,
+                    &node_bounds,
+                    s_idx,
+                    t_idx,
+                    &routes,
+                    &mut cur_best,
+                    &mut cur_points,
                 );
-                if let Some(r) = cur_points { best = Some(r); best_metric = cur_best; }
-                if done { break; }
+                if let Some(r) = cur_points {
+                    best = Some(r);
+                    best_metric = cur_best;
+                }
+                if done {
+                    break;
+                }
             }
         }
 
@@ -518,12 +667,18 @@ where
     routes
 }
 
-fn route_key(start: petgraph::stable_graph::NodeIndex<IndexTy>, end: petgraph::stable_graph::NodeIndex<IndexTy>, order: usize) -> u128 {
+fn route_key(
+    start: petgraph::stable_graph::NodeIndex<IndexTy>,
+    end: petgraph::stable_graph::NodeIndex<IndexTy>,
+    order: usize,
+) -> u128 {
     ((start.index() as u128) << 64) ^ ((end.index() as u128) << 32) ^ (order as u128)
 }
 
 fn simplify(points: &mut Vec<Pos2>) {
-    if points.len() < 3 { return; }
+    if points.len() < 3 {
+        return;
+    }
     let mut out = Vec::with_capacity(points.len());
     out.push(points[0]);
     let mut i = 1usize;
@@ -537,7 +692,10 @@ fn simplify(points: &mut Vec<Pos2>) {
         let colinear = cross.abs() < 1e-3;
         let within_x = b.x >= a.x.min(c.x) - 1e-3 && b.x <= a.x.max(c.x) + 1e-3;
         let within_y = b.y >= a.y.min(c.y) - 1e-3 && b.y <= a.y.max(c.y) + 1e-3;
-        if colinear && within_x && within_y { i += 1; continue; }
+        if colinear && within_x && within_y {
+            i += 1;
+            continue;
+        }
         out.push(b);
         i += 1;
     }
@@ -547,7 +705,9 @@ fn simplify(points: &mut Vec<Pos2>) {
 
 fn polyline_length(pts: &[Pos2]) -> f32 {
     let mut s = 0.0;
-    for w in pts.windows(2) { s += (w[1] - w[0]).length(); }
+    for w in pts.windows(2) {
+        s += (w[1] - w[0]).length();
+    }
     s
 }
 
@@ -577,11 +737,30 @@ fn rect_intersects_segment(min: Pos2, max: Pos2, a: Pos2, b: Pos2) -> bool {
 // Note: CLASS collision check intentionally removed to match new requirement.
 
 fn segments_intersect(a: Pos2, b: Pos2, c: Pos2, d: Pos2) -> bool {
-    fn orient(a: Pos2, b: Pos2, c: Pos2) -> f32 { let ab = b - a; let ac = c - a; ab.x*ac.y - ab.y*ac.x }
-    fn on_seg(a: Pos2, b: Pos2, p: Pos2) -> bool { p.x>=a.x.min(b.x)-1e-3 && p.x<=a.x.max(b.x)+1e-3 && p.y>=a.y.min(b.y)-1e-3 && p.y<=a.y.max(b.y)+1e-3 }
-    let o1 = orient(a,b,c); let o2 = orient(a,b,d); let o3 = orient(c,d,a); let o4 = orient(c,d,b);
-    if (o1>0.0 && o2<0.0 || o1<0.0 && o2>0.0) && (o3>0.0 && o4<0.0 || o3<0.0 && o4>0.0) { return true; }
-    (o1.abs()<1e-3 && on_seg(a,b,c)) || (o2.abs()<1e-3 && on_seg(a,b,d)) || (o3.abs()<1e-3 && on_seg(c,d,a)) || (o4.abs()<1e-3 && on_seg(c,d,b))
+    fn orient(a: Pos2, b: Pos2, c: Pos2) -> f32 {
+        let ab = b - a;
+        let ac = c - a;
+        ab.x * ac.y - ab.y * ac.x
+    }
+    fn on_seg(a: Pos2, b: Pos2, p: Pos2) -> bool {
+        p.x >= a.x.min(b.x) - 1e-3
+            && p.x <= a.x.max(b.x) + 1e-3
+            && p.y >= a.y.min(b.y) - 1e-3
+            && p.y <= a.y.max(b.y) + 1e-3
+    }
+    let o1 = orient(a, b, c);
+    let o2 = orient(a, b, d);
+    let o3 = orient(c, d, a);
+    let o4 = orient(c, d, b);
+    if (o1 > 0.0 && o2 < 0.0 || o1 < 0.0 && o2 > 0.0)
+        && (o3 > 0.0 && o4 < 0.0 || o3 < 0.0 && o4 > 0.0)
+    {
+        return true;
+    }
+    (o1.abs() < 1e-3 && on_seg(a, b, c))
+        || (o2.abs() < 1e-3 && on_seg(a, b, d))
+        || (o3.abs() < 1e-3 && on_seg(c, d, a))
+        || (o4.abs() < 1e-3 && on_seg(c, d, b))
 }
 
 fn count_route_intersections(route: &[Pos2], existing: &HashMap<u128, Vec<Pos2>>) -> usize {
@@ -589,7 +768,9 @@ fn count_route_intersections(route: &[Pos2], existing: &HashMap<u128, Vec<Pos2>>
     for other in existing.values() {
         for w1 in route.windows(2) {
             for w2 in other.windows(2) {
-                if segments_intersect(w1[0], w1[1], w2[0], w2[1]) { n += 1; }
+                if segments_intersect(w1[0], w1[1], w2[0], w2[1]) {
+                    n += 1;
+                }
             }
         }
     }

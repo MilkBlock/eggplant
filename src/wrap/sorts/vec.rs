@@ -62,7 +62,7 @@ impl<T: EgglogTy> VecContainer<T> {
     pub fn new() -> VecContainer<T> {
         VecContainer {
             inner: egglog::sort::VecContainer {
-                do_rebuild: false,
+                do_rebuild: true,
                 data: vec![],
             },
             _p: PhantomData,
@@ -81,7 +81,7 @@ impl<T: EgglogTy> From<Vec<egglog::Value>> for VecContainer<T> {
     fn from(value: Vec<egglog::Value>) -> Self {
         VecContainer {
             inner: egglog::sort::VecContainer {
-                do_rebuild: false,
+                do_rebuild: true,
                 data: value,
             },
             _p: PhantomData,
@@ -93,7 +93,7 @@ impl<T: EgglogTy> From<Vec<Value<T>>> for VecContainer<T> {
     fn from(value: Vec<Value<T>>) -> Self {
         VecContainer {
             inner: egglog::sort::VecContainer {
-                do_rebuild: false,
+                do_rebuild: true,
                 data: unsafe { mem::transmute(value) },
             },
             _p: PhantomData,

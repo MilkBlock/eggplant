@@ -1,5 +1,6 @@
 #[cfg(feature = "viewer")]
 use crate::prelude::SlottedPatRecorder;
+use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
 use crate::{
     etc::{Escape, quote, topo_sort},
     prelude::{SlotMeta, SlotWorkAreaNode},
@@ -14,11 +15,11 @@ use egglog::{
     span,
     util::{IndexMap, IndexSet},
 };
-use egglog_reports::RunReport;
 use egglog::{
     ast::{RustSpan, Span},
     prelude::rust_rule,
 };
+use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
 use petgraph::prelude::StableDiGraph;
 use std::{
@@ -848,6 +849,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
         log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);
 
+        let proofs_enabled = egraph.are_proofs_enabled();
         let hook = RuleHookObj(ctx_hook);
         let rst = rust_rule(
             &mut egraph,
@@ -858,8 +860,13 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 .map(|x| (x.0.as_str(), x.1.clone()))
                 .collect::<Vec<_>>(),
             Facts(facts),
-            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_>, values| {
+            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
+                let _premise_scope = if proofs_enabled {
+                    Some(PremiseProofScope::enter(empty_premise_proofs()))
+                } else {
+                    None
+                };
                 let valued_pat_vars = P::Valued::from_plain_values_metas(
                     &mut values.iter().cloned(),
                     &mut metas.clone().into_iter(),
@@ -884,7 +891,19 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 let mut egraph = self.egraph.lock().unwrap();
                 let mut run_report = RunReport::default();
                 loop {
-                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
+                    let iter_report = if egraph.are_proofs_enabled() {
+                        let outputs =
+                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        outputs
+                            .into_iter()
+                            .find_map(|o| match o {
+                                egglog::CommandOutput::RunSchedule(report) => Some(report),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        egraph.step_rules(ruleset_id.0).unwrap()
+                    };
                     let updated = iter_report.updated;
                     run_report.union(iter_report);
                     if !updated && !PR::flush_pending(&egraph) {
@@ -896,14 +915,37 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 let mut egraph = self.egraph.lock().unwrap();
                 let mut run_report = RunReport::default();
                 for _ in 0..times {
-                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
+                    let iter_report = if egraph.are_proofs_enabled() {
+                        let outputs =
+                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        outputs
+                            .into_iter()
+                            .find_map(|o| match o {
+                                egglog::CommandOutput::RunSchedule(report) => Some(report),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        egraph.step_rules(ruleset_id.0).unwrap()
+                    };
                     run_report.union(iter_report);
                 }
                 run_report
             }
             RunConfig::Once => {
                 let mut egraph = self.egraph.lock().unwrap();
-                let run_report = egraph.step_rules(ruleset_id.0).unwrap();
+                let run_report = if egraph.are_proofs_enabled() {
+                    let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                    outputs
+                        .into_iter()
+                        .find_map(|o| match o {
+                            egglog::CommandOutput::RunSchedule(report) => Some(report),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                } else {
+                    egraph.step_rules(ruleset_id.0).unwrap()
+                };
                 PR::flush_pending(&egraph);
                 run_report
             }

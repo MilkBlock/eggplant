@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use egui::{Context, Painter, Shape};
-use std::vec::Vec;
-use std::collections::HashMap;
 use petgraph::Directed;
+use std::collections::HashMap;
+use std::vec::Vec;
 
 use crate::{
     Graph, Metadata,

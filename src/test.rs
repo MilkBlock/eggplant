@@ -2,7 +2,10 @@
 mod tests {
     use crate::{self as eggplant, tx_rx_vt_pr};
     use eggplant::prelude::*;
-    use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+    use std::sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
+    };
 
     #[eggplant::dsl]
     enum Expr {
@@ -148,14 +151,993 @@ mod tests {
 
         assert_eq!(FibRead::<MyTxRead>::get(&3), 3);
     }
+
+    // -------------------------------------------------------------------------
+    // Upstream egglog test rewrites (positive-only)
+    // Baseline: egraphs-good/egglog (see docs/egglog-upstream-suite-inventory.md)
+    // -------------------------------------------------------------------------
+
+    mod upstream_egglog_ported_smoke {
+        use super::*;
+
+        // For porting egglog relation snippets, we currently represent relations as a DSL “fact”
+        // datatype (each tuple becomes a node). This keeps ported tests runnable without a native
+        // relation API.
+        #[eggplant::dsl]
+        enum UpBoolTagFact {
+            R { i: i64 },
+        }
+
+        #[allow(non_camel_case_types)]
+        #[eggplant::func(output = bool, no_merge)]
+        struct UpBoolTagF {
+            i: i64,
+        }
+
+        #[test]
+        fn upstream_primitives_egg() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxPrim, MyPatRecPrim);
+
+            let ruleset = MyTxPrim::new_ruleset("upstream_primitives_egg");
+            MyTxPrim::add_rule(
+                "upstream_primitives_egg",
+                ruleset,
+                || {
+                    #[eggplant::pat_vars]
+                    struct Unit<PR: PatRecSgl> {}
+
+                    let add_ok = ((&2_i64).as_handle() + (&2_i64).as_handle()).eq(&4_i64);
+                    let sub_ok1 = ((&2_i64).as_handle() - (&1_i64).as_handle()).eq(&1_i64);
+                    let sub_ok2 = ((&1_i64).as_handle() - (&2_i64).as_handle()).eq(&-1_i64);
+                    let lt_ok = (&1_i64).as_handle().lt(&2_i64);
+                    let gt_ok = (&1_i64).as_handle().gt(&-2_i64);
+
+                    Unit::new()
+                        .assert(add_ok)
+                        .assert(sub_ok1)
+                        .assert(sub_ok2)
+                        .assert(lt_ok)
+                        .assert(gt_ok)
+                },
+                |_ctx, _pat| {},
+            );
+
+            let report = MyTxPrim::run_ruleset(ruleset, RunConfig::Once);
+            assert!(
+                report
+                    .num_matches_per_rule
+                    .get("@upstream_primitives_egg")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0
+            );
+        }
+
+        #[test]
+        fn upstream_i64_to_string_egg() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxI64, MyPatRecI64);
+
+            let ruleset = MyTxI64::new_ruleset("upstream_i64_to_string_egg");
+            MyTxI64::add_rule(
+                "upstream_i64_to_string_egg",
+                ruleset,
+                || {
+                    #[eggplant::pat_vars]
+                    struct Unit<PR: PatRecSgl> {}
+
+                    let s = prim_call::<String>("to-string", vec![(&20_i64).into_handle_ty()]);
+                    Unit::new().assert(s.eq(&"20".to_string()))
+                },
+                |_ctx, _pat| {},
+            );
+
+            let report = MyTxI64::run_ruleset(ruleset, RunConfig::Once);
+            assert!(
+                report
+                    .num_matches_per_rule
+                    .get("@upstream_i64_to_string_egg")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0
+            );
+        }
+
+        #[test]
+        fn upstream_bool_egg_primitives() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxBool, MyPatRecBool);
+
+            let ruleset = MyTxBool::new_ruleset("upstream_bool_egg_primitives");
+            MyTxBool::add_rule(
+                "upstream_bool_egg_primitives",
+                ruleset,
+                || {
+                    #[eggplant::pat_vars]
+                    struct Unit<PR: PatRecSgl> {}
+
+                    let and_tt = prim_call::<bool>(
+                        "and",
+                        vec![(&true).into_handle_ty(), (&true).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let and_tf = prim_call::<bool>(
+                        "and",
+                        vec![(&true).into_handle_ty(), (&false).into_handle_ty()],
+                    )
+                    .eq(&false);
+                    let or_tf = prim_call::<bool>(
+                        "or",
+                        vec![(&true).into_handle_ty(), (&false).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let or_tf_ne_false = prim_call::<bool>(
+                        "or",
+                        vec![(&true).into_handle_ty(), (&false).into_handle_ty()],
+                    )
+                    .ne(&false);
+
+                    let eq_11 = prim_call::<bool>(
+                        "bool-=",
+                        vec![(&1_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let eq_mm = prim_call::<bool>(
+                        "bool-=",
+                        vec![(&-5_i64).into_handle_ty(), (&-5_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let eq_13 = prim_call::<bool>(
+                        "bool-=",
+                        vec![(&1_i64).into_handle_ty(), (&3_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+                    let eq_31 = prim_call::<bool>(
+                        "bool-=",
+                        vec![(&3_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+
+                    let lt_12 = prim_call::<bool>(
+                        "bool-<",
+                        vec![(&1_i64).into_handle_ty(), (&2_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let lt_21 = prim_call::<bool>(
+                        "bool-<",
+                        vec![(&2_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+                    let lt_11 = prim_call::<bool>(
+                        "bool-<",
+                        vec![(&1_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+
+                    let le_12 = prim_call::<bool>(
+                        "bool-<=",
+                        vec![(&1_i64).into_handle_ty(), (&2_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let le_21 = prim_call::<bool>(
+                        "bool-<=",
+                        vec![(&2_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+                    let le_11 = prim_call::<bool>(
+                        "bool-<=",
+                        vec![(&1_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+
+                    let gt_12 = prim_call::<bool>(
+                        "bool->",
+                        vec![(&1_i64).into_handle_ty(), (&2_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+                    let gt_21 = prim_call::<bool>(
+                        "bool->",
+                        vec![(&2_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let gt_11 = prim_call::<bool>(
+                        "bool->",
+                        vec![(&1_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+
+                    let ge_12 = prim_call::<bool>(
+                        "bool->=",
+                        vec![(&1_i64).into_handle_ty(), (&2_i64).into_handle_ty()],
+                    )
+                    .eq(&false);
+                    let ge_21 = prim_call::<bool>(
+                        "bool->=",
+                        vec![(&2_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+                    let ge_11 = prim_call::<bool>(
+                        "bool->=",
+                        vec![(&1_i64).into_handle_ty(), (&1_i64).into_handle_ty()],
+                    )
+                    .eq(&true);
+
+                    Unit::new()
+                        .assert(and_tt)
+                        .assert(and_tf)
+                        .assert(or_tf)
+                        .assert(or_tf_ne_false)
+                        .assert(eq_11)
+                        .assert(eq_mm)
+                        .assert(eq_13)
+                        .assert(eq_31)
+                        .assert(lt_12)
+                        .assert(lt_21)
+                        .assert(lt_11)
+                        .assert(le_12)
+                        .assert(le_21)
+                        .assert(le_11)
+                        .assert(gt_12)
+                        .assert(gt_21)
+                        .assert(gt_11)
+                        .assert(ge_12)
+                        .assert(ge_21)
+                        .assert(ge_11)
+                },
+                |_ctx, _pat| {},
+            );
+
+            let report = MyTxBool::run_ruleset(ruleset, RunConfig::Once);
+            assert!(
+                report
+                    .num_matches_per_rule
+                    .get("@upstream_bool_egg_primitives")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0
+            );
+        }
+
+        #[test]
+        fn upstream_bool_egg_tag_smoke() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxTag, MyPatRecTag);
+
+            // Egglog snippet:
+            // (relation R (i64))
+            // (function F (i64) bool :no-merge)
+            // (rule ((R i)) ((set (F i) true)))
+            // (R 0) (run 3)
+
+            let r0 = R::<MyTxTag>::new(0);
+            r0.commit();
+
+            let ruleset = MyTxTag::new_ruleset("upstream_bool_tag_rule");
+            MyTxTag::add_rule(
+                "upstream_bool_tag_rule",
+                ruleset,
+                || {
+                    let r = R::query();
+                    #[eggplant::pat_vars_catch]
+                    struct Pat {
+                        r: R,
+                    }
+                },
+                |ctx, pat| {
+                    let i = ctx.devalue(pat.r.i);
+                    ctx.set_up_bool_tag_f(i, true);
+                },
+            );
+            MyTxTag::run_ruleset(ruleset, RunConfig::Once);
+
+            assert_eq!(UpBoolTagF::<MyTxTag>::get(&0), true);
+        }
+    }
+
+    mod upstream_egglog_ported_merge {
+        use super::*;
+
+        #[eggplant::dsl]
+        enum UpMergeBase {
+            X {},
+        }
+
+        #[eggplant::dsl]
+        enum UpMergeTree {
+            Leaf { b: UpMergeBase },
+            Leaf2 { b: UpMergeBase },
+            C1 { a: UpMergeTree, b: UpMergeTree },
+            C2 { a: UpMergeTree, b: UpMergeTree },
+        }
+
+        #[allow(non_camel_case_types)]
+        #[eggplant::func(output = UpMergeTree, merge = "(C2 (C1 old new) (C2 old new))")]
+        struct up_merge_f {
+            x: i64,
+        }
+
+        #[test]
+        fn upstream_complex_merge_func_egg() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxMerge, MyPatRecMerge);
+            use egglog::ast::{Expr, Literal};
+
+            // Port of `tests/complex-merge-func.egg`:
+            // - function merge uses a constructor expression over `old/new`
+            //
+            // Upstream adds commutativity rewrites because egglog doesn't guarantee merge order
+            // when there are multiple pending writes. In this port we keep the positive core
+            // check: sequential `set` uses a deterministic `(old,new)` pair.
+
+            let rebuild = MyTxMerge::new_ruleset("upstream_complex_merge_rebuild");
+
+            let seed1 = MyTxMerge::new_ruleset("upstream_complex_merge_seed1");
+            MyTxMerge::add_rule(
+                "upstream_complex_merge_seed1",
+                seed1,
+                || {
+                    #[eggplant::pat_vars_catch]
+                    struct Unit {}
+                },
+                |ctx, _pat| {
+                    let x = ctx.insert_x();
+                    let leaf = ctx.insert_leaf(x);
+                    ctx.set_up_merge_f(0, leaf);
+                },
+            );
+            MyTxMerge::run_ruleset(seed1, RunConfig::Once);
+            MyTxMerge::run_ruleset(rebuild, RunConfig::Once);
+
+            {
+                let egraph = MyTxMerge::egraph();
+                let mut egraph = egraph.lock().unwrap();
+                let sort = egraph.get_sort_by_name("UpMergeTree").unwrap().clone();
+
+                let (_, got) = egraph
+                    .eval_expr(&Expr::Call(
+                        egglog::span!(),
+                        "up_merge_f".to_string(),
+                        vec![Expr::Lit(egglog::span!(), Literal::Int(0))],
+                    ))
+                    .unwrap();
+                let (_, expected) = egraph
+                    .eval_expr(&Expr::Call(
+                        egglog::span!(),
+                        "Leaf".to_string(),
+                        vec![Expr::Call(egglog::span!(), "X".to_string(), vec![])],
+                    ))
+                    .unwrap();
+                assert_eq!(
+                    egraph.get_canonical_value(got, &sort),
+                    egraph.get_canonical_value(expected, &sort)
+                );
+            }
+
+            let seed2 = MyTxMerge::new_ruleset("upstream_complex_merge_seed2");
+            MyTxMerge::add_rule(
+                "upstream_complex_merge_seed2",
+                seed2,
+                || {
+                    #[eggplant::pat_vars_catch]
+                    struct Unit {}
+                },
+                |ctx, _pat| {
+                    let x = ctx.insert_x();
+                    let leaf2 = ctx.insert_leaf2(x);
+                    ctx.set_up_merge_f(0, leaf2);
+                },
+            );
+            MyTxMerge::run_ruleset(seed2, RunConfig::Once);
+            MyTxMerge::run_ruleset(rebuild, RunConfig::Once);
+
+            {
+                let egraph = MyTxMerge::egraph();
+                let mut egraph = egraph.lock().unwrap();
+                let sort = egraph.get_sort_by_name("UpMergeTree").unwrap().clone();
+
+                let (_, got) = egraph
+                    .eval_expr(&Expr::Call(
+                        egglog::span!(),
+                        "up_merge_f".to_string(),
+                        vec![Expr::Lit(egglog::span!(), Literal::Int(0))],
+                    ))
+                    .unwrap();
+                let (_, expected) = egraph
+                    .eval_expr(&Expr::Call(
+                        egglog::span!(),
+                        "C2".to_string(),
+                        vec![
+                            Expr::Call(
+                                egglog::span!(),
+                                "C1".to_string(),
+                                vec![
+                                    Expr::Call(
+                                        egglog::span!(),
+                                        "Leaf".to_string(),
+                                        vec![Expr::Call(egglog::span!(), "X".to_string(), vec![])],
+                                    ),
+                                    Expr::Call(
+                                        egglog::span!(),
+                                        "Leaf2".to_string(),
+                                        vec![Expr::Call(egglog::span!(), "X".to_string(), vec![])],
+                                    ),
+                                ],
+                            ),
+                            Expr::Call(
+                                egglog::span!(),
+                                "C2".to_string(),
+                                vec![
+                                    Expr::Call(
+                                        egglog::span!(),
+                                        "Leaf".to_string(),
+                                        vec![Expr::Call(egglog::span!(), "X".to_string(), vec![])],
+                                    ),
+                                    Expr::Call(
+                                        egglog::span!(),
+                                        "Leaf2".to_string(),
+                                        vec![Expr::Call(egglog::span!(), "X".to_string(), vec![])],
+                                    ),
+                                ],
+                            ),
+                        ],
+                    ))
+                    .unwrap();
+                assert_eq!(
+                    egraph.get_canonical_value(got, &sort),
+                    egraph.get_canonical_value(expected, &sort)
+                );
+            }
+        }
+
+        #[eggplant::dsl]
+        enum UpMergeN {
+            Node { i: i64 },
+        }
+
+        #[allow(non_camel_case_types)]
+        #[eggplant::func(output = i64, merge = "(min old new)")]
+        struct up_merge_distance {
+            a: UpMergeN,
+            b: UpMergeN,
+        }
+
+        #[test]
+        fn upstream_merge_during_rebuild_egg() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxDist, MyPatRecDist);
+            use egglog::ast::{Expr, Literal};
+
+            // Port of `tests/merge-during-rebuild.egg`.
+            let a = Node::<MyTxDist>::new(0);
+            let b = Node::<MyTxDist>::new(1);
+            let x = Node::<MyTxDist>::new(2);
+            let y = Node::<MyTxDist>::new(3);
+            a.commit();
+            b.commit();
+            x.commit();
+            y.commit();
+
+            let a_v: Value<UpMergeN<(), NodeTy>> = Value::new(MyTxDist::value(&a).val);
+            let b_v: Value<UpMergeN<(), NodeTy>> = Value::new(MyTxDist::value(&b).val);
+            let x_v: Value<UpMergeN<(), NodeTy>> = Value::new(MyTxDist::value(&x).val);
+            let y_v: Value<UpMergeN<(), NodeTy>> = Value::new(MyTxDist::value(&y).val);
+            let a_v_seed = a_v.clone();
+            let b_v_seed = b_v.clone();
+            let x_v_seed = x_v.clone();
+            let y_v_seed = y_v.clone();
+
+            let seed = MyTxDist::new_ruleset("upstream_merge_during_rebuild_seed");
+            MyTxDist::add_rule(
+                "upstream_merge_during_rebuild_seed",
+                seed,
+                || {
+                    #[eggplant::pat_vars_catch]
+                    struct Unit {}
+                },
+                move |ctx, _pat| {
+                    ctx.set_up_merge_distance(x_v_seed.clone(), y_v_seed.clone(), 1);
+                    ctx.set_up_merge_distance(a_v_seed.clone(), b_v_seed.clone(), 2);
+                    ctx.union(a_v_seed.clone(), x_v_seed.clone());
+                    ctx.union(b_v_seed.clone(), y_v_seed.clone());
+                },
+            );
+
+            // Force a rebuild/merge pass.
+            let rebuild = MyTxDist::new_ruleset("upstream_merge_during_rebuild_rebuild");
+            let report = MyTxDist::run_ruleset(seed, RunConfig::Once);
+            assert!(report.updated);
+            let report2 = MyTxDist::run_ruleset(rebuild, RunConfig::Once);
+            assert!(report2.iterations.len() <= 2);
+
+            // After unions, the min-merge should ensure the distance does not increase.
+            let egraph = MyTxDist::egraph();
+            let mut egraph = egraph.lock().unwrap();
+            let eval_distance = |egraph: &mut egglog::EGraph, i0: i64, i1: i64| -> i64 {
+                let (_, v) = egraph
+                    .eval_expr(&Expr::Call(
+                        egglog::span!(),
+                        "up_merge_distance".to_string(),
+                        vec![
+                            Expr::Call(
+                                egglog::span!(),
+                                "Node".to_string(),
+                                vec![Expr::Lit(egglog::span!(), Literal::Int(i0))],
+                            ),
+                            Expr::Call(
+                                egglog::span!(),
+                                "Node".to_string(),
+                                vec![Expr::Lit(egglog::span!(), Literal::Int(i1))],
+                            ),
+                        ],
+                    ))
+                    .unwrap();
+                egraph.value_to_base::<i64>(v)
+            };
+            assert_eq!(eval_distance(&mut egraph, 2, 3), 1);
+            assert_eq!(eval_distance(&mut egraph, 0, 1), 1);
+        }
+
+        #[allow(non_camel_case_types)]
+        #[eggplant::func(output = i64, merge = "(min old new)")]
+        struct up_merge_saturates_foo {}
+
+        #[test]
+        fn upstream_merge_saturates_egg() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxSat, MyPatRecSat);
+
+            // Port of `tests/merge-saturates.egg` (positive-only):
+            // repeated `set` via rule should not cause updates when the merge keeps the old value.
+            let seed = MyTxSat::new_ruleset("upstream_merge_saturates_seed0");
+            MyTxSat::add_rule(
+                "upstream_merge_saturates_seed0",
+                seed,
+                || {
+                    #[eggplant::pat_vars_catch]
+                    struct Unit {}
+                },
+                |ctx, _pat| {
+                    ctx.set_up_merge_saturates_foo(0);
+                },
+            );
+            MyTxSat::run_ruleset(seed, RunConfig::Once);
+
+            let ruleset = MyTxSat::new_ruleset("upstream_merge_saturates_egg");
+            MyTxSat::add_rule(
+                "upstream_merge_saturates_egg",
+                ruleset,
+                || {
+                    let f = up_merge_saturates_foo::query();
+                    #[eggplant::pat_vars_catch]
+                    struct Pat {
+                        f: i64,
+                    }
+                },
+                |ctx, _pat| {
+                    // `(set (foo) 1)`; merged with `(min old new)` should preserve old=0.
+                    ctx.set_up_merge_saturates_foo(1);
+                },
+            );
+
+            let report = MyTxSat::run_ruleset(ruleset, RunConfig::Sat);
+            assert_eq!(up_merge_saturates_foo::<MyTxSat>::get(()), 0);
+            assert!(
+                report
+                    .num_matches_per_rule
+                    .get("@upstream_merge_saturates_egg")
+                    .copied()
+                    .unwrap_or(0)
+                    > 0
+            );
+            assert!(
+                report.iterations.len() <= 2,
+                "merge should prevent updates so saturate stops immediately"
+            );
+        }
+    }
+
+    mod upstream_egglog_ported_vec_set {
+        use super::*;
+        use egglog::ast::{Expr, Literal};
+
+        fn int(i: i64) -> Expr {
+            Expr::Lit(egglog::span!(), Literal::Int(i))
+        }
+
+        fn call(name: &str, args: Vec<Expr>) -> Expr {
+            Expr::Call(egglog::span!(), name.to_string(), args)
+        }
+
+        fn assert_expr_eq(egraph: &mut egglog::EGraph, lhs: Expr, rhs: Expr) {
+            let (lhs_sort, lhs_v) = egraph.eval_expr(&lhs).unwrap();
+            let (rhs_sort, rhs_v) = egraph.eval_expr(&rhs).unwrap();
+            assert_eq!(lhs_sort.name(), rhs_sort.name());
+            assert_eq!(
+                egraph.get_canonical_value(lhs_v, &lhs_sort),
+                egraph.get_canonical_value(rhs_v, &lhs_sort)
+            );
+        }
+
+        fn assert_expr_ne(egraph: &mut egglog::EGraph, lhs: Expr, rhs: Expr) {
+            let (lhs_sort, lhs_v) = egraph.eval_expr(&lhs).unwrap();
+            let (rhs_sort, rhs_v) = egraph.eval_expr(&rhs).unwrap();
+            assert_eq!(lhs_sort.name(), rhs_sort.name());
+            assert_ne!(
+                egraph.get_canonical_value(lhs_v, &lhs_sort),
+                egraph.get_canonical_value(rhs_v, &lhs_sort)
+            );
+        }
+
+        #[eggplant::container]
+        struct UpVecIVec {
+            inner: VecContainer<i64>,
+        }
+
+        #[test]
+        fn upstream_vec_egg_builtins_smoke() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxVecEgg, MyPatRecVecEgg);
+
+            // Port of `tests/vec.egg` (positive-only core checks).
+            let egraph = MyTxVecEgg::egraph();
+            let mut egraph = egraph.lock().unwrap();
+
+            // vec-of vs push/empty
+            assert_expr_eq(
+                &mut egraph,
+                call("vec-of", vec![int(1), int(2)]),
+                call(
+                    "vec-push",
+                    vec![
+                        call("vec-push", vec![call("vec-empty", vec![]), int(1)]),
+                        int(2),
+                    ],
+                ),
+            );
+
+            // vec-append
+            assert_expr_eq(
+                &mut egraph,
+                call(
+                    "vec-append",
+                    vec![
+                        call("vec-of", vec![int(1), int(2)]),
+                        call("vec-of", vec![int(3), int(4)]),
+                    ],
+                ),
+                call("vec-of", vec![int(1), int(2), int(3), int(4)]),
+            );
+
+            // vec-pop
+            assert_expr_eq(
+                &mut egraph,
+                call(
+                    "vec-pop",
+                    vec![call("vec-of", vec![int(1), int(2), int(3)])],
+                ),
+                call("vec-of", vec![int(1), int(2)]),
+            );
+
+            // contains / not-contains
+            // `vec-contains` / `vec-not-contains` are partial primitives (`-?> ()`): they succeed
+            // with `()` when the predicate holds, and fail otherwise.
+            assert!(
+                egraph
+                    .eval_expr(&call(
+                        "vec-not-contains",
+                        vec![call("vec-of", vec![int(1), int(2), int(3)]), int(4)],
+                    ))
+                    .is_ok()
+            );
+            assert!(
+                egraph
+                    .eval_expr(&call(
+                        "vec-contains",
+                        vec![call("vec-of", vec![int(1), int(2), int(3)]), int(2)],
+                    ))
+                    .is_ok()
+            );
+
+            // length
+            let (_, v) = egraph
+                .eval_expr(&call(
+                    "vec-length",
+                    vec![call("vec-of", vec![int(1), int(2), int(3)])],
+                ))
+                .unwrap();
+            assert_eq!(egraph.value_to_base::<i64>(v), 3);
+
+            // vec-get
+            let (_, v) = egraph
+                .eval_expr(&call(
+                    "vec-get",
+                    vec![call("vec-of", vec![int(1), int(2), int(3)]), int(1)],
+                ))
+                .unwrap();
+            assert_eq!(egraph.value_to_base::<i64>(v), 2);
+
+            // vec-set
+            assert_expr_eq(
+                &mut egraph,
+                call(
+                    "vec-set",
+                    vec![call("vec-of", vec![int(1), int(2), int(3)]), int(1), int(4)],
+                ),
+                call("vec-of", vec![int(1), int(4), int(3)]),
+            );
+        }
+
+        #[allow(non_camel_case_types)]
+        #[eggplant::dsl]
+        enum UpVecX {
+            a {},
+            b {},
+        }
+
+        #[eggplant::container]
+        struct UpVecVX {
+            inner: VecContainer<UpVecX>,
+        }
+
+        #[test]
+        fn upstream_vec_egg_rebuild_smoke() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxVecRb, MyPatRecVecRb);
+
+            // Port of `tests/vec.egg` rebuild check:
+            // if elements become equal via union, the containing vectors rebuild to equal reps.
+            let egraph = MyTxVecRb::egraph();
+            let mut egraph = egraph.lock().unwrap();
+            let p = call("vec-of", vec![call("a", vec![])]);
+            let q = call("vec-of", vec![call("b", vec![])]);
+            assert_expr_ne(&mut egraph, p.clone(), q.clone());
+            drop(egraph);
+
+            let seed = MyTxVecRb::new_ruleset("upstream_vec_rebuild_seed_union");
+            MyTxVecRb::add_rule(
+                "upstream_vec_rebuild_seed_union",
+                seed,
+                || {
+                    #[eggplant::pat_vars_catch]
+                    struct Unit {}
+                },
+                |ctx, _pat| {
+                    let a = ctx.insert_a();
+                    let b = ctx.insert_b();
+                    ctx.union(a, b);
+                },
+            );
+
+            // Running any ruleset triggers a rebuild pass; keep it explicit.
+            let rebuild = MyTxVecRb::new_ruleset("upstream_vec_rebuild_rebuild");
+            MyTxVecRb::run_ruleset(seed, RunConfig::Once);
+            MyTxVecRb::run_ruleset(rebuild, RunConfig::Once);
+
+            let egraph = MyTxVecRb::egraph();
+            let mut egraph = egraph.lock().unwrap();
+            assert_expr_eq(&mut egraph, p, q);
+        }
+
+        #[eggplant::container]
+        struct UpSetISetBase {
+            inner: SetContainer<i64>,
+        }
+
+        #[test]
+        fn upstream_web_demo_set_egg_builtins_smoke() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxSetEgg, MyPatRecSetEgg);
+
+            // Port of `tests/web-demo/set.egg` (builtin container ops + reify core).
+            let egraph = MyTxSetEgg::egraph();
+            let mut egraph = egraph.lock().unwrap();
+
+            // set-of
+            assert_expr_eq(
+                &mut egraph,
+                call("set-of", vec![int(1), int(2)]),
+                call(
+                    "set-insert",
+                    vec![
+                        call("set-insert", vec![call("set-empty", vec![]), int(1)]),
+                        int(2),
+                    ],
+                ),
+            );
+            assert_expr_eq(
+                &mut egraph,
+                call("set-of", vec![int(1), int(2)]),
+                call(
+                    "set-insert",
+                    vec![
+                        call("set-insert", vec![call("set-empty", vec![]), int(2)]),
+                        int(1),
+                    ],
+                ),
+            );
+
+            // set-union
+            assert_expr_eq(
+                &mut egraph,
+                call(
+                    "set-union",
+                    vec![
+                        call("set-of", vec![int(1), int(2)]),
+                        call("set-of", vec![int(3), int(4)]),
+                    ],
+                ),
+                call("set-of", vec![int(1), int(2), int(3), int(4)]),
+            );
+
+            // set-length
+            let (_, v) = egraph
+                .eval_expr(&call("set-length", vec![call("set-empty", vec![])]))
+                .unwrap();
+            assert_eq!(egraph.value_to_base::<i64>(v), 0);
+            let (_, v) = egraph
+                .eval_expr(&call(
+                    "set-length",
+                    vec![call("set-of", vec![int(1), int(1), int(1)])],
+                ))
+                .unwrap();
+            assert_eq!(egraph.value_to_base::<i64>(v), 1);
+            let (_, v) = egraph
+                .eval_expr(&call(
+                    "set-length",
+                    vec![call("set-of", vec![int(1), int(-1), int(1), int(1)])],
+                ))
+                .unwrap();
+            assert_eq!(egraph.value_to_base::<i64>(v), 2);
+
+            // set-get
+            for (idx, expected) in [(0, 1), (1, 2), (2, 4), (3, -1)] {
+                let (_, got) = egraph
+                    .eval_expr(&call(
+                        "set-get",
+                        vec![
+                            call("set-of", vec![int(1), int(-1), int(2), int(4), int(1)]),
+                            int(idx),
+                        ],
+                    ))
+                    .unwrap();
+                assert_eq!(egraph.value_to_base::<i64>(got), expected);
+            }
+
+            // set-remove
+            assert_expr_eq(
+                &mut egraph,
+                call(
+                    "set-remove",
+                    vec![call("set-of", vec![int(1), int(2), int(3)]), int(3)],
+                ),
+                call("set-of", vec![int(1), int(2)]),
+            );
+        }
+
+        #[test]
+        fn upstream_web_demo_set_egg_reify_smoke() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxSetReify, MyPatRecSetReify);
+
+            // Black-box port of the “reify set via rules” block from `tests/web-demo/set.egg`.
+            // We keep this as native egglog for now because base-element container sorts are not
+            // yet fully supported as first-class eggplant DSL fields/patterns.
+            let program = r#"
+(sort ISetBase (Set i64))
+
+;; Reify set
+(sort ISet)
+(constructor IS (ISetBase) ISet)
+
+(function ISet-get (ISet i64) i64 :no-merge)
+(rule ((IS x) (> (set-length x) 0))
+    ((set (ISet-get (IS x) 0) (set-get x 0))))
+(rule ((ISet-get (IS x) j)
+     (= i (+ j 1)) (< i (set-length x)))
+    ((set (ISet-get (IS x) i) (set-get x i))))
+
+(let $myset (IS (set-of 2 4 1 4 -1)))
+(run 100)
+(check (= 1 (ISet-get $myset 0)))
+(check (= 2 (ISet-get $myset 1)))
+(check (= 4 (ISet-get $myset 2)))
+(check (= -1 (ISet-get $myset 3)))
+"#;
+
+            let egraph = MyTxSetReify::egraph();
+            let mut egraph = egraph.lock().unwrap();
+            let cmds = egraph.parse_program(None, program).unwrap();
+            egraph.run_program(cmds).unwrap();
+        }
+    }
+
+    mod fib_demo_function_query {
+        use super::*;
+
+        tx_rx_vt_pr!(MyTxFib, MyPatRecFib);
+
+        #[allow(non_camel_case_types)]
+        #[eggplant::func(output = i64, no_merge)]
+        struct fib {
+            x: i64,
+        }
+
+        #[eggplant::pat_vars]
+        struct StepPat<PR: PatRecSgl> {
+            x2: i64,
+            f0: i64,
+            f1: i64,
+        }
+
+        fn step_pat<PR: PatRecSgl>() -> StepPat<PR> {
+            let x = fib::x();
+            let x1 = fib::x().named("x1");
+            let x2 = fib::x().named("x2");
+
+            let x_plus_1 = x.handle() + (&1_i64).as_handle();
+            let x_plus_2 = x.handle() + (&2_i64).as_handle();
+            PR::on_new_constraint(x1.handle().eq(&x_plus_1));
+            PR::on_new_constraint(x2.handle().eq(&x_plus_2));
+
+            let f0 = fib::query(&x);
+            let f1 = fib::query(&x1);
+
+            StepPat::new(x2, f0, f1)
+        }
+
+        #[test]
+        fn fib_demo_function_table_query_matches_egglog() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            let seed = MyTxFib::new_ruleset("seed");
+            MyTxFib::add_rule(
+                "seed",
+                seed,
+                || {
+                    #[eggplant::pat_vars_catch]
+                    struct Unit {}
+                },
+                |ctx, _pat| {
+                    ctx.set_fib(0, 0);
+                    ctx.set_fib(1, 1);
+                },
+            );
+            MyTxFib::run_ruleset(seed, RunConfig::Once);
+
+            let step = MyTxFib::new_ruleset("step");
+            MyTxFib::add_rule("step", step, step_pat, |ctx, pat| {
+                let x2 = ctx.devalue(pat.x2);
+                let f0 = ctx.devalue(pat.f0);
+                let f1 = ctx.devalue(pat.f1);
+                if ctx.try_read_fib(x2).is_none() {
+                    ctx.set_fib(x2, f0 + f1);
+                }
+            });
+            MyTxFib::run_ruleset(step, RunConfig::Times(7));
+
+            assert_eq!(fib::<MyTxFib>::get(&7), 13);
+        }
+    }
 }
 
 #[cfg(test)]
 mod proofs_api_tests {
     use crate::{self as eggplant, instances::tx_rx_vt_pr::TxRxVTPR};
-    use eggplant::prelude::*;
     use egglog::ast::Expr;
     use egglog::span;
+    use eggplant::prelude::*;
 
     #[eggplant::dsl]
     pub enum ProofExpr {
@@ -272,7 +1254,8 @@ mod proofs_api_tests {
             "ProofConst".to_owned(),
             vec![Expr::Lit(span!(), egglog::ast::Literal::Int(6))],
         );
-        let _ = MyTxProof::sgl().value_equiv_expr_ast("ProofExpr", expected_value, const6_ast.clone());
+        let _ =
+            MyTxProof::sgl().value_equiv_expr_ast("ProofExpr", expected_value, const6_ast.clone());
         let _ = MyTxProof::sgl().prove_eq_pretty_expr_ast("ProofExpr", mul_ast, const6_ast);
 
         // 3) Regression: proof export should work for non-canonical values too (class-id/canon-rep keying).

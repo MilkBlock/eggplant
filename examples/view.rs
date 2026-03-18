@@ -58,5 +58,7 @@ fn main() {
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot");
     #[cfg(feature = "viewer")]
-    MyTx::view().unwrap();
+    if std::env::var_os("EGGPLANT_VIEW").is_some() {
+        MyTx::view().unwrap();
+    }
 }

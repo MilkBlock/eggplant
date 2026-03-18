@@ -1,0 +1,59 @@
+name: CodSpeed
+
+on:
+  push:
+    branches:
+      - main
+      - ui
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # The eggplant repo depends on a sibling path `../stable/egglog_sync_serialize_raw`.
+  # CI recreates that layout by cloning egglog into the expected directory.
+  EGGLOG_REPO: MilkBlock/egglog
+  # Baseline egglog revision (override in PRs to compare changes).
+  EGGLOG_REV: main
+
+jobs:
+  benches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout eggplant
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Checkout egglog fork for path dependency
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p ../stable
+          if [ ! -d ../stable/egglog_sync_serialize_raw/.git ]; then
+            git clone --no-tags --filter=blob:none --depth 1 "https://github.com/${EGGLOG_REPO}.git" ../stable/egglog_sync_serialize_raw
+          fi
+          pushd ../stable/egglog_sync_serialize_raw
+          git fetch --no-tags --filter=blob:none --depth 1 origin "${EGGLOG_REV}"
+          git checkout --detach FETCH_HEAD
+          popd
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+
+      - name: Install cargo-codspeed
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-codspeed
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+
+      - name: Run benchmarks
+        uses: CodSpeedHQ/action@v4
+        with:
+          run: cargo codspeed run --bench insert_1000_func

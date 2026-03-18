@@ -124,7 +124,12 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
         }
 
         // If oxdraw routing (Class/Full/Smooth) is active and a preplanned polyline exists, draw that.
-        if matches!(ctx.style.edge_router_kind(), crate::settings::EdgeRouterKind::OxdrawClass | crate::settings::EdgeRouterKind::OxdrawFull | crate::settings::EdgeRouterKind::OxdrawSmooth) {
+        if matches!(
+            ctx.style.edge_router_kind(),
+            crate::settings::EdgeRouterKind::OxdrawClass
+                | crate::settings::EdgeRouterKind::OxdrawFull
+                | crate::settings::EdgeRouterKind::OxdrawSmooth
+        ) {
             if let Some(routes) = ctx.routes {
                 let key = ((start.id().index() as u128) << 64)
                     ^ ((end.id().index() as u128) << 32)
@@ -138,7 +143,8 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
                             if pts.len() >= 2 {
                                 // For 2 points, just a line
                                 if pts.len() == 2 {
-                                    shapes.push(egui::Shape::line_segment([pts[0], pts[1]], stroke));
+                                    shapes
+                                        .push(egui::Shape::line_segment([pts[0], pts[1]], stroke));
                                 } else {
                                     // Duplicate endpoints for tangents
                                     let mut p = Vec::with_capacity(pts.len() + 2);
@@ -153,9 +159,14 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
                                         // Catmull-Rom to cubic Bezier (uniform, alpha=0)
                                         let c1 = p1 + (p2 - p0) * (1.0 / 6.0);
                                         let c2 = p2 - (p3 - p1) * (1.0 / 6.0);
-                                        shapes.push(egui::Shape::CubicBezier(egui::epaint::CubicBezierShape::from_points_stroke(
-                                            [p1, c1, c2, p2], false, egui::Color32::TRANSPARENT, stroke
-                                        )));
+                                        shapes.push(egui::Shape::CubicBezier(
+                                            egui::epaint::CubicBezierShape::from_points_stroke(
+                                                [p1, c1, c2, p2],
+                                                false,
+                                                egui::Color32::TRANSPARENT,
+                                                stroke,
+                                            ),
+                                        ));
                                     }
                                 }
                             }
@@ -173,7 +184,9 @@ impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
                         let dir = (end - prev).normalized();
                         let tip_size = self.tip_size;
                         let angle = self.tip_angle;
-                        let rot = |v: V2, a: f32| V2::new(a.cos() * v.x - a.sin() * v.y, a.sin() * v.x + a.cos() * v.y);
+                        let rot = |v: V2, a: f32| {
+                            V2::new(a.cos() * v.x - a.sin() * v.y, a.sin() * v.x + a.cos() * v.y)
+                        };
                         let v1 = rot(dir, angle) * tip_size;
                         let v2 = rot(dir, -angle) * tip_size;
                         let p1 = end - v1;

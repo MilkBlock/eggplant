@@ -11,6 +11,7 @@ readme.workspace = true
 [features]
 default = ["viewer"]
 viewer = ["eggplant-viewer", "dep:eframe"]
+eggcc_extraction = []
 
 [dependencies]
 derive_more = { version = "2.0.1", features = [
@@ -46,9 +47,15 @@ divan = { package = "codspeed-divan-compat", version = "4.0.3" }
 glob = "0.3"
 mimalloc = "0.1"
 rayon = "1.10"
+egglog_upstream = { package = "egglog", git = "https://github.com/egraphs-good/egglog.git", rev = "afd5c0752b3cd0bc15d3e234273a18220787ee25" }
+egglog_upstream_reports = { package = "egglog-reports", git = "https://github.com/egraphs-good/egglog.git", rev = "afd5c0752b3cd0bc15d3e234273a18220787ee25" }
 
 [[bench]]
 name = "ci_benchmarking"
+harness = false
+
+[[bench]]
+name = "insert_1000_func"
 harness = false
 
 # [[bin]]
@@ -90,3 +97,6 @@ crossbeam = "0.8"
 eframe = "0.32"
 ureq = "2.10"
 criterion = { version = "0.5", features = ["html_reports"] }
+
+[profile.bench]
+debug = true

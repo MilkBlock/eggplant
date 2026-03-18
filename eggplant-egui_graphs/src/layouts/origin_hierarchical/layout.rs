@@ -74,10 +74,16 @@ impl Layout<State> for OriginHierarchical {
         for n in g.g().node_indices() {
             let deg = g.g().neighbors_directed(n, Incoming).count();
             indegree.insert(n, deg);
-            if deg == 0 { level.insert(n, 0); }
+            if deg == 0 {
+                level.insert(n, 0);
+            }
         }
         let mut q: VecDeque<NodeIndex<DefaultIx>> = VecDeque::new();
-        for (&n, &deg) in indegree.iter() { if deg == 0 { q.push_back(n); } }
+        for (&n, &deg) in indegree.iter() {
+            if deg == 0 {
+                q.push_back(n);
+            }
+        }
 
         while let Some(u) = q.pop_front() {
             let lu = *level.get(&u).unwrap_or(&0);
@@ -86,7 +92,9 @@ impl Layout<State> for OriginHierarchical {
                 *e = e.saturating_sub(1);
                 let lv = level.entry(v).or_insert(0);
                 *lv = (*lv).max(lu + 1);
-                if *e == 0 { q.push_back(v); }
+                if *e == 0 {
+                    q.push_back(v);
+                }
             }
         }
         // Handle cycles: assign remaining nodes a best-effort level
@@ -96,15 +104,25 @@ impl Layout<State> for OriginHierarchical {
 
         // 2) Group by levels, assign columns left-to-right per level
         let mut buckets: HashMap<usize, Vec<NodeIndex<DefaultIx>>> = HashMap::new();
-        for (n, &lv) in level.iter() { buckets.entry(lv).or_default().push(*n); }
-        for v in buckets.values_mut() { v.sort_by_key(|n| n.index()); }
+        for (n, &lv) in level.iter() {
+            buckets.entry(lv).or_default().push(*n);
+        }
+        for v in buckets.values_mut() {
+            v.sort_by_key(|n| n.index());
+        }
 
         // 3) Place nodes according to orientation
         for (lv, row) in buckets.iter() {
             for (i, n) in row.iter().enumerate() {
                 let (x, y) = match self.state.orientation {
-                    Orientation::TopDown => (i as f32 * self.state.col_dist, *lv as f32 * self.state.row_dist),
-                    Orientation::LeftRight => (*lv as f32 * self.state.row_dist, i as f32 * self.state.col_dist),
+                    Orientation::TopDown => (
+                        i as f32 * self.state.col_dist,
+                        *lv as f32 * self.state.row_dist,
+                    ),
+                    Orientation::LeftRight => (
+                        *lv as f32 * self.state.row_dist,
+                        i as f32 * self.state.col_dist,
+                    ),
                 };
                 let node = &mut g.g_mut()[*n];
                 node.set_location(Pos2::new(x, y));
@@ -114,7 +132,10 @@ impl Layout<State> for OriginHierarchical {
         self.state.triggered = true;
     }
 
-    fn state(&self) -> State { self.state.clone() }
-    fn from_state(state: State) -> impl Layout<State> { OriginHierarchical { state } }
+    fn state(&self) -> State {
+        self.state.clone()
+    }
+    fn from_state(state: State) -> impl Layout<State> {
+        OriginHierarchical { state }
+    }
 }
-
