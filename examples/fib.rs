@@ -8,10 +8,10 @@ struct Fib {
     x: i64,
 }
 fn main() {
-    let ruleset = MyTx::new_ruleset("hello");
+    let seed_ruleset = MyTx::new_ruleset("fib_seed");
     MyTx::add_rule(
-        "hello",
-        ruleset,
+        "fib_seed",
+        seed_ruleset,
         || {
             #[eggplant::pat_vars_catch]
             struct Unit {}
@@ -21,7 +21,23 @@ fn main() {
             ctx.set_fib(2, 3);
         },
     );
-    MyTx::run_ruleset(ruleset, RunConfig::Once);
+
+    let read_ruleset = MyTx::new_ruleset("fib_read");
+    MyTx::add_rule(
+        "fib_read",
+        read_ruleset,
+        || {
+            #[eggplant::pat_vars_catch]
+            struct Unit {}
+        },
+        |ctx, _pat| {
+            let fib_val = ctx.read_fib(2);
+            println!("{}", fib_val);
+        },
+    );
+
+    MyTx::run_ruleset(seed_ruleset, RunConfig::Once);
+    MyTx::run_ruleset(read_ruleset, RunConfig::Once);
     Fib::<MyTx>::get(&2);
     MyTx::egraph_to_dot("egraph.dot");
 }

@@ -2,7 +2,7 @@
 mod tests {
     use crate::{self as eggplant, tx_rx_vt_pr};
     use eggplant::prelude::*;
-    use std::sync::{Arc, Mutex};
+    use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
 
     #[eggplant::dsl]
     enum Expr {
@@ -42,6 +42,68 @@ mod tests {
         });
         MyTx::run_ruleset(ruleset, RunConfig::Once);
         assert_eq!(*executed.lock().unwrap(), true);
+    }
+
+    #[eggplant::dsl]
+    enum FuncS {
+        SConst { n: i64 },
+    }
+    #[eggplant::dsl]
+    enum FuncE {
+        EConst { n: i64 },
+    }
+    #[eggplant::func(output=FuncE)]
+    struct MAccumQ {
+        s: FuncS,
+    }
+
+    #[test]
+    fn func_query_pattern_smoke() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        tx_rx_vt_pr!(MyTxFunc, MyPatRecFunc);
+
+        let init = MyTxFunc::new_ruleset("func_query_init");
+        MyTxFunc::add_rule(
+            "seed_func",
+            init,
+            || {
+                #[eggplant::pat_vars_catch]
+                struct Unit {}
+            },
+            |ctx, _pat| {
+                let s = SConst::<MyTxFunc>::new(1);
+                s.commit();
+                let e = EConst::<MyTxFunc>::new(2);
+                e.commit();
+                let sv = MyTxFunc::value(&s);
+                let ev = MyTxFunc::value(&e);
+                ctx.set_m_accum_q(sv, ev);
+            },
+        );
+        MyTxFunc::run_ruleset(init, RunConfig::Once);
+
+        let ruleset = MyTxFunc::new_ruleset("func_query_pattern");
+        let hit = Arc::new(AtomicBool::new(false));
+        let hit2 = Arc::clone(&hit);
+        MyTxFunc::add_rule(
+            "match_func_output",
+            ruleset,
+            || {
+                let s = FuncS::query_leaf();
+                let e = MAccumQ::query(&s);
+                #[eggplant::pat_vars_catch]
+                struct Pat {
+                    s: FuncS,
+                    e: FuncE,
+                }
+            },
+            move |_ctx, _pat| {
+                hit2.store(true, Ordering::SeqCst);
+            },
+        );
+        MyTxFunc::run_ruleset(ruleset, RunConfig::Once);
+        assert!(hit.load(Ordering::SeqCst));
     }
 
     #[test]
@@ -234,6 +296,50 @@ mod proofs_api_tests {
             assert!(!proof_nonrep.trim().is_empty());
             assert!(proof_nonrep.contains("(name \"@MulPat\")"));
         }
+    }
+}
+
+#[cfg(test)]
+mod egglog_rule_baseline_tests {
+    #[test]
+    fn egglog_native_rule_can_match_func_output_and_build_set_of() {
+        // Baseline for: (rule ((= ?e (MAccum ?s))) ((set (MAccumSet) (set-of ?e))) ...)
+        //
+        // Eggplant `add_rule` cannot express "match over function output" yet; keep this
+        // test as the semantic reference for the desired behavior.
+        let mut egraph = egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(sort IntSet (Set i64))
+(function MAccum (i64) i64 :merge old)
+(function MAccumSet () IntSet :merge (set-union old new))
+
+(set (MAccum 1) 42)
+(ruleset ir-prop)
+(rule
+  ((= ?e (MAccum ?s)))
+  ((set (MAccumSet) (set-of ?e)))
+  :ruleset ir-prop)
+
+(run-schedule (saturate (run ir-prop)))
+(check (= (MAccumSet) (set-of 42)))
+"#,
+            )
+            .expect("egglog baseline should succeed");
+    }
+
+    #[test]
+    #[ignore = "TODO: eggplant add_rule needs function-output pattern support + container Insertable"]
+    fn eggplant_add_rule_should_eventually_support_func_output_match_and_set_of_action() {
+        // Intended future shape (pseudocode):
+        // - `#[eggplant::func] struct MAccum { s: i64 } -> Expr`
+        // - `MAccum::query(&s)` yields `e` such that fact `e = (MAccum s)` is recorded
+        // - action: `ctx.set_m_accum_set(SetContainer::from(vec![e]))` or `ctx.set_m_accum_set_value(ctx.set_of(e))`
+        //
+        // Keep ignored until API exists; this is the spec we want to uphold.
+        unimplemented!()
     }
 }
 // #[cfg(test)]

@@ -20,6 +20,8 @@ pub struct PatRecorder {
     pub root_table: DashMap<PatId, Vec<Sym>>,
     #[debug(skip)]
     pub constraint_table: DashMap<PatId, Vec<Box<dyn IntoConstraintFact>>>,
+    #[debug(skip)]
+    pub table_fact_table: DashMap<PatId, Vec<(TableName, Vec<(VarName, SortName)>)>>,
     _registry: EgglogTypeRegistry,
     /// next_pat_id increment when on_record_end is called
     next_pat_id: AtomicU32,
@@ -73,6 +75,7 @@ impl PatRecorder {
             next_pat_id: AtomicU32::new(0),
             root_table: DashMap::default(),
             constraint_table: DashMap::default(),
+            table_fact_table: DashMap::default(),
         }
     }
     // collect all ancestors of cur_sym, without cur_sym
@@ -261,6 +264,12 @@ impl PatRec for PatRecorder {
             .or_default()
             .push(Box::new(constraint));
     }
+    fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push((query_table, vars));
+    }
 
     fn on_record_start(&self) {
         log::debug!("record start");
@@ -304,6 +313,12 @@ impl PatRec for PatRecorder {
             node.add_table_fact(&mut facts_builder);
         }
         log::debug!("topo:{:?}", topo_syms);
+
+        if let Some(table_facts) = self.table_fact_table.remove(&pat_id) {
+            for (table, vars) in table_facts.1 {
+                facts_builder.add_table_fact(table, vars);
+            }
+        }
 
         match self.constraint_table.remove(&pat_id) {
             Some(constraint_facts) => {

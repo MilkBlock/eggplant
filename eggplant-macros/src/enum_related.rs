@@ -793,7 +793,7 @@ pub fn ctx_set_fn_ts(
     let field_idents = variant2field_ident(&variant);
 
     let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
-    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+    let mut complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_basic, _basic_ty| None,
         |complex, _complex_ty| {
@@ -806,11 +806,24 @@ pub fn ctx_set_fn_ts(
     let (_variant_marker, variant_name) = variant2marker_name(variant);
     let set_fn_name = format_ident!("set_{}", variant_name.to_string().to_snake_case());
     let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+
+    let output_is_basic = matches!(
+        BasicOrComplex::from(output),
+        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
+    );
+    let output_generic = format_ident!("V_out");
+    let output_param_ty = if output_is_basic {
+        quote!(impl eggplant::wrap::Insertable<#output>)
+    } else {
+        complex_generic_idents.push(quote!( #output_generic :#W::EgglogEnumVariantTy));
+        quote!(impl eggplant::wrap::Insertable<#output<(), #output_generic>>)
+    };
+
     (
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) {
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty) {
                 use #W::EgglogFunc;
                 use #W::Value;
                 use #W::Insertable;
@@ -826,13 +839,13 @@ pub fn ctx_set_fn_ts(
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)*output:impl eggplant::wrap::Insertable<#output>) ;
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)*output:#output_param_ty) ;
         },
         // pr insert fn
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>){
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty){
                 self.ctx.#set_fn_name(#(#field_idents,)* output)
             }
         },
@@ -840,7 +853,7 @@ pub fn ctx_set_fn_ts(
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
-            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>);
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty);
         },
     )
 }

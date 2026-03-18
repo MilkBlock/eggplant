@@ -3,7 +3,7 @@ use crate::prelude::{SlotMeta, TxRxVT};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
-    SortName, SymLit, VarName,
+    SortName, SymLit, TableName, VarName,
 };
 use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl};
 use dashmap::DashMap;
@@ -273,6 +273,10 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
     fn on_new_constraint(&self, constraint: impl IntoConstraintFact);
+    #[track_caller]
+    fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        let _ = (query_table, vars);
+    }
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
@@ -301,6 +305,8 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static));
     #[track_caller]
     fn on_new_constraint(constraint: impl IntoConstraintFact);
+    #[track_caller]
+    fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>);
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
@@ -321,6 +327,9 @@ where
     }
     fn on_new_constraint(constraint: impl IntoConstraintFact) {
         Self::sgl().on_new_constraint(constraint);
+    }
+    fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        Self::sgl().on_new_table_fact(query_table, vars);
     }
     fn on_record_start() {
         Self::sgl().on_record_start();
@@ -1092,6 +1101,34 @@ impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
     type MetaTy = ();
     fn to_value(&self, ctx: &RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
+    }
+    fn meta(&self) -> Option<Self::MetaTy> {
+        None
+    }
+}
+
+impl<T, Elem> Insertable<T> for super::SetContainer<Elem>
+where
+    T: super::type_reg::EgglogContainerTy<EleTy = Elem>,
+    Elem: EgglogTy,
+{
+    type MetaTy = ();
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        ctx.intern_container::<T, super::SetContainer<Elem>>(self.clone())
+    }
+    fn meta(&self) -> Option<Self::MetaTy> {
+        None
+    }
+}
+
+impl<T, Elem> Insertable<T> for super::VecContainer<Elem>
+where
+    T: super::type_reg::EgglogContainerTy<EleTy = Elem>,
+    Elem: EgglogTy,
+{
+    type MetaTy = ();
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        ctx.intern_container::<T, super::VecContainer<Elem>>(self.clone())
     }
     fn meta(&self) -> Option<Self::MetaTy> {
         None

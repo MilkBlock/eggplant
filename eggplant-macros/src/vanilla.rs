@@ -124,6 +124,57 @@ pub fn func(
                     }
                 })
                 .collect::<Vec<_>>();
+
+            let can_query = matches!(BasicOrComplex::from(&output), BasicOrComplex::ComplexType)
+                && input_types
+                    .iter()
+                    .all(|ty| matches!(BasicOrComplex::from(&ty.to_token_stream()), BasicOrComplex::ComplexType));
+
+            let query_impl = if can_query {
+                let input_idents = data_struct
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(i, field)| {
+                        field
+                            .ident
+                            .clone()
+                            .unwrap_or_else(|| format_ident!("arg{i}"))
+                    })
+                    .collect::<Vec<_>>();
+                let output_ty_name = quote!(<#output_with_generic as #W::EgglogTy>::TY_NAME);
+                let input_var_sort_pairs = input_idents
+                    .iter()
+                    .zip(input_types_with_generic.iter())
+                    .map(|(ident, ty)| {
+                        quote! {
+                            (
+                                #ident.as_ref().cur_sym().to_string(),
+                                <#ty as #W::EgglogTy>::TY_NAME.to_string()
+                            )
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                quote! {
+                    impl<T:#W::TxSgl + #W::PatRecSgl> #name_func<T> {
+                        #[track_caller]
+                        pub fn query(#(#input_idents: #input_ref_types),*) -> #output_with_generic {
+                            use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                            let out = <#output_with_generic>::query_leaf();
+                            T::on_new_table_fact(
+                                stringify!(#name_func).to_string(),
+                                vec![
+                                    #(#input_var_sort_pairs),*,
+                                    (out.cur_sym().to_string(), #output_ty_name.to_string())
+                                ],
+                            );
+                            out
+                        }
+                    }
+                }
+            } else {
+                quote! {}
+            };
             let _generic_decl = data_struct
                 .fields
                 .iter()
@@ -158,6 +209,7 @@ pub fn func(
                             T::on_func_get::<#name_func<T>>(input)#output_whether_as_ref.clone()
                         }
                     }
+                    #query_impl
                     #INVE::submit!{
                         #W::Decl::EgglogFuncTy{
                             name: stringify!(#name_func),
