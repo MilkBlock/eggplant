@@ -148,6 +148,14 @@ pub struct EgglogTypeRegistry {
     container_node_fns_map: HashMap<(&'static str, &'static str), TermToNode>,
 }
 impl EgglogTypeRegistry {
+    fn normalize_ty_name(ty: &str) -> String {
+        match ty {
+            "Q" => <Q as EgglogTy>::TY_NAME.to_string(),
+            "Z" => <Z as EgglogTy>::TY_NAME.to_string(),
+            _ => ty.to_string(),
+        }
+    }
+
     pub fn new_with_inventory() -> Self {
         let (enum_node_fns_map, variant2type_map) = Self::collect_enum_fns();
         let container_node_fns_map = Self::collect_container_fns();
@@ -208,7 +216,11 @@ impl EgglogTypeRegistry {
                                 .map(|x| Variant {
                                     span: span!(),
                                     name: x.cons_name.to_string(),
-                                    types: x.input.iter().map(|y| y.to_string()).collect(),
+                                    types: x
+                                        .input
+                                        .iter()
+                                        .map(|ty| Self::normalize_ty_name(ty))
+                                        .collect(),
                                     cost: x.cost,
                                     unextractable: x.unextractable,
                                 })
@@ -253,8 +265,8 @@ impl EgglogTypeRegistry {
                         span: span!(),
                         name: name.to_string(),
                         schema: Schema {
-                            input: input.iter().map(<&str>::to_string).collect(),
-                            output: output.to_string(),
+                            input: input.iter().map(|ty| Self::normalize_ty_name(ty)).collect(),
+                            output: Self::normalize_ty_name(output),
                         },
                         merge: merge.map(|m| {
                             parser.get_expr_from_string(None, m).unwrap_or_else(|err| {
