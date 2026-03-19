@@ -33,6 +33,13 @@ graphviz-rust = "0.9.5"
 serde.workspace = true
 serde_json.workspace = true
 
+[dev-dependencies]
+divan = { version = "4.4.1", package = "codspeed-divan-compat" }
+
+[[bench]]
+name = "eggplant_bench"
+harness = false
+
 [workspace]
 members = ["eggplant-macros", "eggplant-transpiler"]
 resolver = "2"                                       # recommended 2021 Edition
