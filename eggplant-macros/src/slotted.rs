@@ -834,6 +834,11 @@ pub fn slotted_dsl(
                     |_, basic_type| Some(quote!(#basic_type)),
                     |_, _| None,
                 );
+                let basic_valued_field_types = variant2mapped_ident_type_list(
+                    variant,
+                    |_, basic_type| Some(quote!(#W::Value<#basic_type>)),
+                    |_, _| None,
+                );
                 let complex_field_types = variant2mapped_ident_type_list(
                     variant,
                     |_, _| None,
@@ -866,6 +871,17 @@ pub fn slotted_dsl(
                             Self {
                                 _itself: #W::Value::new(vals.next().unwrap()),
                                 #(#value_iter),*
+                            }
+                        }
+                    }
+                    impl #W::FromIndexedValues for #valued_variant_name {
+                        fn from_indexed_values(values: &[#E::Value], value_idx: &mut usize) -> Self {
+                            use #W::FromIndexedValues;
+                            let _itself = #W::Value::new(*values.get(*value_idx).unwrap());
+                            *value_idx += 1;
+                            Self {
+                                _itself,
+                                #(#basic_field_idents: <#basic_valued_field_types>::from_indexed_values(values, value_idx),)*
                             }
                         }
                     }
@@ -1356,6 +1372,7 @@ pub fn slotted_pat_vars(
             let (impl_generics, ty_generics, where_clause) = out.generics.split_for_impl();
 
             let ident = &out.ident;
+            let indexed_members = members.clone();
 
             let mut valued_input_struct = out.clone();
             let valued_ident = format_ident!("Valued{}", valued_input_struct.ident);
@@ -1396,6 +1413,20 @@ pub fn slotted_pat_vars(
                         use #W::FromPlainValuesMetas;
                         Self {
                             #(#members: <#valued_tys as FromPlainValuesMetas<PR>>::from_plain_values_metas(values,metas),)*
+                            _p: std::marker::PhantomData
+                        }
+                    }
+                }
+                impl #impl_generics #W::FromIndexedValuesMetas<PR> for #valued_ident #ty_generics #where_clause {
+                    fn from_indexed_values_metas(
+                        values:&[#E::Value],
+                        value_idx:&mut usize,
+                        metas:&[<PR as #W::PatRecSgl>::MetaTy],
+                        meta_idx:&mut usize
+                    ) -> Self {
+                        use #W::FromIndexedValuesMetas;
+                        Self {
+                            #(#indexed_members: <#valued_tys>::from_indexed_values_metas(values,value_idx,metas,meta_idx),)*
                             _p: std::marker::PhantomData
                         }
                     }

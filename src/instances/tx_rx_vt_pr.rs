@@ -1040,9 +1040,13 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                 } else {
                     None
                 };
-                let valued_pat_vars = P::Valued::from_plain_values_metas(
-                    &mut values.iter().cloned(),
-                    &mut std::iter::repeat(PR::MetaTy::default()),
+                let mut value_idx = 0;
+                let mut meta_idx = 0;
+                let valued_pat_vars = P::Valued::from_indexed_values_metas(
+                    values,
+                    &mut value_idx,
+                    &[],
+                    &mut meta_idx,
                 );
                 action(&mut ctx, &valued_pat_vars);
                 Some(())

@@ -1274,6 +1274,11 @@ pub fn dsl(
                     |_ident, basic_type| Some(quote!(#basic_type)),
                     |_ident, _| None,
                 );
+                let basic_valued_field_types = variant2mapped_ident_type_list_view_container_as_complex(
+                    variant,
+                    |_ident, basic_type| Some(quote!(#W::Value<#basic_type>)),
+                    |_ident, _| None,
+                );
                 let complex_field_types = variant2mapped_ident_type_list_view_container_as_complex(
                     variant,
                     |_ident, _| None,
@@ -1306,6 +1311,17 @@ pub fn dsl(
                             Self {
                                 _itself: #W::Value::new(vals.next().unwrap()),
                                 #(#value_iter),*
+                            }
+                        }
+                    }
+                    impl #W::FromIndexedValues for #valued_variant_name {
+                        fn from_indexed_values(values: &[#E::Value], value_idx: &mut usize) -> Self {
+                            use #W::FromIndexedValues;
+                            let _itself = #W::Value::new(*values.get(*value_idx).unwrap());
+                            *value_idx += 1;
+                            Self {
+                                _itself,
+                                #(#basic_field_idents: <#basic_valued_field_types>::from_indexed_values(values, value_idx),)*
                             }
                         }
                     }
@@ -1795,6 +1811,7 @@ pub fn pat_vars(
             let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
             let ident = &input.ident;
+            let indexed_members = members.clone();
 
             let mut valued_input_struct = input.clone();
             let valued_ident = format_ident!("Valued{}", valued_input_struct.ident);
@@ -1838,6 +1855,15 @@ pub fn pat_vars(
                         use #W::Value;
                         Self {
                             #(#members: #valued_tys::from_plain_values(values),)*
+                            _p: std::marker::PhantomData
+                        }
+                    }
+                }
+                impl #impl_generics #W::FromIndexedValues for #valued_ident #ty_generics #where_clause {
+                    fn from_indexed_values(values:&[#E::Value], value_idx:&mut usize) -> Self {
+                        use #W::FromIndexedValues;
+                        Self {
+                            #(#indexed_members: <#valued_tys>::from_indexed_values(values,value_idx),)*
                             _p: std::marker::PhantomData
                         }
                     }

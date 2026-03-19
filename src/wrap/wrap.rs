@@ -488,7 +488,7 @@ pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
     const TY_NAME: &'static str;
     /// T represent the type call that call this type
     /// This is useful when we want to specify default for a type
-    type ValuedWithDefault<T>: FromPlainValues;
+    type ValuedWithDefault<T>: FromPlainValues + FromIndexedValues;
     /// fields names of valued variant struct
     const BASIC_FIELD_NAMES: &[&'static str];
     const COMPLEX_FIELD_NAMES: &[&'static str];
@@ -974,7 +974,7 @@ impl<T: EgglogTy> fmt::Debug for Value<T> {
 /// if you record pattern (fib x) then x will be extracted
 /// we use [`PatVars`] trait to mark such patterns
 pub trait PatVars<PR: PatRecSgl>: ToStrArcSort {
-    type Valued: FromPlainValuesMetas<PR>;
+    type Valued: FromPlainValuesMetas<PR> + FromIndexedValuesMetas<PR>;
     fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>;
 }
 impl<T, PV: ToStrArcSort> ToStrArcSort for (PV, T) {
@@ -999,6 +999,19 @@ pub trait FromPlainValues {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self;
 }
 
+pub trait FromIndexedValues {
+    fn from_indexed_values(values: &[egglog::Value], value_idx: &mut usize) -> Self;
+}
+
+pub trait FromIndexedValuesMetas<PR: PatRecSgl> {
+    fn from_indexed_values_metas(
+        values: &[egglog::Value],
+        value_idx: &mut usize,
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+    ) -> Self;
+}
+
 impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for (T, PR::MetaTy) {
     fn from_plain_values_metas(
         values: &mut impl Iterator<Item = egglog::Value>,
@@ -1016,6 +1029,31 @@ impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for T {
         _metas: &mut impl Iterator<Item = PR::MetaTy>,
     ) -> Self {
         <T as FromPlainValues>::from_plain_values(values)
+    }
+}
+
+impl<T: FromIndexedValues, PR: PatRecSgl> FromIndexedValuesMetas<PR> for (T, PR::MetaTy) {
+    fn from_indexed_values_metas(
+        values: &[egglog::Value],
+        value_idx: &mut usize,
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+    ) -> Self {
+        let value = <T as FromIndexedValues>::from_indexed_values(values, value_idx);
+        let meta = metas.get(*meta_idx).cloned().unwrap_or_default();
+        *meta_idx += 1;
+        (value, meta)
+    }
+}
+
+impl<T: FromIndexedValues, PR: PatRecSgl> FromIndexedValuesMetas<PR> for T {
+    fn from_indexed_values_metas(
+        values: &[egglog::Value],
+        value_idx: &mut usize,
+        _metas: &[PR::MetaTy],
+        _meta_idx: &mut usize,
+    ) -> Self {
+        <T as FromIndexedValues>::from_indexed_values(values, value_idx)
     }
 }
 

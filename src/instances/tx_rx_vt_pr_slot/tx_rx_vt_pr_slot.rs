@@ -867,9 +867,13 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 } else {
                     None
                 };
-                let valued_pat_vars = P::Valued::from_plain_values_metas(
-                    &mut values.iter().cloned(),
-                    &mut metas.clone().into_iter(),
+                let mut value_idx = 0;
+                let mut meta_idx = 0;
+                let valued_pat_vars = P::Valued::from_indexed_values_metas(
+                    values,
+                    &mut value_idx,
+                    &metas,
+                    &mut meta_idx,
                 );
                 action(&mut ctx, &valued_pat_vars);
                 Some(())

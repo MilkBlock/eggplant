@@ -10,7 +10,8 @@ use egglog::{
 };
 
 use crate::wrap::{
-    EgglogEnumVariantTy, FromPlainValues, PatRecSgl, PatVars, TermToNode, ToStrArcSort, Value,
+    EgglogEnumVariantTy, FromIndexedValues, FromPlainValues, PatRecSgl, PatVars, TermToNode,
+    ToStrArcSort, Value,
 };
 
 pub trait EgglogContainerTy: EgglogTy {
@@ -54,7 +55,7 @@ impl EgglogTy for &'static str {
 pub trait EgglogTy: 'static {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
-    type Valued: FromPlainValues;
+    type Valued: FromPlainValues + FromIndexedValues;
     type EnumVariantMarker: EgglogEnumVariantTy;
     fn get_arc_sort(egraph: &EGraph) -> egglog::ArcSort {
         egraph
@@ -324,6 +325,14 @@ impl EgglogTypeRegistry {
 impl<T> FromPlainValues for Value<T> {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self {
         Value::new(values.next().unwrap())
+    }
+}
+
+impl<T> FromIndexedValues for Value<T> {
+    fn from_indexed_values(values: &[egglog::Value], value_idx: &mut usize) -> Self {
+        let value = values.get(*value_idx).copied().unwrap();
+        *value_idx += 1;
+        Value::new(value)
     }
 }
 
