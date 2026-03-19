@@ -599,10 +599,603 @@ struct PaoTupleNDArray_to_vec { a0: PaoTupleNDArray }
 #[eggplant::func(output = PaoVec_TupleInt, no_merge)]
 struct PaoTupleTupleInt_to_vec { a0: PaoTupleTupleInt }
 
-pub fn bench() {
-    MyTxPythonArrayOptimize::sgl().reset_for_bench();
+fn add_beta_rules(ruleset: RuleSetId) {
+    // β-reduction rules for defunctionalized `unstable-fn` / `unstable-app`.
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0000_UF__i_Int_acc_Boolean_j_Int__Boolean___or___acc__Int___eq___i_j__",
+        ruleset,
+        || {
+            let cap0 = PaoInt::query_leaf();
+            let closure = PaoUF__i_Int_acc_Boolean_j_Int__Boolean___or___acc__Int___eq___i_j__::query(&cap0);
+            let arg0 = PaoBoolean::query_leaf();
+            let arg1 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Boolean_Boolean_Int::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoInt, arg0: PaoBoolean, arg1: PaoInt, app: PaoUnstableApp__UnstableFn_Boolean_Boolean_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoi_int_acc_boolean_j_int_boolean_or_acc_int_eq_i_j(pat.cap0, pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0001_UF__value_Value_acc_Boolean_j_Value__Boolean___or___acc__Value___eq___value_j__",
+        ruleset,
+        || {
+            let cap0 = PaoValue::query_leaf();
+            let closure = PaoUF__value_Value_acc_Boolean_j_Value__Boolean___or___acc__Value___eq___value_j__::query(&cap0);
+            let arg0 = PaoBoolean::query_leaf();
+            let arg1 = PaoValue::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Boolean_Boolean_Value::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoValue, arg0: PaoBoolean, arg1: PaoValue, app: PaoUnstableApp__UnstableFn_Boolean_Boolean_Value }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paovalue_value_acc_boolean_j_value_boolean_or_acc_value_eq_value_j(pat.cap0, pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0002_UF__axis_TupleInt_i_Int__Boolean___invert____TupleInt_contains_axis_i__",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__axis_TupleInt_i_Int__Boolean___invert____TupleInt_contains_axis_i__::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Boolean_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Boolean_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoaxis_tuple_int_i_int_boolean_invert_tuple_int_contains_axis_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0003_UF__axis_TupleInt_i_Int__TupleInt_contains_axis_i_",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__axis_TupleInt_i_Int__TupleInt_contains_axis_i_::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Boolean_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Boolean_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoaxis_tuple_int_i_int_tuple_int_contains_axis_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0004_UF__indices_TupleInt_i_Int__Boolean___invert____TupleInt_contains_indices_i__",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__indices_TupleInt_i_Int__Boolean___invert____TupleInt_contains_indices_i__::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Boolean_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Boolean_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoindices_tuple_int_i_int_boolean_invert_tuple_int_contains_indices_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0005_UF__dims_TupleInt_i_Int__TupleInt___getitem___dims_i_",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__dims_TupleInt_i_Int__TupleInt___getitem___dims_i_::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paodims_tuple_int_i_int_tuple_int_getitem_dims_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0006_UF__f_UnstableFn_Int_Int_self_TupleInt_i_Int__unstable_app_f__TupleInt___getitem___self_i__",
+        ruleset,
+        || {
+            let cap0 = PaoUnstableFn_Int_Int::query_leaf();
+            let cap1 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__f_UnstableFn_Int_Int_self_TupleInt_i_Int__unstable_app_f__TupleInt___getitem___self_i__::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoUnstableFn_Int_Int, cap1: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paof_unstable_fn_int_int_self_tuple_int_i_int_unstable_app_f_tuple_int_getitem_self_i(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0007_UF__f_UnstableFn_Int_TupleInt_self_TupleTupleInt_i_Int__unstable_app_f__TupleTupleInt___getitem___self_i__",
+        ruleset,
+        || {
+            let cap0 = PaoUnstableFn_Int_TupleInt::query_leaf();
+            let cap1 = PaoTupleTupleInt::query_leaf();
+            let closure = PaoUF__f_UnstableFn_Int_TupleInt_self_TupleTupleInt_i_Int__unstable_app_f__TupleTupleInt___getitem___self_i__::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoUnstableFn_Int_TupleInt, cap1: PaoTupleTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paof_unstable_fn_int_tuple_int_self_tuple_tuple_int_i_int_unstable_app_f_tuple_tuple_int_getitem_self_i(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0008_UF__i_Int___Int_i",
+        ruleset,
+        || {
+            let cap0 = PaoInt::query_leaf();
+            let closure = PaoUF__i_Int___Int_i::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoi_int_int_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0009_UF__i_Int_i",
+        ruleset,
+        || {
+            let closure = PaoUF__i_Int_i::query();
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoi_int_i(pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0010_UF__i_Int_self_TupleTupleInt_j_Int__TupleInt___getitem____TupleTupleInt___getitem___self_j___Int___mod____Int___floordiv___i__TupleInt_product__TupleTupleInt_map_int__TupleTupleInt_drop_self__Int___add___j__Int___init___1_____unstable_fn__x_TupleInt__TupleInt_length_x________TupleInt_length__TupleTupleInt___getitem___self_j____",
+        ruleset,
+        || {
+            let cap0 = PaoInt::query_leaf();
+            let cap1 = PaoTupleTupleInt::query_leaf();
+            let closure = PaoUF__i_Int_self_TupleTupleInt_j_Int__TupleInt___getitem____TupleTupleInt___getitem___self_j___Int___mod____Int___floordiv___i__TupleInt_product__TupleTupleInt_map_int__TupleTupleInt_drop_self__Int___add___j__Int___init___1_____unstable_fn__x_TupleInt__TupleInt_length_x________TupleInt_length__TupleTupleInt___getitem___self_j____::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoInt, cap1: PaoTupleTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoi_int_self_tuple_tuple_int_j_int_tuple_int_getitem_tuple_tuple_int_getitem_self_j_int_mod_int_floordiv_i_tuple_int_product_tuple_tuple_int_map_int_tuple_tuple_int_drop_self_int_add_j_int_init_1_unstable_fn_x_tuple_int_tuple_int_length_x_tuple_int_length_tuple_tuple_int_getitem_self_j(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0011_UF__n_Int_self_TupleInt_i_Int__TupleInt___getitem___self__Int___add___i_n__",
+        ruleset,
+        || {
+            let cap0 = PaoInt::query_leaf();
+            let cap1 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__n_Int_self_TupleInt_i_Int__TupleInt___getitem___self__Int___add___i_n__::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoInt, cap1: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paon_int_self_tuple_int_i_int_tuple_int_getitem_self_int_add_i_n(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0012_UF__other_TupleInt_self_TupleInt_i_Int__Int_if___Int___lt___i__TupleInt_length_self____TupleInt___getitem___self_i___TupleInt___getitem___other__Int___sub___i__TupleInt_length_self____",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let cap1 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__other_TupleInt_self_TupleInt_i_Int__Int_if___Int___lt___i__TupleInt_length_self____TupleInt___getitem___self_i___TupleInt___getitem___other__Int___sub___i__TupleInt_length_self____::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, cap1: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoother_tuple_int_self_tuple_int_i_int_int_if_int_lt_i_tuple_int_length_self_tuple_int_getitem_self_i_tuple_int_getitem_other_int_sub_i_tuple_int_length_self(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0013_UF__self_TupleInt_i_Int__TupleInt___getitem___self_i_",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__self_TupleInt_i_Int__TupleInt___getitem___self_i_::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoself_tuple_int_i_int_tuple_int_getitem_self_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0014_UF__Int___mul__",
+        ruleset,
+        || {
+            let closure = PaoUF__Int___mul__::query();
+            let arg0 = PaoInt::query_leaf();
+            let arg1 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int_Int::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoInt, arg1: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_pao_int_mul(pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0015_UF__acc_Int_i_Int__Int___mul___acc_i_",
+        ruleset,
+        || {
+            let closure = PaoUF__acc_Int_i_Int__Int___mul___acc_i_::query();
+            let arg0 = PaoInt::query_leaf();
+            let arg1 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_Int_Int::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoInt, arg1: PaoInt, app: PaoUnstableApp__UnstableFn_Int_Int_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoacc_int_i_int_int_mul_acc_i(pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0016_UF__x_TupleInt__TupleInt_length_x_",
+        ruleset,
+        || {
+            let closure = PaoUF__x_TupleInt__TupleInt_length_x_::query();
+            let arg0 = PaoTupleInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Int_TupleInt::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoTupleInt, app: PaoUnstableApp__UnstableFn_Int_TupleInt }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paox_tuple_int_tuple_int_length_x(pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0017_UF__idx_fn_UnstableFn_MultiAxisIndexKeyItem_Int_i_Int__unstable_app_idx_fn__Int___add___i____expr__3819518261003242831__",
+        ruleset,
+        || {
+            let cap0 = PaoUnstableFn_MultiAxisIndexKeyItem_Int::query_leaf();
+            let closure = PaoUF__idx_fn_UnstableFn_MultiAxisIndexKeyItem_Int_i_Int__unstable_app_idx_fn__Int___add___i____expr__3819518261003242831__::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_MultiAxisIndexKeyItem_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoUnstableFn_MultiAxisIndexKeyItem_Int, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_MultiAxisIndexKeyItem_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoidx_fn_unstable_fn_multi_axis_index_key_item_int_i_int_unstable_app_idx_fn_int_add_i_expr_3819518261003242831(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0018_UF__TupleNDArray___getitem__",
+        ruleset,
+        || {
+            let cap0 = PaoTupleNDArray::query_leaf();
+            let closure = PaoUF__TupleNDArray___getitem__::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_NDArray_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleNDArray, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_NDArray_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_pao_tuple_nd_array_getitem(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0019_UF__other_TupleNDArray_self_TupleNDArray_i_Int__NDArray_if___Int___lt___i__TupleNDArray_length_self____TupleNDArray___getitem___self_i___TupleNDArray___getitem___other__Int___sub___i__TupleNDArray_length_self____",
+        ruleset,
+        || {
+            let cap0 = PaoTupleNDArray::query_leaf();
+            let cap1 = PaoTupleNDArray::query_leaf();
+            let closure = PaoUF__other_TupleNDArray_self_TupleNDArray_i_Int__NDArray_if___Int___lt___i__TupleNDArray_length_self____TupleNDArray___getitem___self_i___TupleNDArray___getitem___other__Int___sub___i__TupleNDArray_length_self____::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_NDArray_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleNDArray, cap1: PaoTupleNDArray, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_NDArray_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoother_tuple_nd_array_self_tuple_nd_array_i_int_nd_array_if_int_lt_i_tuple_nd_array_length_self_tuple_nd_array_getitem_self_i_tuple_nd_array_getitem_other_int_sub_i_tuple_nd_array_length_self(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0020_UF__acc_Program_i_Int__Program___add____Program___add___acc__int_program_i____Program___init________false__",
+        ruleset,
+        || {
+            let closure = PaoUF__acc_Program_i_Int__Program___add____Program___add___acc__int_program_i____Program___init________false__::query();
+            let arg0 = PaoProgram::query_leaf();
+            let arg1 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Program_Program_Int::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoProgram, arg1: PaoInt, app: PaoUnstableApp__UnstableFn_Program_Program_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoacc_program_i_int_program_add_program_add_acc_int_program_i_program_init_false(pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0021_UF__acc_Program_i_NDArray__Program___add____Program___add___acc__ndarray_program_i____Program___init________false__",
+        ruleset,
+        || {
+            let closure = PaoUF__acc_Program_i_NDArray__Program___add____Program___add___acc__ndarray_program_i____Program___init________false__::query();
+            let arg0 = PaoProgram::query_leaf();
+            let arg1 = PaoNDArray::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Program_Program_NDArray::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoProgram, arg1: PaoNDArray, app: PaoUnstableApp__UnstableFn_Program_Program_NDArray }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoacc_program_i_nd_array_program_add_program_add_acc_ndarray_program_i_program_init_false(pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0022_UF__acc_Program_i_Value__Program___add____Program___add___acc__value_program_i____Program___init________false__",
+        ruleset,
+        || {
+            let closure = PaoUF__acc_Program_i_Value__Program___add____Program___add___acc__value_program_i____Program___init________false__::query();
+            let arg0 = PaoProgram::query_leaf();
+            let arg1 = PaoValue::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Program_Program_Value::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoProgram, arg1: PaoValue, app: PaoUnstableApp__UnstableFn_Program_Program_Value }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoacc_program_i_value_program_add_program_add_acc_value_program_i_program_init_false(pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0023_UF__TupleInt_range",
+        ruleset,
+        || {
+            let closure = PaoUF__TupleInt_range::query();
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_TupleInt_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { arg0: PaoInt, app: PaoUnstableApp__UnstableFn_TupleInt_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_pao_tuple_int_range(pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0024_UF__f_UnstableFn_TupleInt_Int_self_TupleInt_i_Int__unstable_app_f__TupleInt___getitem___self_i__",
+        ruleset,
+        || {
+            let cap0 = PaoUnstableFn_TupleInt_Int::query_leaf();
+            let cap1 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__f_UnstableFn_TupleInt_Int_self_TupleInt_i_Int__unstable_app_f__TupleInt___getitem___self_i__::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_TupleInt_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoUnstableFn_TupleInt_Int, cap1: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_TupleInt_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paof_unstable_fn_tuple_int_int_self_tuple_int_i_int_unstable_app_f_tuple_int_getitem_self_i(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0025_UF__i_TupleInt___Int_i",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__i_TupleInt___Int_i::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_TupleInt_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_TupleInt_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoi_tuple_int_int_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0026_UF__n_Int_self_TupleTupleInt_i_Int__TupleTupleInt___getitem___self__Int___add___i_n__",
+        ruleset,
+        || {
+            let cap0 = PaoInt::query_leaf();
+            let cap1 = PaoTupleTupleInt::query_leaf();
+            let closure = PaoUF__n_Int_self_TupleTupleInt_i_Int__TupleTupleInt___getitem___self__Int___add___i_n__::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_TupleInt_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoInt, cap1: PaoTupleTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_TupleInt_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paon_int_self_tuple_tuple_int_i_int_tuple_tuple_int_getitem_self_int_add_i_n(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0027_UF__other_TupleTupleInt_self_TupleTupleInt_i_Int__TupleInt_if___Int___lt___i__TupleTupleInt_length_self____TupleTupleInt___getitem___self_i___TupleTupleInt___getitem___other__Int___sub___i__TupleTupleInt_length_self____",
+        ruleset,
+        || {
+            let cap0 = PaoTupleTupleInt::query_leaf();
+            let cap1 = PaoTupleTupleInt::query_leaf();
+            let closure = PaoUF__other_TupleTupleInt_self_TupleTupleInt_i_Int__TupleInt_if___Int___lt___i__TupleTupleInt_length_self____TupleTupleInt___getitem___self_i___TupleTupleInt___getitem___other__Int___sub___i__TupleTupleInt_length_self____::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_TupleInt_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleTupleInt, cap1: PaoTupleTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_TupleInt_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoother_tuple_tuple_int_self_tuple_tuple_int_i_int_tuple_int_if_int_lt_i_tuple_tuple_int_length_self_tuple_tuple_int_getitem_self_i_tuple_tuple_int_getitem_other_int_sub_i_tuple_tuple_int_length_self(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0028_UF__self_TupleTupleInt_i_Int__TupleInt___init____TupleTupleInt_length_self___unstable_fn__i_Int_self_TupleTupleInt_j_Int__TupleInt___getitem____TupleTupleInt___getitem___self_j___Int___mod____Int___floordiv___i__TupleInt_product__TupleTupleInt_map_int__TupleTupleInt_drop_self__Int___add___j__Int___init___1_____unstable_fn__x_TupleInt__TupleInt_length_x________TupleInt_length__TupleTupleInt___getitem___self_j______i_self__",
+        ruleset,
+        || {
+            let cap0 = PaoTupleTupleInt::query_leaf();
+            let closure = PaoUF__self_TupleTupleInt_i_Int__TupleInt___init____TupleTupleInt_length_self___unstable_fn__i_Int_self_TupleTupleInt_j_Int__TupleInt___getitem____TupleTupleInt___getitem___self_j___Int___mod____Int___floordiv___i__TupleInt_product__TupleTupleInt_map_int__TupleTupleInt_drop_self__Int___add___j__Int___init___1_____unstable_fn__x_TupleInt__TupleInt_length_x________TupleInt_length__TupleTupleInt___getitem___self_j______i_self__::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_TupleInt_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_TupleInt_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoself_tuple_tuple_int_i_int_tuple_int_init_tuple_tuple_int_length_self_unstable_fn_i_int_self_tuple_tuple_int_j_int_tuple_int_getitem_tuple_tuple_int_getitem_self_j_int_mod_int_floordiv_i_tuple_int_product_tuple_tuple_int_map_int_tuple_tuple_int_drop_self_int_add_j_int_init_1_unstable_fn_x_tuple_int_tuple_int_length_x_tuple_int_length_tuple_tuple_int_getitem_self_j_i_self(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0029_UF__f_UnstableFn_Boolean_Int_acc_TupleInt_v_Int__TupleInt_if___unstable_app_f_v___TupleInt_append_acc_v__acc_",
+        ruleset,
+        || {
+            let cap0 = PaoUnstableFn_Boolean_Int::query_leaf();
+            let closure = PaoUF__f_UnstableFn_Boolean_Int_acc_TupleInt_v_Int__TupleInt_if___unstable_app_f_v___TupleInt_append_acc_v__acc_::query(&cap0);
+            let arg0 = PaoTupleInt::query_leaf();
+            let arg1 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_TupleInt_TupleInt_Int::query(&closure, &arg0, &arg1);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoUnstableFn_Boolean_Int, arg0: PaoTupleInt, arg1: PaoInt, app: PaoUnstableApp__UnstableFn_TupleInt_TupleInt_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paof_unstable_fn_boolean_int_acc_tuple_int_v_int_tuple_int_if_unstable_app_f_v_tuple_int_append_acc_v_acc(pat.cap0, pat.arg0, pat.arg1);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0030_UF__other_TupleValue_self_TupleValue_i_Int__Value_if___Int___lt___i__TupleValue_length_self____TupleValue___getitem___self_i___TupleValue___getitem___other__Int___sub___i__TupleValue_length_self____",
+        ruleset,
+        || {
+            let cap0 = PaoTupleValue::query_leaf();
+            let cap1 = PaoTupleValue::query_leaf();
+            let closure = PaoUF__other_TupleValue_self_TupleValue_i_Int__Value_if___Int___lt___i__TupleValue_length_self____TupleValue___getitem___self_i___TupleValue___getitem___other__Int___sub___i__TupleValue_length_self____::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Value_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleValue, cap1: PaoTupleValue, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Value_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoother_tuple_value_self_tuple_value_i_int_value_if_int_lt_i_tuple_value_length_self_tuple_value_getitem_self_i_tuple_value_getitem_other_int_sub_i_tuple_value_length_self(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0031_UF__ti_TupleInt_i_Int__Value_int__TupleInt___getitem___ti_i__",
+        ruleset,
+        || {
+            let cap0 = PaoTupleInt::query_leaf();
+            let closure = PaoUF__ti_TupleInt_i_Int__Value_int__TupleInt___getitem___ti_i__::query(&cap0);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Value_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleInt, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Value_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paoti_tuple_int_i_int_value_int_tuple_int_getitem_ti_i(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0032_UF__values_TupleValue_x_NDArray_i_Int__NDArray_to_value__sum__NDArray___eq___x__NDArray_scalar__TupleValue___getitem___values_i_____OptionalIntOrTuple_none____",
+        ruleset,
+        || {
+            let cap0 = PaoTupleValue::query_leaf();
+            let cap1 = PaoNDArray::query_leaf();
+            let closure = PaoUF__values_TupleValue_x_NDArray_i_Int__NDArray_to_value__sum__NDArray___eq___x__NDArray_scalar__TupleValue___getitem___values_i_____OptionalIntOrTuple_none____::query(&cap0, &cap1);
+            let arg0 = PaoInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Value_Int::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoTupleValue, cap1: PaoNDArray, arg0: PaoInt, app: PaoUnstableApp__UnstableFn_Value_Int }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paovalues_tuple_value_x_nd_array_i_int_nd_array_to_value_sum_nd_array_eq_x_nd_array_scalar_tuple_value_getitem_values_i_optional_int_or_tuple_none(pat.cap0, pat.cap1, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+    MyTxPythonArrayOptimize::add_rule(
+        "pao_beta_0033_UF__value_Value___TupleInt_value",
+        ruleset,
+        || {
+            let cap0 = PaoValue::query_leaf();
+            let closure = PaoUF__value_Value___TupleInt_value::query(&cap0);
+            let arg0 = PaoTupleInt::query_leaf();
+            let app = PaoUnstableApp__UnstableFn_Value_TupleInt::query(&closure, &arg0);
+            #[eggplant::pat_vars_catch]
+            struct Pat { cap0: PaoValue, arg0: PaoTupleInt, app: PaoUnstableApp__UnstableFn_Value_TupleInt }
+        },
+        |ctx, pat| {
+            let rhs = ctx.insert_paovalue_value_tuple_int_value(pat.cap0, pat.arg0);
+            ctx.union(pat.app, rhs);
+        },
+    );
+}
 
-    // TODO(#t93): seed lets + rulesets + run-schedule + extracts/checks.
+pub fn bench() {
+    // Phase 0: inside the outer `(push 1)` ... `(pop 1)` in the upstream .egg.
+    {
+        MyTxPythonArrayOptimize::sgl().reset_for_bench();
+        let rs_combined_ruleset_4774957744 = MyTxPythonArrayOptimize::new_ruleset("combined_ruleset_4774957744");
+        add_beta_rules(rs_combined_ruleset_4774957744);
+        let rs_combined_ruleset_4774954096 = MyTxPythonArrayOptimize::new_ruleset("combined_ruleset_4774954096");
+        add_beta_rules(rs_combined_ruleset_4774954096);
+
+        // Minimal β-reduction smoke check: ensure `unstable-fn`/`unstable-app` defunctionalization is wired.
+        {
+            let a: PaoInt<MyTxPythonArrayOptimize, _> = PaoInt___init__::new(2);
+            let b: PaoInt<MyTxPythonArrayOptimize, _> = PaoInt___init__::new(3);
+            let closure: PaoUnstableFn_Int_Int_Int<MyTxPythonArrayOptimize, _> = PaoUF__Int___mul__::new();
+            let app: PaoInt<MyTxPythonArrayOptimize, _> = PaoUnstableApp__UnstableFn_Int_Int_Int::new(&closure, &a, &b);
+            a.commit();
+            b.commit();
+            closure.commit();
+            app.commit();
+            let report = MyTxPythonArrayOptimize::run_ruleset(rs_combined_ruleset_4774957744, RunConfig::Once);
+            let num_matches = report.num_matches_per_rule.get("pao_beta_0014_UF__Int___mul__").copied().unwrap_or(0);
+            assert!(num_matches > 0, "expected β rule to match, got {num_matches}");
+            let mul: PaoInt<MyTxPythonArrayOptimize, _> = PaoInt___mul__::new(&a, &b);
+            mul.commit();
+            assert_eq!(MyTxPythonArrayOptimize::canonical_raw(&app), MyTxPythonArrayOptimize::canonical_raw(&mul));
+        }
+
+        // TODO(#t93): seed lets + rewrites/rules + run-schedule + extracts/checks (phase0).
+    }
+
+    // Phase 1: after the final `(pop 1)` in the upstream .egg.
+    {
+        MyTxPythonArrayOptimize::sgl().reset_for_bench();
+        let rs_combined_ruleset_4774912912 = MyTxPythonArrayOptimize::new_ruleset("combined_ruleset_4774912912");
+        add_beta_rules(rs_combined_ruleset_4774912912);
+
+        // TODO(#t93): seed lets + rewrites/rules + run-schedule + extracts/checks (phase1).
+    }
 
     let egraph = MyTxPythonArrayOptimize::egraph();
     let mut egraph = egraph.lock().unwrap();
