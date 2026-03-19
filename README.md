@@ -1,5 +1,7 @@
 # eggplant
 
+[![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MilkBlock/eggplant?utm_source=badge)
+
 <img width="300" height="300" alt="image" src="https://github.com/user-attachments/assets/72ced167-b2d1-4b9a-a116-d777ed4da9e5" />
 
 

@@ -63,6 +63,13 @@ harness = false
 # path = "src/viewer_example.rs"
 # required-features = ["viewer"]
 
+[dev-dependencies]
+divan = { version = "4.4.1", package = "codspeed-divan-compat" }
+
+[[bench]]
+name = "eggplant_bench"
+harness = false
+
 [workspace]
 members = ["eggplant-macros", "eggplant-transpiler", "eggplant-egui_graphs"]
 resolver = "2"                                                               # recommended 2021 Edition
