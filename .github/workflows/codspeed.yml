@@ -1,0 +1,55 @@
+name: CodSpeed
+
+on:
+  push:
+    branches:
+      - main
+      - stable
+      - ui
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+  EGGLOG_REPO: MilkBlock/egglog
+  EGGLOG_REV: main
+
+jobs:
+  codspeed:
+    name: Run benchmarks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout egglog fork for path dependency
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p ../stable
+          if [ ! -d ../stable/egglog_sync_serialize_raw/.git ]; then
+            git clone --no-tags --filter=blob:none --depth 1 "https://github.com/${EGGLOG_REPO}.git" ../stable/egglog_sync_serialize_raw
+          fi
+          pushd ../stable/egglog_sync_serialize_raw
+          git fetch --no-tags --filter=blob:none --depth 1 origin "${EGGLOG_REV}"
+          git checkout --detach FETCH_HEAD
+          popd
+
+      - name: Setup rust toolchain, cache and cargo-codspeed binary
+        uses: moonrepo/setup-rust@v0
+        with:
+          channel: stable
+          cache-target: release
+          bins: cargo-codspeed
+
+      - name: Build the benchmark target(s)
+        run: cargo codspeed build
+
+      - name: Run the benchmarks
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: simulation
+          run: cargo codspeed run
