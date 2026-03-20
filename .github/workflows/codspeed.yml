@@ -16,7 +16,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   EGGLOG_REPO: MilkBlock/egglog
-  EGGLOG_REV: main
+  EGGLOG_REV: tableaction-cache-for-rust-api
 
 jobs:
   codspeed:
