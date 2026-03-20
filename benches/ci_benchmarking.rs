@@ -201,10 +201,10 @@ fn eggplant_rewrite_taylor51() {
     runners::eggplant_rewrite::bench_taylor51_rewrite();
 }
 
-#[divan::bench(sample_count = 10)]
-fn eggplant_rewrite_python_array_optimize() {
-    runners::eggplant_rewrite::bench_python_array_optimize_rewrite();
-}
+// #[divan::bench(sample_count = 10)]
+// fn eggplant_rewrite_python_array_optimize() {
+//     runners::eggplant_rewrite::bench_python_array_optimize_rewrite();
+// }
 
 #[cfg(feature = "eggcc_extraction")]
 #[divan::bench(sample_count = 10)]

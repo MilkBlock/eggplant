@@ -35,10 +35,10 @@ pub fn bench_taylor51_rewrite() {
     taylor51::bench();
 }
 
-pub fn bench_python_array_optimize_rewrite() {
-    configure_rayon_once();
-    python_array_optimize::bench();
-}
+// pub fn bench_python_array_optimize_rewrite() {
+//     configure_rayon_once();
+//     python_array_optimize::bench();
+// }
 
 #[cfg(feature = "eggcc_extraction")]
 pub fn bench_eggcc_extraction_rewrite() {
@@ -60,8 +60,8 @@ mod extract_vec_bench;
 mod math_microbenchmark;
 #[path = "eggplant_rewrite/merge_during_rebuild.rs"]
 mod merge_during_rebuild;
-#[path = "eggplant_rewrite/python_array_optimize.rs"]
-mod python_array_optimize;
+// #[path = "eggplant_rewrite/python_array_optimize.rs"]
+// mod python_array_optimize;
 #[path = "eggplant_rewrite/repro_665_set_union.rs"]
 mod repro_665_set_union;
 #[path = "eggplant_rewrite/taylor51.rs"]
