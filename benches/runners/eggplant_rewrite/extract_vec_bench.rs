@@ -13,6 +13,6 @@ pub fn bench() {
     large_expr.pull();
 
     let egraph = MyTxExtract::egraph();
-    let mut egraph = egraph.lock().unwrap();
+    let egraph = egraph.lock().unwrap();
     egraph.serialize(egglog::SerializeConfig::default());
 }

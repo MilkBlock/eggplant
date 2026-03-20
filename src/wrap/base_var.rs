@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use egglog::{ArcSort, EGraph};
 
 use crate::wrap::{
-    EgglogTy, HandleToConstrain, HandleTy, PatRecSgl, PatVars, SortName, Sym, ToStrArcSort, Value,
-    VarName, VarsCollector,
+    BindingNames, EgglogTy, HandleToConstrain, HandleTy, PatRecSgl, PatVars, SortName, Sym,
+    ToStrArcSort, Value, VarName, VarsCollector,
 };
 
 static BASE_VAR_COUNTER: AtomicU32 = AtomicU32::new(0);
@@ -71,6 +71,12 @@ impl<T: EgglogTy, PR> BaseVar<T, PR> {
 impl<T: EgglogTy, PR> VarsCollector for BaseVar<T, PR> {
     fn collect_vars(&self, vars: &mut Vec<(VarName, SortName)>) {
         vars.push((self.sym.to_string(), T::TY_NAME.to_string()));
+    }
+}
+
+impl<T: EgglogTy, PR> BindingNames for BaseVar<T, PR> {
+    fn collect_binding_names(&self, names: &mut Vec<VarName>) {
+        names.push(self.sym.to_string());
     }
 }
 

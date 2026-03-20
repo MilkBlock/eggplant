@@ -3,15 +3,15 @@ use std::collections::HashMap;
 use derive_more::Deref;
 use egglog::{
     EGraph, Term, TermDag, TermId,
-    ast::{Command, GenericExpr, Literal, Parser, RustSpan, Schema, Span, Subdatatypes, Variant},
+    ast::{Command, Literal, Parser, RustSpan, Schema, Span, Subdatatypes, Variant},
     prelude::BaseSort,
     sort::{Q, Z},
     span, var,
 };
 
 use crate::wrap::{
-    EgglogEnumVariantTy, FromIndexedValues, FromPlainValues, PatRecSgl, PatVars, TermToNode,
-    ToStrArcSort, Value,
+    BindingNames, EgglogEnumVariantTy, FromIndexedValues, FromPlainValues, PatRecSgl, PatVars,
+    TermToNode, ToStrArcSort, Value,
 };
 
 pub trait EgglogContainerTy: EgglogTy {
@@ -64,7 +64,10 @@ pub trait EgglogTy: 'static {
             .clone()
     }
 }
-impl<T: EgglogTy + ToStrArcSort, PR: PatRecSgl> PatVars<PR> for T {
+impl<T: EgglogTy + ToStrArcSort + BindingNames, PR: PatRecSgl> PatVars<PR> for T
+where
+    T::Valued: crate::wrap::DecodeWithPlanMetas<PR>,
+{
     type Valued = T::Valued;
     fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
         std::iter::empty()

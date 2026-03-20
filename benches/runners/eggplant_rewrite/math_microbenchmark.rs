@@ -639,7 +639,7 @@ pub fn bench() {
 
     let t_serialize = Instant::now();
     let egraph = MyTxMath::egraph();
-    let mut egraph = egraph.lock().unwrap();
+    let egraph = egraph.lock().unwrap();
     egraph.serialize(egglog::SerializeConfig::default());
     if breakdown {
         eprintln!(

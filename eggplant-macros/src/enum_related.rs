@@ -84,6 +84,30 @@ pub fn collect_var_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> 
     }
 }
 
+pub fn collect_binding_name_match_arms_ts(
+    variant: &syn::Variant,
+    name_inner: &Ident,
+) -> TokenStream {
+    let variant_name = &variant.ident;
+    let binding_pushes =
+        variant2mapped_ident_type_list_detailed(variant, |ident, _ty, kind| match kind {
+            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => Some(quote! {
+                names.push(format!("{}{}", self.cur_sym(), stringify!(#ident)));
+            }),
+            BasicOrComplex::UserDefinedContainerType => Some(quote! {
+                names.push(succs.next().unwrap().to_string());
+            }),
+            BasicOrComplex::ComplexType => None,
+        });
+    let discriminant_enum_name = format_ident!("{}Discriminants", name_inner);
+
+    quote! {
+        #discriminant_enum_name::#variant_name => {
+            #(#binding_pushes)*
+        }
+    }
+}
+
 pub fn locate_prev_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
     let variant_idents = variant2field_ident(variant);
     let mapped_variant_idents = variant2mapped_ident_type_list(

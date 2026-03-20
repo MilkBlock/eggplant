@@ -67,6 +67,6 @@ pub fn bench() {
     MyTxDist::run_ruleset(check, RunConfig::Once);
 
     let egraph = MyTxDist::egraph();
-    let mut egraph = egraph.lock().unwrap();
+    let egraph = egraph.lock().unwrap();
     egraph.serialize(egglog::SerializeConfig::default());
 }

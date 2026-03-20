@@ -5,7 +5,6 @@ use crate::{
 };
 use core::panic;
 use dashmap::DashMap;
-use egglog::ast::Command;
 use egglog::ast::{Expr, Fact};
 use egglog::{
     EGraph, SerializeConfig,
@@ -52,8 +51,8 @@ pub struct TxRxVTPR {
 struct PremiseProofSpec {
     /// Freshened name of the `{Ctor}ViewProof` function (e.g. `@MulViewProof`).
     view_proof_func: Arc<str>,
-    /// Key variables for the view proof lookup: input vars followed by the output var.
-    key_vars: Arc<[Arc<str>]>,
+    /// Slot indices into the rust_rule callback `values` slice for this premise.
+    key_slots: Arc<[usize]>,
 }
 
 #[allow(unused)]
@@ -923,8 +922,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
         PR::on_record_start();
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
-
-        let mut facts_builder = PR::pat2fact_builder(pat_id);
+        let facts_builder = PR::pat2fact_builder(pat_id);
         let extra_var_sorts = facts_builder.vars_with_sorts();
         let facts = facts_builder.build(&egraph);
         let mut vars = pat_vars.to_str_arcsort(&egraph);
@@ -950,6 +948,12 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
         let rust_rule_name = Arc::<str>::from(rule_name.to_owned());
 
         let proofs_enabled = egraph.are_proofs_enabled();
+        let binding_var_slots: HashMap<Arc<str>, usize> = vars
+            .iter()
+            .enumerate()
+            .map(|(idx, (name, _))| (Arc::<str>::from(name.as_str()), idx))
+            .collect();
+        let decode_plan = Arc::new(pat_vars.build_decode_plan(&binding_var_slots));
         let premise_specs: Arc<[PremiseProofSpec]> = if proofs_enabled {
             let mut specs = Vec::new();
             for fact in facts.iter() {
@@ -961,46 +965,44 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                     (Expr::Call(_, head, args), Expr::Var(_, out)) => (out, head, args),
                     _ => continue,
                 };
-                let mut key_vars: Vec<Arc<str>> = Vec::with_capacity(args.len() + 1);
+                let mut key_slots: Vec<usize> = Vec::with_capacity(args.len() + 1);
                 for arg in args.iter() {
                     match arg {
-                        Expr::Var(_, v) => key_vars.push(Arc::<str>::from(v.clone())),
+                        Expr::Var(_, v) => key_slots.push(
+                            *binding_var_slots
+                                .get(v.as_str())
+                                .unwrap_or_else(|| panic!("missing premise arg binding {}", v)),
+                        ),
                         _ => {
-                            // Constraint facts (lits, prim calls, etc.) aren't currently wired
-                            // into callback-side proof tagging.
-                            key_vars.clear();
+                            key_slots.clear();
                             break;
                         }
                     }
                 }
-                if key_vars.is_empty() {
+                if key_slots.is_empty() {
                     continue;
                 }
-                key_vars.push(Arc::<str>::from(out.clone()));
+                key_slots.push(
+                    *binding_var_slots
+                        .get(out.as_str())
+                        .unwrap_or_else(|| panic!("missing premise out binding {}", out)),
+                );
 
                 let view_proof_func = match egraph.proof_view_proof_name(head) {
                     Ok(name) => Arc::<str>::from(name.to_owned()),
                     Err(_) => {
-                        // Not all facts correspond to term-encoding view rows (constraints,
-                        // primitives, etc.). Only capture premise proofs for rows with a view proof.
                         continue;
                     }
                 };
                 specs.push(PremiseProofSpec {
                     view_proof_func,
-                    key_vars: Arc::from(key_vars.into_boxed_slice()),
+                    key_slots: Arc::from(key_slots.into_boxed_slice()),
                 });
             }
             Arc::from(specs.into_boxed_slice())
         } else {
             Arc::from(Vec::<PremiseProofSpec>::new().into_boxed_slice())
         };
-        let binding_var_names: Arc<[Arc<str>]> = Arc::from(
-            vars.iter()
-                .map(|(n, _)| Arc::<str>::from(n.clone()))
-                .collect::<Vec<_>>()
-                .into_boxed_slice(),
-        );
         let hook = RuleHookObj(ctx_hook);
         let rst = rust_rule(
             &mut egraph,
@@ -1017,19 +1019,11 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                     let premise_proofs: Arc<[egglog::Value]> = if premise_specs.is_empty() {
                         empty_premise_proofs()
                     } else {
-                        let mut bindings: HashMap<&str, egglog::Value> =
-                            HashMap::with_capacity(binding_var_names.len());
-                        for (name, value) in binding_var_names.iter().zip(values.iter().copied()) {
-                            bindings.insert(name.as_ref(), value);
-                        }
                         let mut proofs = Vec::with_capacity(premise_specs.len());
                         for spec in premise_specs.iter() {
-                            let mut key = Vec::with_capacity(spec.key_vars.len());
-                            for var in spec.key_vars.iter() {
-                                let v = *bindings
-                                    .get(var.as_ref())
-                                    .unwrap_or_else(|| panic!("missing var binding {}", var));
-                                key.push(v);
+                            let mut key = Vec::with_capacity(spec.key_slots.len());
+                            for &slot in spec.key_slots.iter() {
+                                key.push(values[slot]);
                             }
                             let prf = ctx.ctx.insert(spec.view_proof_func.as_ref(), &key);
                             proofs.push(prf);
@@ -1040,14 +1034,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                 } else {
                     None
                 };
-                let mut value_idx = 0;
-                let mut meta_idx = 0;
-                let valued_pat_vars = P::Valued::from_indexed_values_metas(
-                    values,
-                    &mut value_idx,
-                    &[],
-                    &mut meta_idx,
-                );
+                let valued_pat_vars = P::decode_with_plan(values, &[], decode_plan.as_ref());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },

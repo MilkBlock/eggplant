@@ -850,6 +850,12 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
         log::debug!("{:#?}", vars);
 
         let proofs_enabled = egraph.are_proofs_enabled();
+        let binding_var_slots: HashMap<Arc<str>, usize> = vars
+            .iter()
+            .enumerate()
+            .map(|(idx, (name, _))| (Arc::<str>::from(name.as_str()), idx))
+            .collect();
+        let decode_plan = Arc::new(pat_vars.build_decode_plan(&binding_var_slots));
         let hook = RuleHookObj(ctx_hook);
         let rst = rust_rule(
             &mut egraph,
@@ -867,14 +873,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 } else {
                     None
                 };
-                let mut value_idx = 0;
-                let mut meta_idx = 0;
-                let valued_pat_vars = P::Valued::from_indexed_values_metas(
-                    values,
-                    &mut value_idx,
-                    &metas,
-                    &mut meta_idx,
-                );
+                let valued_pat_vars = P::decode_with_plan(values, &metas, decode_plan.as_ref());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },

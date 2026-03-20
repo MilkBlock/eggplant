@@ -343,7 +343,7 @@ where
         Self::sgl().pat2fact_builder(pat_id)
     }
 
-    fn on_ctx_insert(inputs: Vec<_FuncValueMeta<Self>>, output: _FuncValueMeta<Self>) {}
+    fn on_ctx_insert(_inputs: Vec<_FuncValueMeta<Self>>, _output: _FuncValueMeta<Self>) {}
 
     fn on_ctx_union(combo1: _FuncValueMeta<Self>, combo2: _FuncValueMeta<Self>) {
         Self::sgl().on_ctx_union(combo1, combo2)
@@ -481,6 +481,22 @@ pub trait VarsCollector {
 impl<T: VarsCollector, M> VarsCollector for (T, M) {
     fn collect_vars(&self, vars: &mut Vec<(VarName, SortName)>) {
         self.0.collect_vars(vars);
+    }
+}
+
+pub trait BindingNames {
+    fn collect_binding_names(&self, names: &mut Vec<VarName>);
+
+    fn binding_names(&self) -> Vec<VarName> {
+        let mut names = Vec::new();
+        self.collect_binding_names(&mut names);
+        names
+    }
+}
+
+impl<T: BindingNames, M> BindingNames for (T, M) {
+    fn collect_binding_names(&self, names: &mut Vec<VarName>) {
+        self.0.collect_binding_names(names);
     }
 }
 
@@ -973,9 +989,40 @@ impl<T: EgglogTy> fmt::Debug for Value<T> {
 /// a pattern may extract values in EGraph, for example
 /// if you record pattern (fib x) then x will be extracted
 /// we use [`PatVars`] trait to mark such patterns
-pub trait PatVars<PR: PatRecSgl>: ToStrArcSort {
-    type Valued: FromPlainValuesMetas<PR> + FromIndexedValuesMetas<PR>;
+pub trait PatVars<PR: PatRecSgl>: ToStrArcSort + BindingNames {
+    type Valued: FromPlainValuesMetas<PR> + FromIndexedValuesMetas<PR> + DecodeWithPlanMetas<PR>;
     fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>;
+
+    fn build_decode_plan(
+        &self,
+        binding_var_slots: &HashMap<Arc<str>, usize>,
+    ) -> <Self::Valued as DecodeWithPlanMetas<PR>>::DecodePlan {
+        let binding_slots = self
+            .binding_names()
+            .into_iter()
+            .map(|name| {
+                *binding_var_slots
+                    .get(name.as_str())
+                    .unwrap_or_else(|| panic!("missing binding layout var {}", name))
+            })
+            .collect::<Vec<_>>();
+        let mut value_idx = 0;
+        <Self::Valued as DecodeWithPlanMetas<PR>>::build_decode_plan(&binding_slots, &mut value_idx)
+    }
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        metas: &[PR::MetaTy],
+        plan: &<Self::Valued as DecodeWithPlanMetas<PR>>::DecodePlan,
+    ) -> Self::Valued {
+        let mut meta_idx = 0;
+        <Self::Valued as DecodeWithPlanMetas<PR>>::decode_with_plan(
+            values,
+            metas,
+            &mut meta_idx,
+            plan,
+        )
+    }
 }
 impl<T, PV: ToStrArcSort> ToStrArcSort for (PV, T) {
     fn to_str_arcsort(&self, egraph: &EGraph) -> Vec<(VarName, ArcSort)> {
@@ -1009,6 +1056,19 @@ pub trait FromIndexedValuesMetas<PR: PatRecSgl> {
         value_idx: &mut usize,
         metas: &[PR::MetaTy],
         meta_idx: &mut usize,
+    ) -> Self;
+}
+
+pub trait DecodeWithPlanMetas<PR: PatRecSgl>: Sized {
+    type DecodePlan: Clone + Send + Sync + 'static;
+
+    fn build_decode_plan(binding_slots: &[usize], value_idx: &mut usize) -> Self::DecodePlan;
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+        plan: &Self::DecodePlan,
     ) -> Self;
 }
 
@@ -1046,6 +1106,26 @@ impl<T: FromIndexedValues, PR: PatRecSgl> FromIndexedValuesMetas<PR> for (T, PR:
     }
 }
 
+impl<T: DecodeWithPlanMetas<PR>, PR: PatRecSgl> DecodeWithPlanMetas<PR> for (T, PR::MetaTy) {
+    type DecodePlan = T::DecodePlan;
+
+    fn build_decode_plan(binding_slots: &[usize], value_idx: &mut usize) -> Self::DecodePlan {
+        T::build_decode_plan(binding_slots, value_idx)
+    }
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+        plan: &Self::DecodePlan,
+    ) -> Self {
+        let value = T::decode_with_plan(values, metas, meta_idx, plan);
+        let meta = metas.get(*meta_idx).cloned().unwrap_or_default();
+        *meta_idx += 1;
+        (value, meta)
+    }
+}
+
 impl<T: FromIndexedValues, PR: PatRecSgl> FromIndexedValuesMetas<PR> for T {
     fn from_indexed_values_metas(
         values: &[egglog::Value],
@@ -1054,6 +1134,27 @@ impl<T: FromIndexedValues, PR: PatRecSgl> FromIndexedValuesMetas<PR> for T {
         _meta_idx: &mut usize,
     ) -> Self {
         <T as FromIndexedValues>::from_indexed_values(values, value_idx)
+    }
+}
+
+impl<T, PR: PatRecSgl> DecodeWithPlanMetas<PR> for Value<T> {
+    type DecodePlan = usize;
+
+    fn build_decode_plan(binding_slots: &[usize], value_idx: &mut usize) -> Self::DecodePlan {
+        let slot = *binding_slots
+            .get(*value_idx)
+            .unwrap_or_else(|| panic!("missing callback slot for binding #{}", value_idx));
+        *value_idx += 1;
+        slot
+    }
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        _metas: &[PR::MetaTy],
+        _meta_idx: &mut usize,
+        plan: &Self::DecodePlan,
+    ) -> Self {
+        Self::new(values[*plan])
     }
 }
 

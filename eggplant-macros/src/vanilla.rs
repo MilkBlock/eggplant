@@ -902,6 +902,23 @@ pub fn dsl(
                                     };
                                 }
                             }
+                            impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::BindingNames for self::#name_node<T,V> {
+                                #[track_caller]
+                                fn collect_binding_names(&self, names:&mut Vec<#W::VarName>) {
+                                    use #W::EgglogTy;
+                                    match &self.node.ty{
+                                        #W::TyPH::Ty(_) => {
+                                            panic!("can't call collect_binding_names on non-pattern-def EgglogNode")
+                                        },
+                                        #W::TyPH::VarPH(_, _) => {
+                                            panic!("vec should not be VarPH")
+                                        },
+                                        #W::TyPH::PH => {
+                                            names.push(self.cur_sym().to_string());
+                                        }
+                                    };
+                                }
+                            }
                             impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
                                 fn as_ref(&self) -> &self::#name_node<T, ()> {
                                     unsafe {
@@ -1159,6 +1176,11 @@ pub fn dsl(
                 .iter()
                 .map(|x| collect_var_match_arms_ts(x, &name_inner))
                 .collect::<Vec<_>>();
+            let collect_binding_name_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| collect_binding_name_match_arms_ts(x, &name_inner))
+                .collect::<Vec<_>>();
 
             let native_egglog_match_arms = data_enum.variants.iter().map(|variant| {
                 let variant_idents = variant2field_ident(variant);
@@ -1250,44 +1272,68 @@ pub fn dsl(
                 let (variant_marker, variant_name) = variant2marker_name(variant);
 
                 let valued_variant_name = format_ident!("Valued{}", variant_name);
-                // Treat user-defined container sorts as "complex" for pattern binding.
-                // They must flow through succ vars (like other complex fields), otherwise
-                // pattern matching invents extra `{node_sym}{field}` vars and can desync
-                // the `vars` list from `Valued*::from_plain_values` consumption.
-                let values_with_types = variant2mapped_ident_type_list_view_container_as_complex(
-                    variant,
-                    |ident, ty| Some(quote!(#ident: #W::Value<#ty>)),
-                    |_ident, _ty| None,
-                );
-                let basic_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+                let values_with_types = variant2valued_struct_fields(variant);
+                let basic_field_idents = variant2mapped_ident_type_list(
                     variant,
                     |basic, _| Some(quote!(#basic)),
-                    |_complex, _| None,
+                    |_, _| None,
                 );
-                let complex_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+                let complex_field_idents = variant2mapped_ident_type_list(
                     variant,
-                    |_basic, _| None,
+                    |_, _| None,
                     |complex, _| Some(quote!(#complex)),
                 );
-                let basic_field_types = variant2mapped_ident_type_list_view_container_as_complex(
+                let basic_field_types = variant2mapped_ident_type_list(
                     variant,
-                    |_ident, basic_type| Some(quote!(#basic_type)),
-                    |_ident, _| None,
+                    |_, basic_type| Some(quote!(#basic_type)),
+                    |_, _| None,
                 );
-                let basic_valued_field_types = variant2mapped_ident_type_list_view_container_as_complex(
+                let basic_valued_field_types = variant2mapped_ident_type_list(
                     variant,
-                    |_ident, basic_type| Some(quote!(#W::Value<#basic_type>)),
-                    |_ident, _| None,
+                    |_, basic_type| Some(quote!(#W::Value<#basic_type>)),
+                    |_, _| None,
                 );
-                let complex_field_types = variant2mapped_ident_type_list_view_container_as_complex(
+                let complex_field_types = variant2mapped_ident_type_list(
                     variant,
-                    |_ident, _| None,
-                    |_ident, complex_type| Some(quote!(#complex_type)),
+                    |_, _| None,
+                    |_, complex_type| Some(quote!(#complex_type)),
                 );
-                let value_iter = variant2mapped_ident_type_list_view_container_as_complex(
+                let itself_valued_ty = quote!(#W::Value<#name_node<(), #variant_marker>>);
+                let decode_plan_tys = std::iter::once(itself_valued_ty.clone())
+                    .chain(basic_valued_field_types.iter().cloned())
+                    .collect::<Vec<_>>();
+                let decode_plan_indices = (0..decode_plan_tys.len())
+                    .map(syn::Index::from)
+                    .collect::<Vec<_>>();
+                let itself_plan_idx = &decode_plan_indices[0];
+                let basic_plan_indices = &decode_plan_indices[1..];
+                let decode_plan_defs = decode_plan_tys
+                    .iter()
+                    .map(|ty| quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::DecodePlan))
+                    .collect::<Vec<_>>();
+                let build_plan_calls = decode_plan_tys
+                    .iter()
+                    .map(|ty| {
+                        quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::build_decode_plan(
+                            binding_slots,
+                            value_idx,
+                        ))
+                    })
+                    .collect::<Vec<_>>();
+                let itself_decode_call = quote!(#W::Value::new(values[plan.#itself_plan_idx]));
+                let decode_field_calls = basic_valued_field_types
+                    .iter()
+                    .zip(basic_plan_indices.iter())
+                    .map(|(_, idx)| {
+                        quote!(
+                            #W::Value::new(values[plan.#idx])
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let value_iter = variant2mapped_ident_type_list(
                     variant,
                     |basic, _| Some(quote!(#basic: #W::Value::new(vals.next().unwrap()))),
-                    |_ident, _| None,
+                    |_, _| None,
                 );
 
                 quote! {
@@ -1322,6 +1368,32 @@ pub fn dsl(
                             Self {
                                 _itself,
                                 #(#basic_field_idents: <#basic_valued_field_types>::from_indexed_values(values, value_idx),)*
+                            }
+                        }
+                    }
+                    impl<PR: #W::PatRecSgl> #W::DecodeWithPlanMetas<PR> for #valued_variant_name {
+                        type DecodePlan = (
+                            #(#decode_plan_defs,)*
+                        );
+
+                        fn build_decode_plan(
+                            binding_slots: &[usize],
+                            value_idx: &mut usize,
+                        ) -> Self::DecodePlan {
+                            (
+                                #(#build_plan_calls,)*
+                            )
+                        }
+
+                        fn decode_with_plan(
+                            values: &[#E::Value],
+                            _metas: &[PR::MetaTy],
+                            _meta_idx: &mut usize,
+                            plan: &Self::DecodePlan,
+                        ) -> Self {
+                            Self {
+                                _itself: #itself_decode_call,
+                                #(#basic_field_idents: #decode_field_calls,)*
                             }
                         }
                     }
@@ -1584,6 +1656,30 @@ pub fn dsl(
                             }
                         }
                     }
+                    impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::BindingNames for self::#name_node<T,V> {
+                        #[track_caller]
+                        fn collect_binding_names(
+                            &self,
+                            names: &mut Vec<#W::VarName>
+                        ) {
+                            use #W::EgglogTy;
+                            match &self.node.ty{
+                                #W::TyPH::Ty(_) => {
+                                        panic!("can't call collect_binding_names on non-pattern-def EgglogNode")
+                                },
+                                #W::TyPH::VarPH(dis, succs) => {
+                                    names.push(self.cur_sym().to_string());
+                                    let mut succs = succs.iter().cloned();
+                                    match dis{
+                                        #(#collect_binding_name_match_arms),*
+                                    }
+                                },
+                                #W::TyPH::PH => {
+                                    names.push((self.cur_sym().to_string()));
+                                }
+                            }
+                        }
+                    }
                     impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
                         fn to_egglog_string(&self) -> Option<String>{
                             match self.node.ty.ty_ref()?{
@@ -1808,6 +1904,21 @@ pub fn pat_vars(
                 .map(|f| f.ident.as_ref().unwrap())
                 .collect::<Vec<_>>();
             let field_types = data_struct.fields.iter().map(|f| &f.ty).collect::<Vec<_>>();
+            let field_is_base_var = data_struct
+                .fields
+                .iter()
+                .map(|f| {
+                    matches!(
+                        &f.ty,
+                        Type::Path(type_path)
+                            if type_path
+                                .path
+                                .segments
+                                .last()
+                                .is_some_and(|seg| seg.ident == "BaseVar")
+                    )
+                })
+                .collect::<Vec<_>>();
             let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
             let ident = &input.ident;
@@ -1833,6 +1944,40 @@ pub fn pat_vars(
                 }
                 _ => panic!(),
             };
+            let decode_plan_indices = (0..valued_tys.len())
+                .map(syn::Index::from)
+                .collect::<Vec<_>>();
+            let decode_plan_defs = valued_tys
+                .iter()
+                .map(|ty| quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::DecodePlan))
+                .collect::<Vec<_>>();
+            let build_plan_calls = valued_tys
+                .iter()
+                .map(|ty| {
+                    quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::build_decode_plan(
+                        binding_slots,
+                        value_idx,
+                    ))
+                })
+                .collect::<Vec<_>>();
+            let decode_members = indexed_members.clone();
+            let decode_member_calls = valued_tys
+                .iter()
+                .zip(decode_plan_indices.iter())
+                .zip(field_is_base_var.iter())
+                .map(|((ty, idx), is_base_var)| {
+                    if *is_base_var {
+                        quote!(#W::Value::new(values[plan.#idx]))
+                    } else {
+                        quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::decode_with_plan(
+                            values,
+                            metas,
+                            meta_idx,
+                            &plan.#idx,
+                        ))
+                    }
+                })
+                .collect::<Vec<_>>();
             // add PhantomData<PR> to struct
             if let Data::Struct(data_struct) = &mut valued_input_struct.data
                 && let syn::Fields::Named(named_fields) = &mut data_struct.fields
@@ -1868,6 +2013,32 @@ pub fn pat_vars(
                         }
                     }
                 }
+                impl #impl_generics #W::DecodeWithPlanMetas<PR> for #valued_ident #ty_generics #where_clause {
+                    type DecodePlan = (
+                        #(#decode_plan_defs,)*
+                    );
+
+                    fn build_decode_plan(
+                        binding_slots: &[usize],
+                        value_idx: &mut usize,
+                    ) -> Self::DecodePlan {
+                        (
+                            #(#build_plan_calls,)*
+                        )
+                    }
+
+                    fn decode_with_plan(
+                        values: &[#E::Value],
+                        metas: &[PR::MetaTy],
+                        meta_idx: &mut usize,
+                        plan: &Self::DecodePlan,
+                    ) -> Self {
+                        Self {
+                            #(#decode_members: #decode_member_calls,)*
+                            _p: std::marker::PhantomData
+                        }
+                    }
+                }
                 impl #impl_generics #W::PatVars<PR> for #ident #ty_generics #where_clause {
                     type Valued = #valued_ident<PR>;
                     fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>{
@@ -1894,6 +2065,14 @@ pub fn pat_vars(
                     fn collect_vars(&self, vars:&mut Vec<(#W::VarName, #W::SortName)>){
                         #(
                             self.#field_idents.collect_vars(vars);
+                        )*
+                    }
+                }
+                impl #impl_generics #W::BindingNames for #ident #ty_generics #where_clause{
+                    #[track_caller]
+                    fn collect_binding_names(&self, names:&mut Vec<#W::VarName>){
+                        #(
+                            self.#field_idents.collect_binding_names(names);
                         )*
                     }
                 }
