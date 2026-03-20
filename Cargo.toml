@@ -7,6 +7,7 @@ repository.workspace = true
 keywords.workspace = true
 license.workspace = true
 readme.workspace = true
+autobenches = false
 
 [features]
 default = ["viewer"]
