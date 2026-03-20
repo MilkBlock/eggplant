@@ -20,8 +20,70 @@ env:
 
 jobs:
   codspeed:
-    name: Run benchmarks
+    name: Run benchmark (${{ matrix.benchmark }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - benchmark: eggplant_insert_1000_func
+            bench_target: insert_1000_func
+          - benchmark: merge-during-rebuild
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_merge_during_rebuild
+            bench_target: ci_benchmarking
+          - benchmark: vec
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_vec
+            bench_target: ci_benchmarking
+          - benchmark: web-demo/unify
+            bench_target: ci_benchmarking
+          - benchmark: web-demo/set
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_web_demo_unify
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_web_demo_set
+            bench_target: ci_benchmarking
+          - benchmark: proof_testing_unify
+            bench_target: ci_benchmarking
+          - benchmark: proof_testing_typecheck
+            bench_target: ci_benchmarking
+          - benchmark: proof_testing_eqsat-basic
+            bench_target: ci_benchmarking
+          - benchmark: union_chain_proofs_typed_no_prove
+            bench_target: ci_benchmarking
+          - benchmark: union_chain_proofs_typed_with_prove
+            bench_target: ci_benchmarking
+          - benchmark: union_chain_term_encoding_untyped_no_prove
+            bench_target: ci_benchmarking
+          - benchmark: repro-665-set-union
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_repro_665_set_union
+            bench_target: ci_benchmarking
+          - benchmark: extract-vec-bench
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_extract_vec_bench
+            bench_target: ci_benchmarking
+          - benchmark: math-microbenchmark
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_math_microbenchmark
+            bench_target: ci_benchmarking
+          - benchmark: stresstest_large_expr
+            bench_target: ci_benchmarking
+          - benchmark: typeinfer
+            bench_target: ci_benchmarking
+          - benchmark: herbie
+            bench_target: ci_benchmarking
+          - benchmark: herbie-tutorial
+            bench_target: ci_benchmarking
+          - benchmark: cykjson
+            bench_target: ci_benchmarking
+          - benchmark: taylor51
+            bench_target: ci_benchmarking
+          - benchmark: eggplant_rewrite_taylor51
+            bench_target: ci_benchmarking
+          - benchmark: python_array_optimize
+            bench_target: ci_benchmarking
     steps:
       - uses: actions/checkout@v4
 
@@ -47,10 +109,10 @@ jobs:
           bins: cargo-codspeed
 
       - name: Build the benchmark target(s)
-        run: cargo codspeed build
+        run: cargo codspeed build --bench ${{ matrix.bench_target }}
 
-      - name: Run the benchmarks
+      - name: Run benchmark case
         uses: CodSpeedHQ/action@v4
         with:
           mode: simulation
-          run: cargo codspeed run
+          run: cargo codspeed run "${{ matrix.benchmark }}"
