@@ -25,18 +25,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout egglog fork for path dependency
+      - name: Checkout egglog fork into workspace
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.EGGLOG_REPO }}
+          ref: ${{ env.EGGLOG_REV }}
+          path: stable/egglog_sync_serialize_raw
+
+      - name: Mirror egglog checkout to sibling path dependency
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p ../stable
-          if [ ! -d ../stable/egglog_sync_serialize_raw/.git ]; then
-            git clone --no-tags --filter=blob:none --depth 1 "https://github.com/${EGGLOG_REPO}.git" ../stable/egglog_sync_serialize_raw
-          fi
-          pushd ../stable/egglog_sync_serialize_raw
-          git fetch --no-tags --filter=blob:none --depth 1 origin "${EGGLOG_REV}"
-          git checkout --detach FETCH_HEAD
-          popd
+          ln -sfn "${GITHUB_WORKSPACE}/stable/egglog_sync_serialize_raw" ../stable/egglog_sync_serialize_raw
 
       - name: Setup rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v0
