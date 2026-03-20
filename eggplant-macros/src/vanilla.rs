@@ -241,7 +241,7 @@ pub fn func(
                         #[track_caller]
                         pub fn query(#(#input_idents: #query_arg_types),*) -> #output_with_generic {
                             use #W::{EgglogNode, EgglogTy, PatRecSgl};
-                            let out = <#output_with_generic>::query_leaf();
+                            let out = <#output_with_generic>::query_any_leaf();
                             let mut vars = vec![#(#input_var_sort_pairs),*];
                             vars.push((out.cur_sym().to_string(), #output_ty_name.to_string()));
                             T::on_new_table_fact(stringify!(#name_func).to_string(), vars);
@@ -1259,14 +1259,21 @@ pub fn dsl(
                 .iter()
                 .map(|x| query_leaf_fns_tt(x, &name_node, &name_inner, &name_counter))
                 .collect();
-            let placeholder_query_leaf_fn_name = if data_enum
+            let has_leaf_variant = data_enum
                 .variants
                 .iter()
-                .any(|v| v.ident.to_string().to_snake_case() == "leaf")
-            {
-                format_ident!("query_any_leaf")
+                .any(|v| v.ident.to_string().to_snake_case() == "leaf");
+            let query_leaf_alias = if has_leaf_variant {
+                quote!()
             } else {
-                format_ident!("query_leaf")
+                quote! {
+                    impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                        #[track_caller]
+                        pub fn query_leaf() -> self::#name_node<T,()> {
+                            Self::query_any_leaf()
+                        }
+                    }
+                }
             };
             let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
                 let (variant_marker, variant_name) = variant2marker_name(variant);
@@ -1511,7 +1518,7 @@ pub fn dsl(
                     impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
                         #(#query_leaf_fns)*
                         #[track_caller]
-                        pub fn #placeholder_query_leaf_fn_name() -> self::#name_node<T,()> {
+                        pub fn query_any_leaf() -> self::#name_node<T,()> {
                             let node = #W::Node {
                                 ty: #W::TyPH::PH,
                                 sym: #name_counter.next_sym(),
@@ -1525,6 +1532,7 @@ pub fn dsl(
                             node
                         }
                     }
+                    #query_leaf_alias
                     // impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
                     //     #(#query_leaf_fns)*
                     //     #[track_caller]
