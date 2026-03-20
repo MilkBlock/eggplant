@@ -17,8 +17,6 @@ env:
   CARGO_TERM_COLOR: always
   EGGLOG_REPO: MilkBlock/egglog
   EGGLOG_REV: tableaction-cache-for-rust-api
-  UPSTREAM_EGGLOG_REPO: egraphs-good/egglog
-  UPSTREAM_EGGLOG_REF: main
 
 jobs:
   codspeed:
@@ -96,20 +94,12 @@ jobs:
           ref: ${{ env.EGGLOG_REV }}
           path: stable/egglog_sync_serialize_raw
 
-      - name: Checkout upstream egglog main into workspace
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.UPSTREAM_EGGLOG_REPO }}
-          ref: ${{ env.UPSTREAM_EGGLOG_REF }}
-          path: upstream_egglog_checkout
-
       - name: Mirror egglog checkout to sibling path dependency
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p ../stable
           ln -sfn "${GITHUB_WORKSPACE}/stable/egglog_sync_serialize_raw" ../stable/egglog_sync_serialize_raw
-          ln -sfn "${GITHUB_WORKSPACE}/upstream_egglog_checkout" ../upstream_egglog
 
       - name: Setup rust toolchain, cache and cargo-codspeed binary
         uses: moonrepo/setup-rust@v0
