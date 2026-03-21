@@ -506,6 +506,7 @@ pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
     /// This is useful when we want to specify default for a type
     type ValuedWithDefault<T>: FromPlainValues + FromIndexedValues;
     const DISPLAY_TEMPLATE: Option<&'static str>;
+    const TYPST_TEMPLATE: Option<&'static str>;
     /// fields names of valued variant struct
     const BASIC_FIELD_NAMES: &[&'static str];
     const COMPLEX_FIELD_NAMES: &[&'static str];
@@ -638,6 +639,7 @@ impl EgglogEnumVariantTy for () {
     const TY_NAME: &'static str = "Unknown Func";
     type ValuedWithDefault<T> = Value<T>;
     const DISPLAY_TEMPLATE: Option<&'static str> = None;
+    const TYPST_TEMPLATE: Option<&'static str> = None;
     const BASIC_FIELD_NAMES: &[&'static str] = &[];
     const BASIC_FIELD_TYPES: &[&'static str] = &[];
     const COMPLEX_FIELD_NAMES: &[&'static str] = &[];

@@ -499,18 +499,18 @@ pub fn variant2field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
     )
 }
 
-fn is_display_attr(attr: &Attribute) -> bool {
+fn is_eggplant_template_attr(attr: &Attribute, attr_name: &str) -> bool {
     let segments = attr
         .path()
         .segments
         .iter()
         .map(|seg| seg.ident.to_string())
         .collect::<Vec<_>>();
-    matches!(segments.as_slice(), [single] if single == "display")
-        || matches!(segments.as_slice(), [first, second] if first == "eggplant" && second == "display")
+    matches!(segments.as_slice(), [single] if single == attr_name)
+        || matches!(segments.as_slice(), [first, second] if first == "eggplant" && second == attr_name)
 }
 
-fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
+fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Result<Vec<String>> {
     let raw = template.value();
     let chars = raw.chars().collect::<Vec<_>>();
     let mut idx = 0usize;
@@ -530,7 +530,9 @@ fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
                     if chars[end] == '{' {
                         return Err(syn::Error::new_spanned(
                             template,
-                            "nested `{` inside #[eggplant::display(\"...\")] placeholder is not supported",
+                            format!(
+                                "nested `{{` inside #[eggplant::{attr_name}(\"...\")] placeholder is not supported"
+                            ),
                         ));
                     }
                     end += 1;
@@ -539,7 +541,7 @@ fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
                 if end >= chars.len() {
                     return Err(syn::Error::new_spanned(
                         template,
-                        "unclosed `{` in #[eggplant::display(\"...\")] template",
+                        format!("unclosed `{{` in #[eggplant::{attr_name}(\"...\")] template"),
                     ));
                 }
 
@@ -547,7 +549,9 @@ fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
                 if placeholder.is_empty() {
                     return Err(syn::Error::new_spanned(
                         template,
-                        "empty `{}` placeholder is not allowed in #[eggplant::display(\"...\")]",
+                        format!(
+                            "empty `{{}}` placeholder is not allowed in #[eggplant::{attr_name}(\"...\")]"
+                        ),
                     ));
                 }
                 let valid_ident = placeholder
@@ -561,7 +565,7 @@ fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
                     return Err(syn::Error::new_spanned(
                         template,
                         format!(
-                            "invalid placeholder `{placeholder}` in #[eggplant::display(\"...\")]; only simple field names like `x` or `lhs_1` are supported"
+                            "invalid placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")]; only simple field names like `x` or `lhs_1` are supported"
                         ),
                     ));
                 }
@@ -575,7 +579,7 @@ fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
                 }
                 return Err(syn::Error::new_spanned(
                     template,
-                    "unmatched `}` in #[eggplant::display(\"...\")] template",
+                    format!("unmatched `}}` in #[eggplant::{attr_name}(\"...\")] template"),
                 ));
             }
             _ => idx += 1,
@@ -585,26 +589,26 @@ fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
     Ok(placeholders)
 }
 
-pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
-    let display_attrs = variant
+fn variant_template_tokens(variant: &Variant, attr_name: &str) -> syn::Result<TokenStream> {
+    let attrs = variant
         .attrs
         .iter()
-        .filter(|attr| is_display_attr(attr))
+        .filter(|attr| is_eggplant_template_attr(attr, attr_name))
         .collect::<Vec<_>>();
 
-    if display_attrs.len() > 1 {
+    if attrs.len() > 1 {
         return Err(syn::Error::new_spanned(
             variant,
-            "only one #[eggplant::display(\"...\")] attribute is allowed per variant",
+            format!("only one #[eggplant::{attr_name}(\"...\")] attribute is allowed per variant"),
         ));
     }
 
-    let Some(attr) = display_attrs.first() else {
+    let Some(attr) = attrs.first() else {
         return Ok(quote!(None));
     };
 
     let template = attr.parse_args::<LitStr>()?;
-    let placeholders = extract_display_placeholders(&template)?;
+    let placeholders = extract_template_placeholders(&template, attr_name)?;
 
     match &variant.fields {
         Fields::Named(fields) => {
@@ -618,7 +622,7 @@ pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenSt
                     return Err(syn::Error::new_spanned(
                         &template,
                         format!(
-                            "unknown placeholder `{placeholder}` in #[eggplant::display(\"...\")] for variant `{}`",
+                            "unknown placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")] for variant `{}`",
                             variant.ident
                         ),
                     ));
@@ -630,7 +634,7 @@ pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenSt
                 return Err(syn::Error::new_spanned(
                     &template,
                     format!(
-                        "unit variant `{}` has no fields, but display template references `{placeholder}`",
+                        "unit variant `{}` has no fields, but {attr_name} template references `{placeholder}`",
                         variant.ident
                     ),
                 ));
@@ -639,12 +643,22 @@ pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenSt
         Fields::Unnamed(_) => {
             return Err(syn::Error::new_spanned(
                 variant,
-                "#[eggplant::display(\"...\")] currently supports only named-field or unit variants",
+                format!(
+                    "#[eggplant::{attr_name}(\"...\")] currently supports only named-field or unit variants"
+                ),
             ));
         }
     }
 
     Ok(quote!(Some(#template)))
+}
+
+pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    variant_template_tokens(variant, "display")
+}
+
+pub fn variant_typst_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    variant_template_tokens(variant, "typst")
 }
 // pub fn _variant2field_ident_with_all_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
 //     variant2mapped_ident_type_list(
@@ -772,7 +786,7 @@ pub fn variant2valued_struct_fields(variant: &Variant) -> Vec<TokenStream> {
 
 #[cfg(test)]
 mod tests {
-    use super::variant_display_template_tokens;
+    use super::{variant_display_template_tokens, variant_typst_template_tokens};
     use quote::quote;
     use syn::{Variant, parse_quote};
 
@@ -817,6 +831,27 @@ mod tests {
         };
         let tokens = variant_display_template_tokens(&variant).unwrap();
         assert_eq!(tokens.to_string(), quote!(Some("{{x}} -> {x}")).to_string());
+    }
+
+    #[test]
+    fn typst_template_rejects_duplicate_attrs() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::typst("$x + $f$")]
+            #[eggplant::typst("diff({x}, {f})")]
+            MDiff { x: Math, f: Math }
+        };
+        let err = variant_typst_template_tokens(&variant).unwrap_err();
+        assert!(err.to_string().contains("only one #[eggplant::typst"));
+    }
+
+    #[test]
+    fn typst_template_accepts_valid_single_attr() {
+        let variant: Variant = parse_quote! {
+            #[typst("diff({x}, {f})")]
+            MDiff { x: Math, f: Math }
+        };
+        let tokens = variant_typst_template_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("diff({x}, {f})")).to_string());
     }
 }
 

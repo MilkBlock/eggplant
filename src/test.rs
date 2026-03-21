@@ -20,11 +20,13 @@ mod tests {
     #[eggplant::dsl]
     enum DisplayMath {
         #[eggplant::display("{x} + {f}")]
+        #[eggplant::typst("diff({x}, {f})")]
         MDiff {
             x: DisplayMath,
             f: DisplayMath,
         },
         #[eggplant::display("integ {f} {x}")]
+        #[eggplant::typst("integral({f}, {x})")]
         MIntegral {
             f: DisplayMath,
             x: DisplayMath,
@@ -71,10 +73,19 @@ mod tests {
             Some("{x} + {f}")
         );
         assert_eq!(
+            <MDiffTy as EgglogEnumVariantTy>::TYPST_TEMPLATE,
+            Some("diff({x}, {f})")
+        );
+        assert_eq!(
             <MIntegralTy as EgglogEnumVariantTy>::DISPLAY_TEMPLATE,
             Some("integ {f} {x}")
         );
+        assert_eq!(
+            <MIntegralTy as EgglogEnumVariantTy>::TYPST_TEMPLATE,
+            Some("integral({f}, {x})")
+        );
         assert_eq!(<MLeafTy as EgglogEnumVariantTy>::DISPLAY_TEMPLATE, None);
+        assert_eq!(<MLeafTy as EgglogEnumVariantTy>::TYPST_TEMPLATE, None);
     }
 
     #[eggplant::dsl]
