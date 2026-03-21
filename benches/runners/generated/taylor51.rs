@@ -5,61 +5,61 @@ use eggplant::prelude::*;
 
 #[eggplant::dsl]
 enum M {
-    #[eggplant::display("Var({a0})")]
+    #[eggplant::typst("{a0}")]
     T51Var { a0: String },
-    #[eggplant::display("Num({a0})")]
+    #[eggplant::typst("{a0}")]
     T51Num { a0: String },
-    #[eggplant::display("Pi")]
+    #[eggplant::typst("pi")]
     T51Pi {},
-    #[eggplant::display("Neg({a0})")]
+    #[eggplant::typst("-({a0})")]
     T51Neg { a0: M },
-    #[eggplant::display("Sin({a0})")]
+    #[eggplant::typst("sin({a0})")]
     T51Sin { a0: M },
-    #[eggplant::display("Cos({a0})")]
+    #[eggplant::typst("cos({a0})")]
     T51Cos { a0: M },
-    #[eggplant::display("Acos({a0})")]
+    #[eggplant::typst("acos({a0})")]
     T51Acos { a0: M },
-    #[eggplant::display("Add({a0}, {a1})")]
+    #[eggplant::typst("({a0}) + ({a1})")]
     T51Add { a0: M, a1: M },
-    #[eggplant::display("Sub({a0}, {a1})")]
+    #[eggplant::typst("({a0}) - ({a1})")]
     T51Sub { a0: M, a1: M },
-    #[eggplant::display("Mul({a0}, {a1})")]
+    #[eggplant::typst("({a0}) * ({a1})")]
     T51Mul { a0: M, a1: M },
-    #[eggplant::display("Div({a0}, {a1})")]
+    #[eggplant::typst("frac({a0}, {a1})")]
     T51Div { a0: M, a1: M },
-    #[eggplant::display("Pow({a0}, {a1})")]
+    #[eggplant::typst("({a0})^({a1})")]
     T51Pow { a0: M, a1: M },
 }
 
 #[eggplant::dsl]
 enum MTy {
-    #[eggplant::display("Varbinary64({a0})")]
+    #[eggplant::typst("{a0}")]
     T51Varbinary64 { a0: String },
-    #[eggplant::display("Numbinary64({a0})")]
+    #[eggplant::typst("{a0}")]
     T51Numbinary64 { a0: String },
-    #[eggplant::display("Pif64Ty")]
+    #[eggplant::typst("pi")]
     T51Pif64Ty {},
-    #[eggplant::display("Negf64Ty({a0})")]
+    #[eggplant::typst("-({a0})")]
     T51Negf64Ty { a0: MTy },
-    #[eggplant::display("Sinf64Ty({a0})")]
+    #[eggplant::typst("sin({a0})")]
     T51Sinf64Ty { a0: MTy },
-    #[eggplant::display("Cosf64Ty({a0})")]
+    #[eggplant::typst("cos({a0})")]
     T51Cosf64Ty { a0: MTy },
-    #[eggplant::display("Acosf64Ty({a0})")]
+    #[eggplant::typst("acos({a0})")]
     T51Acosf64Ty { a0: MTy },
-    #[eggplant::display("Addf64Ty({a0}, {a1})")]
+    #[eggplant::typst("({a0}) + ({a1})")]
     T51Addf64Ty { a0: MTy, a1: MTy },
-    #[eggplant::display("Subf64Ty({a0}, {a1})")]
+    #[eggplant::typst("({a0}) - ({a1})")]
     T51Subf64Ty { a0: MTy, a1: MTy },
-    #[eggplant::display("Mulf64Ty({a0}, {a1})")]
+    #[eggplant::typst("({a0}) * ({a1})")]
     T51Mulf64Ty { a0: MTy, a1: MTy },
-    #[eggplant::display("Divf64Ty({a0}, {a1})")]
+    #[eggplant::typst("frac({a0}, {a1})")]
     T51Divf64Ty { a0: MTy, a1: MTy },
-    #[eggplant::display("Powf64Ty({a0}, {a1})")]
+    #[eggplant::typst("({a0})^({a1})")]
     T51Powf64Ty { a0: MTy, a1: MTy },
-    #[eggplant::display("Lower({a0}, {a1})")]
+    #[eggplant::typst("lower({a0}, {a1})")]
     T51Lower { a0: M, a1: String },
-    #[eggplant::display("Approx({a0}, {a1})")]
+    #[eggplant::typst("approx({a0}, {a1})")]
     T51Approx { a0: M, a1: MTy },
 }
 
