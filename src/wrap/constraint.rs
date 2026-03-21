@@ -1,11 +1,10 @@
 use egglog::{
-    EGraph,
     ast::{Expr, Fact, GenericExpr, GenericFact, Literal, RustSpan, Span},
-    span,
+    span, EGraph,
 };
 use std::marker::PhantomData;
 
-use crate::wrap::{EgglogTy, FromBase, Sym};
+use crate::wrap::{EgglogContainerTy, EgglogTy, FromBase, Sym};
 pub trait IntoConstraintFact: 'static + std::fmt::Debug {
     #[track_caller]
     fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact>;
@@ -42,6 +41,12 @@ impl<T: EgglogTy> AsHandle for &HandleToConstrain<T> {
     type Target = T;
     fn as_handle(&self) -> HandleToConstrain<Self::Target> {
         (*self).clone()
+    }
+}
+impl<T: EgglogTy> AsHandle for HandleToConstrain<T> {
+    type Target = T;
+    fn as_handle(&self) -> HandleToConstrain<Self::Target> {
+        self.clone()
     }
 }
 impl<T> AsHandle for &T
@@ -436,6 +441,235 @@ pub fn prim_call<Out: EgglogTy>(
 #[track_caller]
 pub fn prim_fact(op: &'static str, operands: Vec<HandleTy>) -> FactCallConstraint {
     FactCallConstraint { op, operands }
+}
+
+#[track_caller]
+pub fn vec_empty<VecTy>() -> HandleToConstrain<VecTy>
+where
+    VecTy: EgglogContainerTy,
+{
+    prim_call("vec-empty", vec![])
+}
+
+#[track_caller]
+pub fn vec_of<VecTy, I, H>(elements: I) -> HandleToConstrain<VecTy>
+where
+    VecTy: EgglogContainerTy,
+    I: IntoIterator<Item = H>,
+    H: AsHandle<Target = VecTy::EleTy>,
+{
+    prim_call(
+        "vec-of",
+        elements
+            .into_iter()
+            .map(|element| element.as_handle().into_handle_ty())
+            .collect(),
+    )
+}
+
+#[track_caller]
+pub fn set_empty<SetTy>() -> HandleToConstrain<SetTy>
+where
+    SetTy: EgglogContainerTy,
+{
+    prim_call("set-empty", vec![])
+}
+
+#[track_caller]
+pub fn set_of<SetTy, I, H>(elements: I) -> HandleToConstrain<SetTy>
+where
+    SetTy: EgglogContainerTy,
+    I: IntoIterator<Item = H>,
+    H: AsHandle<Target = SetTy::EleTy>,
+{
+    prim_call(
+        "set-of",
+        elements
+            .into_iter()
+            .map(|element| element.as_handle().into_handle_ty())
+            .collect(),
+    )
+}
+
+pub trait VecExprExt: AsHandle
+where
+    Self::Target: EgglogContainerTy,
+{
+    #[track_caller]
+    fn vec_push(
+        &self,
+        elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
+    ) -> HandleToConstrain<Self::Target> {
+        prim_call(
+            "vec-push",
+            vec![
+                self.as_handle().into_handle_ty(),
+                elem.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn vec_append(
+        &self,
+        rhs: impl AsHandle<Target = Self::Target>,
+    ) -> HandleToConstrain<Self::Target> {
+        prim_call(
+            "vec-append",
+            vec![
+                self.as_handle().into_handle_ty(),
+                rhs.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn vec_pop(&self) -> HandleToConstrain<Self::Target> {
+        prim_call("vec-pop", vec![self.as_handle().into_handle_ty()])
+    }
+
+    #[track_caller]
+    fn vec_len(&self) -> HandleToConstrain<i64> {
+        prim_call("vec-length", vec![self.as_handle().into_handle_ty()])
+    }
+
+    #[track_caller]
+    fn vec_get(
+        &self,
+        idx: impl AsHandle<Target = i64>,
+    ) -> HandleToConstrain<<Self::Target as EgglogContainerTy>::EleTy> {
+        prim_call(
+            "vec-get",
+            vec![
+                self.as_handle().into_handle_ty(),
+                idx.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn vec_set(
+        &self,
+        idx: impl AsHandle<Target = i64>,
+        elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
+    ) -> HandleToConstrain<Self::Target> {
+        prim_call(
+            "vec-set",
+            vec![
+                self.as_handle().into_handle_ty(),
+                idx.as_handle().into_handle_ty(),
+                elem.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn vec_contains(
+        &self,
+        elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
+    ) -> FactCallConstraint {
+        prim_fact(
+            "vec-contains",
+            vec![
+                self.as_handle().into_handle_ty(),
+                elem.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn vec_not_contains(
+        &self,
+        elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
+    ) -> FactCallConstraint {
+        prim_fact(
+            "vec-not-contains",
+            vec![
+                self.as_handle().into_handle_ty(),
+                elem.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+}
+
+impl<H, VecTy> VecExprExt for H
+where
+    H: AsHandle<Target = VecTy>,
+    VecTy: EgglogContainerTy,
+{
+}
+
+pub trait SetExprExt: AsHandle
+where
+    Self::Target: EgglogContainerTy,
+{
+    #[track_caller]
+    fn set_insert(
+        &self,
+        elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
+    ) -> HandleToConstrain<Self::Target> {
+        prim_call(
+            "set-insert",
+            vec![
+                self.as_handle().into_handle_ty(),
+                elem.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn set_union(
+        &self,
+        rhs: impl AsHandle<Target = Self::Target>,
+    ) -> HandleToConstrain<Self::Target> {
+        prim_call(
+            "set-union",
+            vec![
+                self.as_handle().into_handle_ty(),
+                rhs.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn set_len(&self) -> HandleToConstrain<i64> {
+        prim_call("set-length", vec![self.as_handle().into_handle_ty()])
+    }
+
+    #[track_caller]
+    fn set_get(
+        &self,
+        idx: impl AsHandle<Target = i64>,
+    ) -> HandleToConstrain<<Self::Target as EgglogContainerTy>::EleTy> {
+        prim_call(
+            "set-get",
+            vec![
+                self.as_handle().into_handle_ty(),
+                idx.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+
+    #[track_caller]
+    fn set_remove(
+        &self,
+        elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
+    ) -> HandleToConstrain<Self::Target> {
+        prim_call(
+            "set-remove",
+            vec![
+                self.as_handle().into_handle_ty(),
+                elem.as_handle().into_handle_ty(),
+            ],
+        )
+    }
+}
+
+impl<H, SetTy> SetExprExt for H
+where
+    H: AsHandle<Target = SetTy>,
+    SetTy: EgglogContainerTy,
+{
 }
 
 impl<T: EgglogTy> Clone for HandleToConstrain<T> {

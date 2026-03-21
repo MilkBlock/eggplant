@@ -57,182 +57,57 @@ fn expect_rule_matches(report: &RunReport, rule: &str) {
 fn pat_vec_check_vec_of<PR: PatRecSgl>() -> CheckIVecPat<PR> {
     let v = BaseVar::<IVec, PR>::query_named("v");
     let vh = v.handle();
-    let e1 = prim_call::<IVec>(
-        "vec-of",
-        vec![(&1_i64).into_handle_ty(), (&2_i64).into_handle_ty()],
-    );
-    let empty = prim_call::<IVec>("vec-empty", vec![]);
-    let push1 = prim_call::<IVec>(
-        "vec-push",
-        vec![empty.into_handle_ty(), (&1_i64).into_handle_ty()],
-    );
-    let e2 = prim_call::<IVec>(
-        "vec-push",
-        vec![push1.into_handle_ty(), (&2_i64).into_handle_ty()],
-    );
+    let e1 = vec_of::<IVec, _, _>([&1_i64, &2_i64]);
+    let e2 = vec_empty::<IVec>().vec_push(&1_i64).vec_push(&2_i64);
     CheckIVecPat::new(v).assert(vh.eq(&e1)).assert(vh.eq(&e2))
 }
 
 fn pat_vec_check_vec_append<PR: PatRecSgl>() -> CheckIVecPat<PR> {
     let v = BaseVar::<IVec, PR>::query_named("v");
     let vh = v.handle();
-    let lhs = prim_call::<IVec>(
-        "vec-append",
-        vec![
-            prim_call::<IVec>(
-                "vec-of",
-                vec![(&1_i64).into_handle_ty(), (&2_i64).into_handle_ty()],
-            )
-            .into_handle_ty(),
-            prim_call::<IVec>(
-                "vec-of",
-                vec![(&3_i64).into_handle_ty(), (&4_i64).into_handle_ty()],
-            )
-            .into_handle_ty(),
-        ],
-    );
-    let rhs = prim_call::<IVec>(
-        "vec-of",
-        vec![
-            (&1_i64).into_handle_ty(),
-            (&2_i64).into_handle_ty(),
-            (&3_i64).into_handle_ty(),
-            (&4_i64).into_handle_ty(),
-        ],
-    );
+    let lhs =
+        vec_of::<IVec, _, _>([&1_i64, &2_i64]).vec_append(vec_of::<IVec, _, _>([&3_i64, &4_i64]));
+    let rhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64, &4_i64]);
     CheckIVecPat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
 }
 
 fn pat_vec_check_vec_pop<PR: PatRecSgl>() -> CheckIVecPat<PR> {
     let v = BaseVar::<IVec, PR>::query_named("v");
     let vh = v.handle();
-    let lhs = prim_call::<IVec>(
-        "vec-pop",
-        vec![
-            prim_call::<IVec>(
-                "vec-of",
-                vec![
-                    (&1_i64).into_handle_ty(),
-                    (&2_i64).into_handle_ty(),
-                    (&3_i64).into_handle_ty(),
-                ],
-            )
-            .into_handle_ty(),
-        ],
-    );
-    let rhs = prim_call::<IVec>(
-        "vec-of",
-        vec![(&1_i64).into_handle_ty(), (&2_i64).into_handle_ty()],
-    );
+    let lhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_pop();
+    let rhs = vec_of::<IVec, _, _>([&1_i64, &2_i64]);
     CheckIVecPat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
 }
 
 fn pat_vec_check_vec_not_contains<PR: PatRecSgl>() -> CheckUnitPat<PR> {
-    let e = prim_fact(
-        "vec-not-contains",
-        vec![
-            prim_call::<IVec>(
-                "vec-of",
-                vec![
-                    (&1_i64).into_handle_ty(),
-                    (&2_i64).into_handle_ty(),
-                    (&3_i64).into_handle_ty(),
-                ],
-            )
-            .into_handle_ty(),
-            (&4_i64).into_handle_ty(),
-        ],
-    );
+    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_not_contains(&4_i64);
     CheckUnitPat::new().assert(e)
 }
 
 fn pat_vec_check_vec_contains<PR: PatRecSgl>() -> CheckUnitPat<PR> {
-    let e = prim_fact(
-        "vec-contains",
-        vec![
-            prim_call::<IVec>(
-                "vec-of",
-                vec![
-                    (&1_i64).into_handle_ty(),
-                    (&2_i64).into_handle_ty(),
-                    (&3_i64).into_handle_ty(),
-                ],
-            )
-            .into_handle_ty(),
-            (&2_i64).into_handle_ty(),
-        ],
-    );
+    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_contains(&2_i64);
     CheckUnitPat::new().assert(e)
 }
 
 fn pat_vec_check_vec_length<PR: PatRecSgl>() -> CheckI64Pat<PR> {
     let v = BaseVar::<i64, PR>::query_named("n");
     let vh = v.handle();
-    let e = prim_call::<i64>(
-        "vec-length",
-        vec![
-            prim_call::<IVec>(
-                "vec-of",
-                vec![
-                    (&1_i64).into_handle_ty(),
-                    (&2_i64).into_handle_ty(),
-                    (&3_i64).into_handle_ty(),
-                ],
-            )
-            .into_handle_ty(),
-        ],
-    );
+    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_len();
     CheckI64Pat::new(v).assert(vh.eq(&e)).assert(vh.eq(&3_i64))
 }
 
 fn pat_vec_check_vec_get<PR: PatRecSgl>() -> CheckI64Pat<PR> {
     let v = BaseVar::<i64, PR>::query_named("n");
     let vh = v.handle();
-    let e = prim_call::<i64>(
-        "vec-get",
-        vec![
-            prim_call::<IVec>(
-                "vec-of",
-                vec![
-                    (&1_i64).into_handle_ty(),
-                    (&2_i64).into_handle_ty(),
-                    (&3_i64).into_handle_ty(),
-                ],
-            )
-            .into_handle_ty(),
-            (&1_i64).into_handle_ty(),
-        ],
-    );
+    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_get(&1_i64);
     CheckI64Pat::new(v).assert(vh.eq(&e)).assert(vh.eq(&2_i64))
 }
 
 fn pat_vec_check_vec_set<PR: PatRecSgl>() -> CheckIVecPat<PR> {
     let v = BaseVar::<IVec, PR>::query_named("v");
     let vh = v.handle();
-    let lhs = prim_call::<IVec>(
-        "vec-set",
-        vec![
-            prim_call::<IVec>(
-                "vec-of",
-                vec![
-                    (&1_i64).into_handle_ty(),
-                    (&2_i64).into_handle_ty(),
-                    (&3_i64).into_handle_ty(),
-                ],
-            )
-            .into_handle_ty(),
-            (&1_i64).into_handle_ty(),
-            (&4_i64).into_handle_ty(),
-        ],
-    );
-    let rhs = prim_call::<IVec>(
-        "vec-of",
-        vec![
-            (&1_i64).into_handle_ty(),
-            (&4_i64).into_handle_ty(),
-            (&3_i64).into_handle_ty(),
-        ],
-    );
+    let lhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_set(&1_i64, &4_i64);
+    let rhs = vec_of::<IVec, _, _>([&1_i64, &4_i64, &3_i64]);
     CheckIVecPat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
 }
 

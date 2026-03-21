@@ -4,8 +4,8 @@ mod tests {
     use eggplant::prelude::*;
     use eggplant::wrap::EgglogEnumVariantTy;
     use std::sync::{
-        Arc, Mutex,
         atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
     };
 
     #[eggplant::dsl]
@@ -871,22 +871,18 @@ mod tests {
             // contains / not-contains
             // `vec-contains` / `vec-not-contains` are partial primitives (`-?> ()`): they succeed
             // with `()` when the predicate holds, and fail otherwise.
-            assert!(
-                egraph
-                    .eval_expr(&call(
-                        "vec-not-contains",
-                        vec![call("vec-of", vec![int(1), int(2), int(3)]), int(4)],
-                    ))
-                    .is_ok()
-            );
-            assert!(
-                egraph
-                    .eval_expr(&call(
-                        "vec-contains",
-                        vec![call("vec-of", vec![int(1), int(2), int(3)]), int(2)],
-                    ))
-                    .is_ok()
-            );
+            assert!(egraph
+                .eval_expr(&call(
+                    "vec-not-contains",
+                    vec![call("vec-of", vec![int(1), int(2), int(3)]), int(4)],
+                ))
+                .is_ok());
+            assert!(egraph
+                .eval_expr(&call(
+                    "vec-contains",
+                    vec![call("vec-of", vec![int(1), int(2), int(3)]), int(2)],
+                ))
+                .is_ok());
 
             // length
             let (_, v) = egraph
@@ -972,6 +968,38 @@ mod tests {
         #[eggplant::container]
         struct UpSetISetBase {
             inner: SetContainer<i64>,
+        }
+
+        #[test]
+        fn typed_container_primitive_helper_smoke() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            tx_rx_vt_pr!(MyTxTypedPrim, MyPatRecTypedPrim);
+
+            let egraph = MyTxTypedPrim::egraph();
+            let mut egraph = egraph.lock().unwrap();
+            let vec_push_expr = vec_empty::<UpVecIVec>()
+                .vec_push(&1_i64)
+                .vec_push(&2_i64)
+                .to_resolved_expr(&egraph);
+            let vec_of_expr = vec_of::<UpVecIVec, _, _>([&1_i64, &2_i64]).to_resolved_expr(&egraph);
+
+            assert_expr_eq(&mut egraph, vec_push_expr, vec_of_expr);
+
+            let set_insert_expr = set_empty::<UpSetISetBase>()
+                .set_insert(&2_i64)
+                .set_insert(&1_i64)
+                .to_resolved_expr(&egraph);
+            let set_of_expr =
+                set_of::<UpSetISetBase, _, _>([&1_i64, &2_i64]).to_resolved_expr(&egraph);
+
+            assert_expr_eq(&mut egraph, set_insert_expr, set_of_expr);
+
+            let len_expr = set_of::<UpSetISetBase, _, _>([&1_i64, &1_i64, &2_i64])
+                .set_len()
+                .to_resolved_expr(&egraph);
+            let (_, len) = egraph.eval_expr(&len_expr).unwrap();
+            assert_eq!(egraph.value_to_base::<i64>(len), 2);
         }
 
         #[test]

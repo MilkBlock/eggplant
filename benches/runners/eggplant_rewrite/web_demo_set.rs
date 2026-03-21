@@ -89,17 +89,7 @@ fn pat_set_check_set_of_12_push_12<PR: PatRecSgl>() -> CheckSetInsertPat<PR> {
     let expected_h = expected.handle();
     let empty_h = empty.handle();
 
-    let rhs = prim_call::<ISetBase>(
-        "set-insert",
-        vec![
-            prim_call::<ISetBase>(
-                "set-insert",
-                vec![empty_h.clone().into_handle_ty(), (&1_i64).into_handle_ty()],
-            )
-            .into_handle_ty(),
-            (&2_i64).into_handle_ty(),
-        ],
-    );
+    let rhs = empty_h.clone().set_insert(&1_i64).set_insert(&2_i64);
 
     CheckSetInsertPat::new(expected, empty).assert(expected_h.eq(&rhs))
 }
@@ -110,17 +100,7 @@ fn pat_set_check_set_of_12_push_21<PR: PatRecSgl>() -> CheckSetInsertPat<PR> {
     let expected_h = expected.handle();
     let empty_h = empty.handle();
 
-    let rhs = prim_call::<ISetBase>(
-        "set-insert",
-        vec![
-            prim_call::<ISetBase>(
-                "set-insert",
-                vec![empty_h.clone().into_handle_ty(), (&2_i64).into_handle_ty()],
-            )
-            .into_handle_ty(),
-            (&1_i64).into_handle_ty(),
-        ],
-    );
+    let rhs = empty_h.clone().set_insert(&2_i64).set_insert(&1_i64);
 
     CheckSetInsertPat::new(expected, empty).assert(expected_h.eq(&rhs))
 }
@@ -138,10 +118,7 @@ fn pat_set_check_set_union_1234<PR: PatRecSgl>() -> CheckSetUnionPat<PR> {
     let expected = bind_const_set::<PR>("S1234", BaseVar::<ISetBase, PR>::query_named("s1234"));
     let expected_h = expected.handle();
 
-    let lhs = prim_call::<ISetBase>(
-        "set-union",
-        vec![s12.handle().into_handle_ty(), s34.handle().into_handle_ty()],
-    );
+    let lhs = s12.handle().set_union(s34.handle());
 
     CheckSetUnionPat::new(s12, s34, expected).assert(expected_h.eq(&lhs))
 }
@@ -153,19 +130,19 @@ struct CheckSetLenPat<PR: PatRecSgl> {
 
 fn pat_set_check_set_length_empty_0<PR: PatRecSgl>() -> CheckSetLenPat<PR> {
     let set = bind_const_set::<PR>("SEmpty", BaseVar::<ISetBase, PR>::query_named("s"));
-    let len = prim_call::<i64>("set-length", vec![set.handle().into_handle_ty()]);
+    let len = set.handle().set_len();
     CheckSetLenPat::new(set).assert(len.eq(&0_i64))
 }
 
 fn pat_set_check_set_length_of_111_1<PR: PatRecSgl>() -> CheckSetLenPat<PR> {
     let set = bind_const_set::<PR>("S111", BaseVar::<ISetBase, PR>::query_named("s"));
-    let len = prim_call::<i64>("set-length", vec![set.handle().into_handle_ty()]);
+    let len = set.handle().set_len();
     CheckSetLenPat::new(set).assert(len.eq(&1_i64))
 }
 
 fn pat_set_check_set_length_of_1m111_2<PR: PatRecSgl>() -> CheckSetLenPat<PR> {
     let set = bind_const_set::<PR>("S1m111", BaseVar::<ISetBase, PR>::query_named("s"));
-    let len = prim_call::<i64>("set-length", vec![set.handle().into_handle_ty()]);
+    let len = set.handle().set_len();
     CheckSetLenPat::new(set).assert(len.eq(&2_i64))
 }
 
@@ -176,37 +153,25 @@ struct CheckSetGetPat<PR: PatRecSgl> {
 
 fn pat_set_check_set_get_1m1241_0_is_1<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
     let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = prim_call::<i64>(
-        "set-get",
-        vec![set.handle().into_handle_ty(), (&0_i64).into_handle_ty()],
-    );
+    let got = set.handle().set_get(&0_i64);
     CheckSetGetPat::new(set).assert(got.eq(&1_i64))
 }
 
 fn pat_set_check_set_get_1m1241_1_is_2<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
     let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = prim_call::<i64>(
-        "set-get",
-        vec![set.handle().into_handle_ty(), (&1_i64).into_handle_ty()],
-    );
+    let got = set.handle().set_get(&1_i64);
     CheckSetGetPat::new(set).assert(got.eq(&2_i64))
 }
 
 fn pat_set_check_set_get_1m1241_2_is_4<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
     let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = prim_call::<i64>(
-        "set-get",
-        vec![set.handle().into_handle_ty(), (&2_i64).into_handle_ty()],
-    );
+    let got = set.handle().set_get(&2_i64);
     CheckSetGetPat::new(set).assert(got.eq(&4_i64))
 }
 
 fn pat_set_check_set_get_1m1241_3_is_m1<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
     let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = prim_call::<i64>(
-        "set-get",
-        vec![set.handle().into_handle_ty(), (&3_i64).into_handle_ty()],
-    );
+    let got = set.handle().set_get(&3_i64);
     CheckSetGetPat::new(set).assert(got.eq(&-1_i64))
 }
 
@@ -231,11 +196,8 @@ fn reify0_pat<PR: PatRecSgl>() -> Reify0Pat<PR> {
         vec![(x.name(), "ISetBase".to_string())],
     );
 
-    let len = prim_call::<i64>("set-length", vec![x.handle().into_handle_ty()]);
-    let y_expr = prim_call::<i64>(
-        "set-get",
-        vec![x.handle().into_handle_ty(), (&0_i64).into_handle_ty()],
-    );
+    let len = x.handle().set_len();
+    let y_expr = x.handle().set_get(&0_i64);
 
     Reify0Pat::new(x, y)
         .assert(len.gt(&0_i64))
@@ -265,11 +227,8 @@ fn reify_step_pat<PR: PatRecSgl>() -> ReifyStepPat<PR> {
     );
 
     let i_expr = seen.handle_j() + (&1_i64).as_handle();
-    let len = prim_call::<i64>("set-length", vec![x.handle().into_handle_ty()]);
-    let y_expr = prim_call::<i64>(
-        "set-get",
-        vec![x.handle().into_handle_ty(), i.handle().into_handle_ty()],
-    );
+    let len = x.handle().set_len();
+    let y_expr = x.handle().set_get(&ih);
 
     ReifyStepPat::new(seen, x, i, y)
         .assert(ih.eq(&i_expr))
