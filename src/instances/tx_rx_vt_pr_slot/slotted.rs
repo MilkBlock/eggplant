@@ -1,13 +1,13 @@
 #![allow(dead_code)]
 
 use crate::{
-    butler_portugal::{canonicalize, Tensor},
+    butler_portugal::{Tensor, canonicalize},
     prelude::SlotMeta,
     wrap::{EgglogNode, PatRec, PatRecSgl, Sym, Syms},
 };
 use dashmap::DashMap;
 use derive_more::{Deref, DerefMut};
-use egglog::{util::IndexMap, EGraph, Value};
+use egglog::{EGraph, Value, util::IndexMap};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub type FuncName = &'static str;

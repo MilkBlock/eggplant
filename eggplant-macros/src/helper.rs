@@ -2,13 +2,14 @@ use core::panic;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
+use std::collections::HashSet;
 use std::{
     marker::PhantomData,
     sync::{LazyLock, Mutex, MutexGuard},
 };
 use syn::{
-    DataEnum, Expr, Fields, GenericArgument, Path, PathArguments, Type, Variant, parse::Parse,
-    parse_str,
+    Attribute, DataEnum, Expr, Fields, GenericArgument, LitStr, Path, PathArguments, Type, Variant,
+    parse::Parse, parse_str,
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
@@ -497,6 +498,154 @@ pub fn variant2field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
         |ident, _| Some(quote! {#ident}),
     )
 }
+
+fn is_display_attr(attr: &Attribute) -> bool {
+    let segments = attr
+        .path()
+        .segments
+        .iter()
+        .map(|seg| seg.ident.to_string())
+        .collect::<Vec<_>>();
+    matches!(segments.as_slice(), [single] if single == "display")
+        || matches!(segments.as_slice(), [first, second] if first == "eggplant" && second == "display")
+}
+
+fn extract_display_placeholders(template: &LitStr) -> syn::Result<Vec<String>> {
+    let raw = template.value();
+    let chars = raw.chars().collect::<Vec<_>>();
+    let mut idx = 0usize;
+    let mut placeholders = Vec::new();
+
+    while idx < chars.len() {
+        match chars[idx] {
+            '{' => {
+                if chars.get(idx + 1) == Some(&'{') {
+                    idx += 2;
+                    continue;
+                }
+
+                let start = idx + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end] != '}' {
+                    if chars[end] == '{' {
+                        return Err(syn::Error::new_spanned(
+                            template,
+                            "nested `{` inside #[eggplant::display(\"...\")] placeholder is not supported",
+                        ));
+                    }
+                    end += 1;
+                }
+
+                if end >= chars.len() {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        "unclosed `{` in #[eggplant::display(\"...\")] template",
+                    ));
+                }
+
+                let placeholder = chars[start..end].iter().collect::<String>();
+                if placeholder.is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        "empty `{}` placeholder is not allowed in #[eggplant::display(\"...\")]",
+                    ));
+                }
+                let valid_ident = placeholder
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+                    && placeholder
+                        .chars()
+                        .all(|ch| ch == '_' || ch.is_ascii_alphanumeric());
+                if !valid_ident {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!(
+                            "invalid placeholder `{placeholder}` in #[eggplant::display(\"...\")]; only simple field names like `x` or `lhs_1` are supported"
+                        ),
+                    ));
+                }
+                placeholders.push(placeholder);
+                idx = end + 1;
+            }
+            '}' => {
+                if chars.get(idx + 1) == Some(&'}') {
+                    idx += 2;
+                    continue;
+                }
+                return Err(syn::Error::new_spanned(
+                    template,
+                    "unmatched `}` in #[eggplant::display(\"...\")] template",
+                ));
+            }
+            _ => idx += 1,
+        }
+    }
+
+    Ok(placeholders)
+}
+
+pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    let display_attrs = variant
+        .attrs
+        .iter()
+        .filter(|attr| is_display_attr(attr))
+        .collect::<Vec<_>>();
+
+    if display_attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            variant,
+            "only one #[eggplant::display(\"...\")] attribute is allowed per variant",
+        ));
+    }
+
+    let Some(attr) = display_attrs.first() else {
+        return Ok(quote!(None));
+    };
+
+    let template = attr.parse_args::<LitStr>()?;
+    let placeholders = extract_display_placeholders(&template)?;
+
+    match &variant.fields {
+        Fields::Named(fields) => {
+            let field_names = fields
+                .named
+                .iter()
+                .filter_map(|field| field.ident.as_ref().map(ToString::to_string))
+                .collect::<HashSet<_>>();
+            for placeholder in placeholders {
+                if !field_names.contains(&placeholder) {
+                    return Err(syn::Error::new_spanned(
+                        &template,
+                        format!(
+                            "unknown placeholder `{placeholder}` in #[eggplant::display(\"...\")] for variant `{}`",
+                            variant.ident
+                        ),
+                    ));
+                }
+            }
+        }
+        Fields::Unit => {
+            if let Some(placeholder) = placeholders.first() {
+                return Err(syn::Error::new_spanned(
+                    &template,
+                    format!(
+                        "unit variant `{}` has no fields, but display template references `{placeholder}`",
+                        variant.ident
+                    ),
+                ));
+            }
+        }
+        Fields::Unnamed(_) => {
+            return Err(syn::Error::new_spanned(
+                variant,
+                "#[eggplant::display(\"...\")] currently supports only named-field or unit variants",
+            ));
+        }
+    }
+
+    Ok(quote!(Some(#template)))
+}
 // pub fn _variant2field_ident_with_all_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
 //     variant2mapped_ident_type_list(
 //         variant,
@@ -619,6 +768,56 @@ pub fn variant2valued_struct_fields(variant: &Variant) -> Vec<TokenStream> {
             BasicOrComplex::ComplexType => None,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::variant_display_template_tokens;
+    use quote::quote;
+    use syn::{Variant, parse_quote};
+
+    #[test]
+    fn display_template_accepts_named_placeholders() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{x} + {f}")]
+            MDiff { x: Math, f: Math }
+        };
+        let tokens = variant_display_template_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("{x} + {f}")).to_string());
+    }
+
+    #[test]
+    fn display_template_rejects_unknown_placeholder() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{x} + {missing}")]
+            MDiff { x: Math, f: Math }
+        };
+        let err = variant_display_template_tokens(&variant).unwrap_err();
+        assert!(err.to_string().contains("unknown placeholder `missing`"));
+    }
+
+    #[test]
+    fn display_template_rejects_tuple_variant() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{value}")]
+            Wrap(Math)
+        };
+        let err = variant_display_template_tokens(&variant).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("currently supports only named-field or unit variants")
+        );
+    }
+
+    #[test]
+    fn display_template_allows_escaped_braces() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{{x}} -> {x}")]
+            Wrap { x: Math }
+        };
+        let tokens = variant_display_template_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("{{x}} -> {x}")).to_string());
+    }
 }
 
 pub fn variant2mapped_ident_type_list_view_container_as_complex(

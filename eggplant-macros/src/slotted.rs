@@ -838,6 +838,7 @@ pub fn slotted_dsl(
             };
             let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
                 let (variant_marker, variant_name) = variant2marker_name(variant);
+                let display_template = variant_display_template_tokens(variant)?;
 
                 let valued_variant_name = format_ident!("Valued{}", variant_name);
                 let values_with_types = variant2valued_struct_fields(variant);
@@ -904,7 +905,7 @@ pub fn slotted_dsl(
                     |_, _| None,
                 );
 
-                quote! {
+                Ok(quote! {
                     #[derive(Clone)]
                     pub struct #variant_marker;
                     #[derive(Debug,Clone,Copy)]
@@ -981,14 +982,19 @@ pub fn slotted_dsl(
                     }
                     impl #W::EgglogEnumVariantTy for #variant_marker {
                         const TY_NAME:&'static str = stringify!(#variant_name);
+                        const DISPLAY_TEMPLATE: Option<&'static str> = #display_template;
                         const BASIC_FIELD_NAMES:&[&'static str] = &[#(stringify!(#basic_field_idents)),* ];
                         const BASIC_FIELD_TYPES:&[&'static str] = &[#(stringify!(#basic_field_types)),* ];
                         const COMPLEX_FIELD_NAMES:&[&'static str] = &[#(stringify!(#complex_field_idents)),* ];
                         const COMPLEX_FIELD_TYPES:&[&'static str] = &[#(stringify!(#complex_field_types)),* ];
                         type ValuedWithDefault<T> = #valued_variant_name;
                     }
-                }
-            });
+                })
+            }).collect::<syn::Result<Vec<_>>>();
+            let enum_variant_tys_def = match enum_variant_tys_def {
+                Ok(v) => v,
+                Err(err) => return err.to_compile_error().into(),
+            };
 
             let set_fns = data_enum
                 .variants

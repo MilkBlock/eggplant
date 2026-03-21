@@ -2,6 +2,7 @@
 mod tests {
     use crate::{self as eggplant, tx_rx_vt_pr};
     use eggplant::prelude::*;
+    use eggplant::wrap::EgglogEnumVariantTy;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -15,6 +16,22 @@ mod tests {
     #[eggplant::dsl]
     enum GraphRoot {
         Root { node: Expr },
+    }
+    #[eggplant::dsl]
+    enum DisplayMath {
+        #[eggplant::display("{x} + {f}")]
+        MDiff {
+            x: DisplayMath,
+            f: DisplayMath,
+        },
+        #[eggplant::display("integ {f} {x}")]
+        MIntegral {
+            f: DisplayMath,
+            x: DisplayMath,
+        },
+        MLeaf {
+            n: i64,
+        },
     }
     tx_rx_vt_pr!(MyTx, MyPatRec);
     // bind pattern recorder for MyTx
@@ -45,6 +62,19 @@ mod tests {
         });
         MyTx::run_ruleset(ruleset, RunConfig::Once);
         assert_eq!(*executed.lock().unwrap(), true);
+    }
+
+    #[test]
+    fn dsl_display_template_metadata_smoke() {
+        assert_eq!(
+            <MDiffTy as EgglogEnumVariantTy>::DISPLAY_TEMPLATE,
+            Some("{x} + {f}")
+        );
+        assert_eq!(
+            <MIntegralTy as EgglogEnumVariantTy>::DISPLAY_TEMPLATE,
+            Some("integ {f} {x}")
+        );
+        assert_eq!(<MLeafTy as EgglogEnumVariantTy>::DISPLAY_TEMPLATE, None);
     }
 
     #[eggplant::dsl]
