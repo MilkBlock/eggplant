@@ -1,11 +1,13 @@
+#![allow(dead_code)]
+
 use crate::{
-    butler_portugal::{Tensor, canonicalize},
+    butler_portugal::{canonicalize, Tensor},
     prelude::SlotMeta,
     wrap::{EgglogNode, PatRec, PatRecSgl, Sym, Syms},
 };
 use dashmap::DashMap;
 use derive_more::{Deref, DerefMut};
-use egglog::{EGraph, Value, util::IndexMap};
+use egglog::{util::IndexMap, EGraph, Value};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 pub type FuncName = &'static str;
@@ -39,18 +41,9 @@ impl SEClassesWithCanoValue {
     fn new(cano_value: Value) -> Self {
         Self {
             cano_value,
-            senodes: {
-                let mut senodes = IndexMap::default();
-                senodes
-            },
-            seclass2senodes: {
-                let mut seclass2senodes: IndexMap<usize, SEClass> = IndexMap::default();
-                seclass2senodes
-            },
-            ty2senodes: {
-                let mut ty2senodes: IndexMap<FuncName, Vec<usize>> = IndexMap::default();
-                ty2senodes
-            },
+            senodes: IndexMap::default(),
+            seclass2senodes: IndexMap::default(),
+            ty2senodes: IndexMap::default(),
         }
     }
 }
@@ -122,7 +115,7 @@ impl SlottedCtx {
                         .or_insert(SEClassesWithCanoValue::new(output_cano_value));
 
                     // then find the satisfied enode or create new
-                    if let Some(enode_id) = find_satisfied_enode(&seclasses, &inputs, &output) {
+                    if find_satisfied_enode(&seclasses, &inputs, &output).is_some() {
                     } else {
                         // create new
                         let senode_id = self.next_senode_id.fetch_add(1, Ordering::SeqCst);
@@ -162,9 +155,9 @@ impl SlottedCtx {
 }
 
 fn find_satisfied_enode(
-    seclasses: &dashmap::mapref::one::RefMut<'_, Value, SEClassesWithCanoValue>,
-    inputs: &[(&'static str, Value, SlotMeta)],
-    (output_func, output_cano_val, output_meta): &(&'static str, Value, SlotMeta),
+    _seclasses: &dashmap::mapref::one::RefMut<'_, Value, SEClassesWithCanoValue>,
+    _inputs: &[(&'static str, Value, SlotMeta)],
+    (_output_func, _output_cano_val, _output_meta): &(&'static str, Value, SlotMeta),
 ) -> Option<SENodeID> {
     // if let Some(senode_ids) = seclasses.ty2senodes.get(output_func) {
     //     for enode_id in senode_ids.iter() {
@@ -188,8 +181,8 @@ fn find_satisfied_enode(
     None
 }
 
-pub type _FuncValueMeta<PR: PatRecSgl> = (FuncName, egglog::Value, Option<PR::MetaTy>);
-pub type FuncValueMeta<Pr: PatRec> = (FuncName, egglog::Value, Option<Pr::MetaTy>);
+pub type _FuncValueMeta<PR> = (FuncName, egglog::Value, Option<<PR as PatRecSgl>::MetaTy>);
+pub type FuncValueMeta<PR> = (FuncName, egglog::Value, Option<<PR as PatRec>::MetaTy>);
 pub type FuncValueMetaInner = (FuncName, egglog::Value, SlotMeta);
 #[derive(Clone, Debug)]
 pub enum SlotPendingOps {
