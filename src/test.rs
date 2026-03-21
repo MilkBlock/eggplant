@@ -4,8 +4,8 @@ mod tests {
     use eggplant::prelude::*;
     use eggplant::wrap::EgglogEnumVariantTy;
     use std::sync::{
-        atomic::{AtomicBool, Ordering},
         Arc, Mutex,
+        atomic::{AtomicBool, Ordering},
     };
 
     #[eggplant::dsl]
@@ -21,6 +21,7 @@ mod tests {
     enum DisplayMath {
         #[eggplant::display("{x} + {f}")]
         #[eggplant::typst("diff({x}, {f})")]
+        #[eggplant::precedence(5)]
         MDiff {
             x: DisplayMath,
             f: DisplayMath,
@@ -33,6 +34,23 @@ mod tests {
         },
         MLeaf {
             n: i64,
+        },
+    }
+    #[eggplant::dsl]
+    enum PrecedenceExpr {
+        #[eggplant::typst("{name}")]
+        Var { name: String },
+        #[eggplant::typst("{lhs} + {rhs}")]
+        #[eggplant::precedence(10)]
+        Add {
+            lhs: PrecedenceExpr,
+            rhs: PrecedenceExpr,
+        },
+        #[eggplant::typst("{lhs} * {rhs}")]
+        #[eggplant::precedence(20)]
+        Mul {
+            lhs: PrecedenceExpr,
+            rhs: PrecedenceExpr,
         },
     }
     tx_rx_vt_pr!(MyTx, MyPatRec);
@@ -76,6 +94,7 @@ mod tests {
             <MDiffTy as EgglogEnumVariantTy>::TYPST_TEMPLATE,
             Some("diff({x}, {f})")
         );
+        assert_eq!(<MDiffTy as EgglogEnumVariantTy>::PRECEDENCE, 5);
         assert_eq!(
             <MIntegralTy as EgglogEnumVariantTy>::DISPLAY_TEMPLATE,
             Some("integ {f} {x}")
@@ -86,6 +105,46 @@ mod tests {
         );
         assert_eq!(<MLeafTy as EgglogEnumVariantTy>::DISPLAY_TEMPLATE, None);
         assert_eq!(<MLeafTy as EgglogEnumVariantTy>::TYPST_TEMPLATE, None);
+        assert_eq!(<MLeafTy as EgglogEnumVariantTy>::PRECEDENCE, u16::MAX);
+    }
+
+    #[test]
+    fn dsl_typst_precedence_render_smoke() {
+        let x = RenderedTemplateField::atom("x");
+        let y = RenderedTemplateField::atom("y");
+        let z = RenderedTemplateField::atom("z");
+
+        let add_xy =
+            render_variant_typst::<AddTy>(&[("lhs", x.clone()), ("rhs", y.clone())]).unwrap();
+        let mul_yz =
+            render_variant_typst::<MulTy>(&[("lhs", y.clone()), ("rhs", z.clone())]).unwrap();
+        let add_x_mul_yz = render_variant_typst::<AddTy>(&[
+            (
+                "lhs",
+                RenderedTemplateField::new("x", <VarTy as EgglogEnumVariantTy>::PRECEDENCE),
+            ),
+            (
+                "rhs",
+                RenderedTemplateField::new(mul_yz, <MulTy as EgglogEnumVariantTy>::PRECEDENCE),
+            ),
+        ])
+        .unwrap();
+        let mul_add_xy_z = render_variant_typst::<MulTy>(&[
+            (
+                "lhs",
+                RenderedTemplateField::new(add_xy, <AddTy as EgglogEnumVariantTy>::PRECEDENCE),
+            ),
+            (
+                "rhs",
+                RenderedTemplateField::new("z", <VarTy as EgglogEnumVariantTy>::PRECEDENCE),
+            ),
+        ])
+        .unwrap();
+
+        assert_eq!(<AddTy as EgglogEnumVariantTy>::PRECEDENCE, 10);
+        assert_eq!(<MulTy as EgglogEnumVariantTy>::PRECEDENCE, 20);
+        assert_eq!(add_x_mul_yz, "x + y * z");
+        assert_eq!(mul_add_xy_z, "(x + y) * z");
     }
 
     #[eggplant::dsl]
@@ -871,18 +930,22 @@ mod tests {
             // contains / not-contains
             // `vec-contains` / `vec-not-contains` are partial primitives (`-?> ()`): they succeed
             // with `()` when the predicate holds, and fail otherwise.
-            assert!(egraph
-                .eval_expr(&call(
-                    "vec-not-contains",
-                    vec![call("vec-of", vec![int(1), int(2), int(3)]), int(4)],
-                ))
-                .is_ok());
-            assert!(egraph
-                .eval_expr(&call(
-                    "vec-contains",
-                    vec![call("vec-of", vec![int(1), int(2), int(3)]), int(2)],
-                ))
-                .is_ok());
+            assert!(
+                egraph
+                    .eval_expr(&call(
+                        "vec-not-contains",
+                        vec![call("vec-of", vec![int(1), int(2), int(3)]), int(4)],
+                    ))
+                    .is_ok()
+            );
+            assert!(
+                egraph
+                    .eval_expr(&call(
+                        "vec-contains",
+                        vec![call("vec-of", vec![int(1), int(2), int(3)]), int(2)],
+                    ))
+                    .is_ok()
+            );
 
             // length
             let (_, v) = egraph

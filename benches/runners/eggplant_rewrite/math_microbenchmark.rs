@@ -4,34 +4,47 @@ use std::time::Instant;
 
 #[eggplant::dsl]
 enum Math {
-    #[eggplant::typst("diff({x}, {f})")]
+    #[eggplant::typst("{f}'({x})")]
+    #[eggplant::precedence(90)]
     MDiff { x: Math, f: Math },
-    #[eggplant::typst("integral({f}, {x})")]
+    #[eggplant::typst("integral {f} quad d {x}")]
+    #[eggplant::precedence(90)]
     MIntegral { f: Math, x: Math },
 
-    #[eggplant::typst("({a}) + ({b})")]
+    #[eggplant::typst("{a} + {b}")]
+    #[eggplant::precedence(50)]
     MAdd { a: Math, b: Math },
-    #[eggplant::typst("({a}) - ({b})")]
+    #[eggplant::typst("{a} - {b}")]
+    #[eggplant::precedence(50)]
     MSub { a: Math, b: Math },
-    #[eggplant::typst("({a}) * ({b})")]
+    #[eggplant::typst("{a} * {b}")]
+    #[eggplant::precedence(60)]
     MMul { a: Math, b: Math },
-    #[eggplant::typst("frac({a}, {b})")]
+    #[eggplant::typst("frac({a}, {b}) ")]
+    #[eggplant::precedence(60)]
     MDiv { a: Math, b: Math },
-    #[eggplant::typst("({a})^({b})")]
+    #[eggplant::typst("{a}^{b}")]
+    #[eggplant::precedence(80)]
     MPow { a: Math, b: Math },
-    #[eggplant::typst("ln({a})")]
+    #[eggplant::typst("ln {a}")]
+    #[eggplant::precedence(90)]
     MLn { a: Math },
     #[eggplant::typst("sqrt({a})")]
+    #[eggplant::precedence(90)]
     MSqrt { a: Math },
 
     #[eggplant::typst("sin({a})")]
+    #[eggplant::precedence(90)]
     MSin { a: Math },
     #[eggplant::typst("cos({a})")]
+    #[eggplant::precedence(90)]
     MCos { a: Math },
 
     #[eggplant::typst("{n}")]
+    #[eggplant::precedence(100)]
     MConst { n: i64 },
     #[eggplant::typst("{name}")]
+    #[eggplant::precedence(100)]
     MVar { name: String },
 }
 

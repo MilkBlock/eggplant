@@ -10,6 +10,7 @@ struct IntSet {
 #[eggplant::dsl]
 enum RRel {
     #[eggplant::typst("R({i})")]
+    #[eggplant::precedence(100)]
     R { i: i64 },
 }
 

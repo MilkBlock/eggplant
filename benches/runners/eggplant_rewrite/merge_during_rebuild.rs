@@ -4,6 +4,7 @@ use eggplant::tx_rx_vt_pr;
 #[eggplant::dsl]
 enum N {
     #[eggplant::typst("Node({i})")]
+    #[eggplant::precedence(100)]
     Node { i: i64 },
 }
 

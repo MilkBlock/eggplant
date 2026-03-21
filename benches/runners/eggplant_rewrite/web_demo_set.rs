@@ -11,6 +11,7 @@ struct ISetBase {
 #[eggplant::dsl]
 enum SeenIdx {
     #[eggplant::typst("Seen({j})")]
+    #[eggplant::precedence(100)]
     Seen { j: i64 },
 }
 

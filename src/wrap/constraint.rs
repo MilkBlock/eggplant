@@ -1,6 +1,7 @@
 use egglog::{
+    EGraph,
     ast::{Expr, Fact, GenericExpr, GenericFact, Literal, RustSpan, Span},
-    span, EGraph,
+    span,
 };
 use std::marker::PhantomData;
 

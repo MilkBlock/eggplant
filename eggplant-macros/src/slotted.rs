@@ -502,6 +502,7 @@ pub fn slotted_dsl(
                                 fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
                                 fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
                                 fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
+                                fn precedence(&self) -> u16 { V::PRECEDENCE }
                                 #[track_caller]
                                 fn to_term(&self,term_dag: &mut #E::TermDag,
                                     sym2term: &mut std::collections::HashMap< #W::Sym, #E::TermId>,
@@ -840,6 +841,7 @@ pub fn slotted_dsl(
                 let (variant_marker, variant_name) = variant2marker_name(variant);
                 let display_template = variant_display_template_tokens(variant)?;
                 let typst_template = variant_typst_template_tokens(variant)?;
+                let precedence = variant_precedence_tokens(variant)?;
 
                 let valued_variant_name = format_ident!("Valued{}", variant_name);
                 let values_with_types = variant2valued_struct_fields(variant);
@@ -985,6 +987,7 @@ pub fn slotted_dsl(
                         const TY_NAME:&'static str = stringify!(#variant_name);
                         const DISPLAY_TEMPLATE: Option<&'static str> = #display_template;
                         const TYPST_TEMPLATE: Option<&'static str> = #typst_template;
+                        const PRECEDENCE: u16 = #precedence;
                         const BASIC_FIELD_NAMES:&[&'static str] = &[#(stringify!(#basic_field_idents)),* ];
                         const BASIC_FIELD_TYPES:&[&'static str] = &[#(stringify!(#basic_field_types)),* ];
                         const COMPLEX_FIELD_NAMES:&[&'static str] = &[#(stringify!(#complex_field_idents)),* ];
@@ -1175,6 +1178,7 @@ pub fn slotted_dsl(
                         fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
                         fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
                         fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
+                        fn precedence(&self) -> u16 { V::PRECEDENCE }
                         #[track_caller]
                         fn to_term(&self,term_dag: &mut #E::TermDag,
                             sym2term: &mut HashMap< #W::Sym, #E::TermId>,

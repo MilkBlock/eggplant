@@ -4,10 +4,13 @@ use eggplant::tx_rx_vt_pr;
 #[eggplant::dsl]
 enum Expr {
     #[eggplant::typst("({l}) * ({r})")]
+    #[eggplant::precedence(60)]
     Mul { l: Expr, r: Expr },
     #[eggplant::typst("{name}")]
+    #[eggplant::precedence(100)]
     Var { name: String },
     #[eggplant::typst("{n}")]
+    #[eggplant::precedence(100)]
     Lit { n: i64 },
 }
 

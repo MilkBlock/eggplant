@@ -660,6 +660,29 @@ pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenSt
 pub fn variant_typst_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
     variant_template_tokens(variant, "typst")
 }
+
+pub fn variant_precedence_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    let attrs = variant
+        .attrs
+        .iter()
+        .filter(|attr| is_eggplant_template_attr(attr, "precedence"))
+        .collect::<Vec<_>>();
+
+    if attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            variant,
+            "only one #[eggplant::precedence(...)] attribute is allowed per variant",
+        ));
+    }
+
+    let Some(attr) = attrs.first() else {
+        return Ok(quote!(u16::MAX));
+    };
+
+    let precedence = attr.parse_args::<syn::LitInt>()?;
+    let precedence = precedence.base10_parse::<u16>()?;
+    Ok(quote!(#precedence))
+}
 // pub fn _variant2field_ident_with_all_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
 //     variant2mapped_ident_type_list(
 //         variant,
@@ -786,7 +809,9 @@ pub fn variant2valued_struct_fields(variant: &Variant) -> Vec<TokenStream> {
 
 #[cfg(test)]
 mod tests {
-    use super::{variant_display_template_tokens, variant_typst_template_tokens};
+    use super::{
+        variant_display_template_tokens, variant_precedence_tokens, variant_typst_template_tokens,
+    };
     use quote::quote;
     use syn::{Variant, parse_quote};
 
@@ -851,7 +876,31 @@ mod tests {
             MDiff { x: Math, f: Math }
         };
         let tokens = variant_typst_template_tokens(&variant).unwrap();
-        assert_eq!(tokens.to_string(), quote!(Some("diff({x}, {f})")).to_string());
+        assert_eq!(
+            tokens.to_string(),
+            quote!(Some("diff({x}, {f})")).to_string()
+        );
+    }
+
+    #[test]
+    fn precedence_accepts_valid_integer() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::precedence(40)]
+            Add { lhs: Expr, rhs: Expr }
+        };
+        let tokens = variant_precedence_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(40u16).to_string());
+    }
+
+    #[test]
+    fn precedence_rejects_duplicate_attrs() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::precedence(10)]
+            #[precedence(20)]
+            Add { lhs: Expr, rhs: Expr }
+        };
+        let err = variant_precedence_tokens(&variant).unwrap_err();
+        assert!(err.to_string().contains("only one #[eggplant::precedence"));
     }
 }
 

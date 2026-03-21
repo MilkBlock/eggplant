@@ -21,6 +21,7 @@ use std::sync::Mutex;
 use std::{
     any::Any,
     borrow::Borrow,
+    borrow::Cow,
     collections::HashMap,
     fmt,
     hash::Hash,
@@ -460,6 +461,7 @@ pub trait EgglogNode: ToEgglog + Any + EValue + Send + Sync {
     fn basic_field_types(&self) -> &[&'static str];
     fn complex_field_names(&self) -> &[&'static str];
     fn complex_field_types(&self) -> &[&'static str];
+    fn precedence(&self) -> u16;
 
     #[track_caller]
     fn to_term(
@@ -507,6 +509,7 @@ pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
     type ValuedWithDefault<T>: FromPlainValues + FromIndexedValues;
     const DISPLAY_TEMPLATE: Option<&'static str>;
     const TYPST_TEMPLATE: Option<&'static str>;
+    const PRECEDENCE: u16;
     /// fields names of valued variant struct
     const BASIC_FIELD_NAMES: &[&'static str];
     const COMPLEX_FIELD_NAMES: &[&'static str];
@@ -640,10 +643,101 @@ impl EgglogEnumVariantTy for () {
     type ValuedWithDefault<T> = Value<T>;
     const DISPLAY_TEMPLATE: Option<&'static str> = None;
     const TYPST_TEMPLATE: Option<&'static str> = None;
+    const PRECEDENCE: u16 = u16::MAX;
     const BASIC_FIELD_NAMES: &[&'static str] = &[];
     const BASIC_FIELD_TYPES: &[&'static str] = &[];
     const COMPLEX_FIELD_NAMES: &[&'static str] = &[];
     const COMPLEX_FIELD_TYPES: &[&'static str] = &[];
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderedTemplateField<'a> {
+    pub text: Cow<'a, str>,
+    pub precedence: u16,
+}
+
+impl<'a> RenderedTemplateField<'a> {
+    pub fn new(text: impl Into<Cow<'a, str>>, precedence: u16) -> Self {
+        Self {
+            text: text.into(),
+            precedence,
+        }
+    }
+
+    pub fn atom(text: impl Into<Cow<'a, str>>) -> Self {
+        Self::new(text, u16::MAX)
+    }
+}
+
+pub fn render_template_with_precedence(
+    template: &str,
+    parent_precedence: u16,
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> String {
+    let chars = template.chars().collect::<Vec<_>>();
+    let mut rendered = String::new();
+    let mut idx = 0usize;
+
+    while idx < chars.len() {
+        match chars[idx] {
+            '{' => {
+                if chars.get(idx + 1) == Some(&'{') {
+                    rendered.push('{');
+                    idx += 2;
+                    continue;
+                }
+
+                let start = idx + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end] != '}' {
+                    end += 1;
+                }
+                let placeholder = chars[start..end].iter().collect::<String>();
+                let field = fields
+                    .iter()
+                    .find(|(name, _)| *name == placeholder)
+                    .unwrap_or_else(|| panic!("missing render field `{placeholder}`"));
+
+                if field.1.precedence < parent_precedence {
+                    rendered.push('(');
+                    rendered.push_str(field.1.text.as_ref());
+                    rendered.push(')');
+                } else {
+                    rendered.push_str(field.1.text.as_ref());
+                }
+                idx = end + 1;
+            }
+            '}' => {
+                if chars.get(idx + 1) == Some(&'}') {
+                    rendered.push('}');
+                    idx += 2;
+                } else {
+                    rendered.push('}');
+                    idx += 1;
+                }
+            }
+            ch => {
+                rendered.push(ch);
+                idx += 1;
+            }
+        }
+    }
+
+    rendered
+}
+
+pub fn render_variant_typst<V: EgglogEnumVariantTy>(
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> Option<String> {
+    V::TYPST_TEMPLATE
+        .map(|template| render_template_with_precedence(template, V::PRECEDENCE, fields))
+}
+
+pub fn render_variant_display<V: EgglogEnumVariantTy>(
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> Option<String> {
+    V::DISPLAY_TEMPLATE
+        .map(|template| render_template_with_precedence(template, V::PRECEDENCE, fields))
 }
 
 #[derive(DerefMut, Deref)]
@@ -1428,7 +1522,7 @@ pub trait FromMetas {
     fn from_metas(values: &mut impl Iterator<Item = SlotMeta>) -> Self;
 }
 
-// #[cfg(feature = "viewer")]
+#[cfg(feature = "viewer")]
 impl<S: SingletonGetter> EGraphViewSgl for S
 where
     S::RetTy: EGraphView,
@@ -1441,11 +1535,13 @@ where
     }
 }
 
+#[cfg(feature = "viewer")]
 pub trait EGraphViewSgl {
     fn egraph() -> Arc<Mutex<EGraph>>;
     fn view() -> Result<(), eframe::Error>;
 }
 
+#[cfg(feature = "viewer")]
 pub trait EGraphView {
     fn egraph(&self) -> Arc<Mutex<EGraph>>;
     fn view(&self) -> Result<(), eframe::Error>;

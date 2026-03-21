@@ -10,8 +10,10 @@ struct IVec {
 #[eggplant::dsl]
 enum X {
     #[eggplant::typst("a")]
+    #[eggplant::precedence(100)]
     a {},
     #[eggplant::typst("b")]
+    #[eggplant::precedence(100)]
     b {},
 }
 
