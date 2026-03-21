@@ -34,7 +34,6 @@ where
     ctx: &'a DrawContext<'a>,
     g: &'a mut Graph<Nd, Ed>,
     delayed: Vec<Shape>,
-    routes_screen: Option<std::collections::HashMap<u128, Vec<egui::Pos2>>>,
 
     _marker: PhantomData<(Nd, Ed, L, S)>,
 }
@@ -51,7 +50,6 @@ where
             ctx,
             g,
             delayed: Vec::new(),
-            routes_screen: None,
             _marker: PhantomData,
         }
     }
