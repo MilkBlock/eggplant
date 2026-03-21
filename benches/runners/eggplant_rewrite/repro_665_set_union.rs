@@ -9,7 +9,7 @@ struct IntSet {
 
 #[eggplant::dsl]
 enum RRel {
-    #[eggplant::display("R({i})")]
+    #[eggplant::typst("R({i})")]
     R { i: i64 },
 }
 

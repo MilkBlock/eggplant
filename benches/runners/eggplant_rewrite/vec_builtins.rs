@@ -9,9 +9,9 @@ struct IVec {
 
 #[eggplant::dsl]
 enum X {
-    #[eggplant::display("a")]
+    #[eggplant::typst("a")]
     a {},
-    #[eggplant::display("b")]
+    #[eggplant::typst("b")]
     b {},
 }
 

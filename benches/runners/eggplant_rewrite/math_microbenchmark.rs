@@ -4,34 +4,34 @@ use std::time::Instant;
 
 #[eggplant::dsl]
 enum Math {
-    #[eggplant::display("{f}'({x})")]
+    #[eggplant::typst("diff({x}, {f})")]
     MDiff { x: Math, f: Math },
-    #[eggplant::display("integ {f} {x}")]
+    #[eggplant::typst("integral({f}, {x})")]
     MIntegral { f: Math, x: Math },
 
-    #[eggplant::display("{a} + {b}")]
+    #[eggplant::typst("({a}) + ({b})")]
     MAdd { a: Math, b: Math },
-    #[eggplant::display("{a} - {b}")]
+    #[eggplant::typst("({a}) - ({b})")]
     MSub { a: Math, b: Math },
-    #[eggplant::display("{a} * {b}")]
+    #[eggplant::typst("({a}) * ({b})")]
     MMul { a: Math, b: Math },
-    #[eggplant::display("{a} / {b}")]
+    #[eggplant::typst("frac({a}, {b})")]
     MDiv { a: Math, b: Math },
-    #[eggplant::display("{a} ^ {b}")]
+    #[eggplant::typst("({a})^({b})")]
     MPow { a: Math, b: Math },
-    #[eggplant::display("ln({a})")]
+    #[eggplant::typst("ln({a})")]
     MLn { a: Math },
-    #[eggplant::display("sqrt({a})")]
+    #[eggplant::typst("sqrt({a})")]
     MSqrt { a: Math },
 
-    #[eggplant::display("sin({a})")]
+    #[eggplant::typst("sin({a})")]
     MSin { a: Math },
-    #[eggplant::display("cos({a})")]
+    #[eggplant::typst("cos({a})")]
     MCos { a: Math },
 
-    #[eggplant::display("{n}")]
+    #[eggplant::typst("{n}")]
     MConst { n: i64 },
-    #[eggplant::display("{name}")]
+    #[eggplant::typst("{name}")]
     MVar { name: String },
 }
 
