@@ -3,11 +3,11 @@ use eggplant::tx_rx_vt_pr;
 
 #[eggplant::dsl]
 enum Expr {
-    #[eggplant::display("{l} * {r}")]
+    #[eggplant::typst("({l}) * ({r})")]
     Mul { l: Expr, r: Expr },
-    #[eggplant::display("{name}")]
+    #[eggplant::typst("{name}")]
     Var { name: String },
-    #[eggplant::display("{n}")]
+    #[eggplant::typst("{n}")]
     Lit { n: i64 },
 }
 

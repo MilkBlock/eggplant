@@ -11,126 +11,126 @@ struct Vec_Tensor {
 
 #[eggplant::dsl]
 enum IntTuple {
-    #[eggplant::display("IntTuple___add__({a0}, {a1})")]
+    #[eggplant::typst("IntTuple___add__({a0}, {a1})")]
     IntTuple___add__ { a0: IntTuple, a1: IntTuple },
-    #[eggplant::display("IntTuple___init__({a0})")]
+    #[eggplant::typst("IntTuple___init__({a0})")]
     IntTuple___init__ { a0: Int },
 }
 
 #[eggplant::dsl]
 enum Int {
-    #[eggplant::display("Int___init__({a0})")]
+    #[eggplant::typst("Int___init__({a0})")]
     Int___init__ { a0: i64 },
-    #[eggplant::display("Int_var({a0})")]
+    #[eggplant::typst("Int_var({a0})")]
     Int_var { a0: String },
 }
 
 #[eggplant::dsl]
 enum StringTensor {
-    #[eggplant::display("StringTensor___init__({a0})")]
+    #[eggplant::typst("StringTensor___init__({a0})")]
     StringTensor___init__ { a0: String },
 }
 
 #[eggplant::dsl]
 enum FloatTuple {
-    #[eggplant::display("FloatTuple___init__({a0})")]
+    #[eggplant::typst("FloatTuple___init__({a0})")]
     FloatTuple___init__ { a0: Float },
-    #[eggplant::display("FloatTuple___add__({a0}, {a1})")]
+    #[eggplant::typst("FloatTuple___add__({a0}, {a1})")]
     FloatTuple___add__ { a0: FloatTuple, a1: FloatTuple },
 }
 
 #[eggplant::dsl]
 enum Float {
-    #[eggplant::display("Float_var({a0})")]
+    #[eggplant::typst("Float_var({a0})")]
     Float_var { a0: String },
-    #[eggplant::display("Float___init__({a0})")]
+    #[eggplant::typst("Float___init__({a0})")]
     Float___init__ { a0: f64 },
 }
 
 #[eggplant::dsl]
 enum Tensor {
-    #[eggplant::display("UnaryOp___call__({a0}, {a1})")]
+    #[eggplant::typst("UnaryOp___call__({a0}, {a1})")]
     UnaryOp___call__ { a0: UnaryOp, a1: Tensor },
-    #[eggplant::display("BinaryOp___call__({a0}, {a1}, {a2})")]
+    #[eggplant::typst("BinaryOp___call__({a0}, {a1}, {a2})")]
     BinaryOp___call__ {
         a0: BinaryOp,
         a1: Tensor,
         a2: Tensor,
     },
-    #[eggplant::display("Tensor___init__({a0}, {a1}, {a2}, {a3})")]
+    #[eggplant::typst("Tensor___init__({a0}, {a1}, {a2}, {a3})")]
     Tensor___init__ {
         a0: StringTensor,
         a1: IntTuple,
         a2: StringTensor,
         a3: FloatTuple,
     },
-    #[eggplant::display("Constant_tensor({a0})")]
+    #[eggplant::typst("Constant_tensor({a0})")]
     Constant_tensor { a0: Constant },
-    #[eggplant::display("Iota_tensor({a0})")]
+    #[eggplant::typst("Iota_tensor({a0})")]
     Iota_tensor { a0: Iota },
-    #[eggplant::display("NaryOp___call__({a0}, {a1})")]
+    #[eggplant::typst("NaryOp___call__({a0}, {a1})")]
     NaryOp___call__ { a0: NaryOp, a1: TensorArr },
 }
 
 #[eggplant::dsl]
 enum UnaryOp {
-    #[eggplant::display("cosine_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("cosine_xla({a0}, {a1}, {a2})")]
     cosine_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("reshape({a0}, {a1}, {a2})")]
+    #[eggplant::typst("reshape({a0}, {a1}, {a2})")]
     reshape {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("convert_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("convert_xla({a0}, {a1}, {a2})")]
     convert_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("custom_call({a0}, {a1}, {a2})")]
+    #[eggplant::typst("custom_call({a0}, {a1}, {a2})")]
     custom_call {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("slice_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("slice_xla({a0}, {a1}, {a2})")]
     slice_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("broadcast({a0}, {a1}, {a2}, {a3})")]
+    #[eggplant::typst("broadcast({a0}, {a1}, {a2}, {a3})")]
     broadcast {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
         a3: IntTuple,
     },
-    #[eggplant::display("sine_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("sine_xla({a0}, {a1}, {a2})")]
     sine_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("exp_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("exp_xla({a0}, {a1}, {a2})")]
     exp_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("transpose({a0}, {a1}, {a2}, {a3})")]
+    #[eggplant::typst("transpose({a0}, {a1}, {a2}, {a3})")]
     transpose {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
         a3: IntTuple,
     },
-    #[eggplant::display("log_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("log_xla({a0}, {a1}, {a2})")]
     log_xla {
         a0: IntTuple,
         a1: StringTensor,
@@ -140,49 +140,49 @@ enum UnaryOp {
 
 #[eggplant::dsl]
 enum BinaryOp {
-    #[eggplant::display("dot_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("dot_xla({a0}, {a1}, {a2})")]
     dot_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("and_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("and_xla({a0}, {a1}, {a2})")]
     and_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("compare({a0}, {a1}, {a2})")]
+    #[eggplant::typst("compare({a0}, {a1}, {a2})")]
     compare {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("divide({a0}, {a1}, {a2})")]
+    #[eggplant::typst("divide({a0}, {a1}, {a2})")]
     divide {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("subtract_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("subtract_xla({a0}, {a1}, {a2})")]
     subtract_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("multiply({a0}, {a1}, {a2})")]
+    #[eggplant::typst("multiply({a0}, {a1}, {a2})")]
     multiply {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("add_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("add_xla({a0}, {a1}, {a2})")]
     add_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::display("maximum_xla({a0}, {a1}, {a2})")]
+    #[eggplant::typst("maximum_xla({a0}, {a1}, {a2})")]
     maximum_xla {
         a0: IntTuple,
         a1: StringTensor,
@@ -192,33 +192,33 @@ enum BinaryOp {
 
 #[eggplant::dsl]
 enum Constant {
-    #[eggplant::display("Constant___init__({a0})")]
+    #[eggplant::typst("Constant___init__({a0})")]
     Constant___init__ { a0: Tensor },
 }
 
 #[eggplant::dsl]
 enum Iota {
-    #[eggplant::display("Iota___init__({a0})")]
+    #[eggplant::typst("Iota___init__({a0})")]
     Iota___init__ { a0: Tensor },
 }
 
 #[eggplant::dsl]
 enum NaryOp {
-    #[eggplant::display("select({a0}, {a1}, {a2}, {a3})")]
+    #[eggplant::typst("select({a0}, {a1}, {a2}, {a3})")]
     select {
         a0: Int,
         a1: IntTuple,
         a2: StringTensor,
         a3: StringTensor,
     },
-    #[eggplant::display("concatenate({a0}, {a1}, {a2}, {a3})")]
+    #[eggplant::typst("concatenate({a0}, {a1}, {a2}, {a3})")]
     concatenate {
         a0: Int,
         a1: IntTuple,
         a2: StringTensor,
         a3: StringTensor,
     },
-    #[eggplant::display("reduce({a0}, {a1}, {a2}, {a3}, {a4})")]
+    #[eggplant::typst("reduce({a0}, {a1}, {a2}, {a3}, {a4})")]
     reduce {
         a0: OpType,
         a1: Int,
@@ -226,7 +226,7 @@ enum NaryOp {
         a3: StringTensor,
         a4: StringTensor,
     },
-    #[eggplant::display("scatter_xla({a0}, {a1}, {a2}, {a3})")]
+    #[eggplant::typst("scatter_xla({a0}, {a1}, {a2}, {a3})")]
     scatter_xla {
         a0: Int,
         a1: IntTuple,
@@ -237,13 +237,13 @@ enum NaryOp {
 
 #[eggplant::dsl]
 enum TensorArr {
-    #[eggplant::display("TensorArr___init__({a0})")]
+    #[eggplant::typst("TensorArr___init__({a0})")]
     TensorArr___init__ { a0: Vec_Tensor },
 }
 
 #[eggplant::dsl]
 enum OpType {
-    #[eggplant::display("AddOp")]
+    #[eggplant::typst("AddOp")]
     AddOp {},
 }
 
