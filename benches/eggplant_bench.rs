@@ -3,10 +3,15 @@ use eggplant::tx_rx_vt_pr;
 
 #[eggplant::dsl]
 pub enum Expr {
+    #[eggplant::display("{num}")]
     Const { num: i64 },
+    #[eggplant::display("{l} * {r}")]
     Mul { l: Expr, r: Expr },
+    #[eggplant::display("{l} - {r}")]
     Sub { l: Expr, r: Expr },
+    #[eggplant::display("{l} + {r}")]
     Add { l: Expr, r: Expr },
+    #[eggplant::display("{l} / {r}")]
     Div { l: Expr, r: Expr },
 }
 

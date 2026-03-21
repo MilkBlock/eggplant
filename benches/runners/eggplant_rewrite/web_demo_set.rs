@@ -10,6 +10,7 @@ struct ISetBase {
 
 #[eggplant::dsl]
 enum SeenIdx {
+    #[eggplant::display("Seen({j})")]
     Seen { j: i64 },
 }
 

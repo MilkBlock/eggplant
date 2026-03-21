@@ -3,6 +3,7 @@ use eggplant::tx_rx_vt_pr;
 
 #[eggplant::dsl]
 enum N {
+    #[eggplant::display("Node({i})")]
     Node { i: i64 },
 }
 

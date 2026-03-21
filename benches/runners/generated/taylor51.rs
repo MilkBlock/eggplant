@@ -5,41 +5,69 @@ use eggplant::prelude::*;
 
 #[eggplant::dsl]
 enum M {
+    #[eggplant::display("Var({a0})")]
     T51Var { a0: String },
+    #[eggplant::display("Num({a0})")]
     T51Num { a0: String },
+    #[eggplant::display("Pi")]
     T51Pi {},
+    #[eggplant::display("Neg({a0})")]
     T51Neg { a0: M },
+    #[eggplant::display("Sin({a0})")]
     T51Sin { a0: M },
+    #[eggplant::display("Cos({a0})")]
     T51Cos { a0: M },
+    #[eggplant::display("Acos({a0})")]
     T51Acos { a0: M },
+    #[eggplant::display("Add({a0}, {a1})")]
     T51Add { a0: M, a1: M },
+    #[eggplant::display("Sub({a0}, {a1})")]
     T51Sub { a0: M, a1: M },
+    #[eggplant::display("Mul({a0}, {a1})")]
     T51Mul { a0: M, a1: M },
+    #[eggplant::display("Div({a0}, {a1})")]
     T51Div { a0: M, a1: M },
+    #[eggplant::display("Pow({a0}, {a1})")]
     T51Pow { a0: M, a1: M },
 }
 
 #[eggplant::dsl]
 enum MTy {
+    #[eggplant::display("Varbinary64({a0})")]
     T51Varbinary64 { a0: String },
+    #[eggplant::display("Numbinary64({a0})")]
     T51Numbinary64 { a0: String },
+    #[eggplant::display("Pif64Ty")]
     T51Pif64Ty {},
+    #[eggplant::display("Negf64Ty({a0})")]
     T51Negf64Ty { a0: MTy },
+    #[eggplant::display("Sinf64Ty({a0})")]
     T51Sinf64Ty { a0: MTy },
+    #[eggplant::display("Cosf64Ty({a0})")]
     T51Cosf64Ty { a0: MTy },
+    #[eggplant::display("Acosf64Ty({a0})")]
     T51Acosf64Ty { a0: MTy },
+    #[eggplant::display("Addf64Ty({a0}, {a1})")]
     T51Addf64Ty { a0: MTy, a1: MTy },
+    #[eggplant::display("Subf64Ty({a0}, {a1})")]
     T51Subf64Ty { a0: MTy, a1: MTy },
+    #[eggplant::display("Mulf64Ty({a0}, {a1})")]
     T51Mulf64Ty { a0: MTy, a1: MTy },
+    #[eggplant::display("Divf64Ty({a0}, {a1})")]
     T51Divf64Ty { a0: MTy, a1: MTy },
+    #[eggplant::display("Powf64Ty({a0}, {a1})")]
     T51Powf64Ty { a0: MTy, a1: MTy },
+    #[eggplant::display("Lower({a0}, {a1})")]
     T51Lower { a0: M, a1: String },
+    #[eggplant::display("Approx({a0}, {a1})")]
     T51Approx { a0: M, a1: MTy },
 }
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = MTy, no_merge)]
-struct ToExtract { idx: i64 }
+struct ToExtract {
+    idx: i64,
+}
 
 pub fn bench() {
     MyTxTaylor51::sgl().reset_for_bench();
@@ -2133,7 +2161,10 @@ pub fn bench() {
             let v = T51Var::query();
             let lower = T51Lower::query(&v).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { v: T51Var, lower: T51Lower }
+            struct Pat {
+                v: T51Var,
+                lower: T51Lower,
+            }
         },
         |ctx, pat| {
             let name = ctx.devalue(pat.v.a0);
@@ -2149,7 +2180,10 @@ pub fn bench() {
             let n = T51Num::query();
             let lower = T51Lower::query(&n).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { n: T51Num, lower: T51Lower }
+            struct Pat {
+                n: T51Num,
+                lower: T51Lower,
+            }
         },
         |ctx, pat| {
             let v = ctx.devalue(pat.n.a0);
@@ -2165,7 +2199,9 @@ pub fn bench() {
             let pi = T51Pi::query();
             let lower = T51Lower::query(&pi).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower: T51Lower }
+            struct Pat {
+                lower: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_pif64_ty();
@@ -2182,7 +2218,10 @@ pub fn bench() {
             let lower_e = T51Lower::query(&e).a1(&"binary64".to_owned());
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_negf64_ty(pat.lower_a);
@@ -2199,7 +2238,10 @@ pub fn bench() {
             let lower_e = T51Lower::query(&e).a1(&"binary64".to_owned());
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_sinf64_ty(pat.lower_a);
@@ -2216,7 +2258,10 @@ pub fn bench() {
             let lower_e = T51Lower::query(&e).a1(&"binary64".to_owned());
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_cosf64_ty(pat.lower_a);
@@ -2233,7 +2278,10 @@ pub fn bench() {
             let lower_e = T51Lower::query(&e).a1(&"binary64".to_owned());
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_acosf64_ty(pat.lower_a);
@@ -2252,7 +2300,11 @@ pub fn bench() {
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             let lower_b = T51Lower::query(&b).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower, lower_b: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+                lower_b: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_addf64_ty(pat.lower_a, pat.lower_b);
@@ -2271,7 +2323,11 @@ pub fn bench() {
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             let lower_b = T51Lower::query(&b).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower, lower_b: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+                lower_b: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_subf64_ty(pat.lower_a, pat.lower_b);
@@ -2290,7 +2346,11 @@ pub fn bench() {
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             let lower_b = T51Lower::query(&b).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower, lower_b: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+                lower_b: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_mulf64_ty(pat.lower_a, pat.lower_b);
@@ -2309,7 +2369,11 @@ pub fn bench() {
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             let lower_b = T51Lower::query(&b).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower, lower_b: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+                lower_b: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_divf64_ty(pat.lower_a, pat.lower_b);
@@ -2328,7 +2392,11 @@ pub fn bench() {
             let lower_a = T51Lower::query(&a).a1(&"binary64".to_owned());
             let lower_b = T51Lower::query(&b).a1(&"binary64".to_owned());
             #[eggplant::pat_vars_catch]
-            struct Pat { lower_e: T51Lower, lower_a: T51Lower, lower_b: T51Lower }
+            struct Pat {
+                lower_e: T51Lower,
+                lower_a: T51Lower,
+                lower_b: T51Lower,
+            }
         },
         |ctx, pat| {
             let out = ctx.insert_t51_powf64_ty(pat.lower_a, pat.lower_b);
@@ -2343,337 +2411,34 @@ pub fn bench() {
     let sort = egraph.get_sort_by_name("MTy").unwrap().clone();
 
     for idx in [
-        13,
-        15,
-        34,
-        52,
-        54,
-        58,
-        60,
-        64,
-        70,
-        78,
-        88,
-        90,
-        92,
-        95,
-        101,
-        109,
-        118,
-        124,
-        132,
-        142,
-        145,
-        151,
-        159,
-        169,
-        171,
-        174,
-        181,
-        190,
-        194,
-        201,
-        209,
-        218,
-        221,
-        226,
-        233,
-        242,
-        246,
-        251,
-        258,
-        267,
-        272,
-        276,
-        280,
-        284,
-        289,
-        294,
-        302,
-        311,
-        317,
-        321,
-        326,
-        329,
-        333,
-        338,
-        345,
-        354,
-        359,
-        363,
-        367,
-        372,
-        379,
-        388,
-        392,
-        398,
-        407,
-        421,
-        425,
-        429,
-        436,
-        445,
-        449,
-        452,
-        456,
-        460,
-        463,
-        466,
-        469,
-        472,
-        474,
-        476,
-        482,
-        484,
-        490,
-        492,
-        494,
-        496,
-        498,
-        500,
-        502,
-        504,
-        506,
-        508,
-        515,
-        521,
-        524,
-        530,
-        533,
-        536,
-        539,
-        542,
-        544,
-        549,
-        555,
-        561,
-        565,
-        568,
-        571,
-        578,
-        585,
-        591,
-        598,
-        602,
-        605,
-        608,
-        611,
-        614,
-        617,
-        620,
-        622,
-        625,
-        629,
-        637,
-        646,
-        651,
-        657,
-        665,
-        670,
-        678,
-        688,
-        692,
-        698,
-        706,
-        716,
-        718,
-        723,
-        731,
-        741,
-        744,
-        750,
-        758,
-        763,
-        770,
-        779,
-        781,
-        787,
-        795,
-        805,
-        810,
-        815,
-        818,
-        824,
-        831,
-        840,
-        843,
-        847,
-        854,
-        863,
-        866,
-        869,
-        872,
-        875,
-        878,
-        882,
-        886,
-        890,
-        893,
-        896,
-        899,
-        902,
-        904,
-        908,
-        911,
-        914,
-        917,
-        923,
-        931,
-        940,
-        942,
-        946,
-        949,
-        955,
-        963,
-        972,
-        975,
-        981,
-        990,
-        1004,
-        1007,
-        1011,
-        1018,
-        1027,
-        1030,
-        1033,
-        1037,
-        1041,
-        1046,
-        1048,
-        1050,
-        1057,
-        1063,
-        1069,
-        1075,
-        1078,
-        1081,
-        1084,
-        1087,
-        1090,
-        1093,
-        1097,
-        1100,
-        1103,
-        1110,
-        1117,
-        1120,
-        1127,
-        1130,
-        1133,
-        1136,
-        1139,
-        1142,
-        1145,
-        1148,
-        1150,
-        1156,
-        1163,
-        1172,
-        1174,
-        1180,
-        1188,
-        1198,
-        1202,
-        1208,
-        1216,
-        1218,
-        1223,
-        1230,
-        1239,
-        1242,
-        1248,
-        1256,
-        1266,
-        1268,
-        1273,
-        1280,
-        1289,
-        1292,
-        1299,
-        1308,
-        1315,
-        1322,
-        1324,
-        1326,
-        1328,
-        1330,
-        1332,
-        1337,
-        1342,
-        1348,
-        1355,
-        1362,
-        1368,
-        1370,
-        1376,
-        1383,
-        1392,
-        1398,
-        1406,
-        1416,
-        1420,
-        1426,
-        1434,
-        1439,
-        1446,
-        1455,
-        1457,
-        1459,
-        1462,
-        1467,
-        1474,
-        1483,
-        1488,
-        1496,
-        1506,
-        1509,
-        1512,
-        1519,
-        1528,
-        1535,
-        1544,
-        1549,
-        1552,
-        1558,
-        1566,
-        1575,
-        1578,
-        1583,
-        1591,
-        1594,
-        1599,
-        1606,
-        1619,
-        1623,
-        1629,
-        1637,
-        1642,
-        1647,
-        1659,
-        1662,
-        1669,
-        1676,
-        1678,
-        1683,
-        1688,
-        1690,
-        1700,
-        1705,
-        1712,
-        1719,
-        1722,
-        1727,
-        1732,
-        1735,
-        1738,
-        1741,
+        13, 15, 34, 52, 54, 58, 60, 64, 70, 78, 88, 90, 92, 95, 101, 109, 118, 124, 132, 142, 145,
+        151, 159, 169, 171, 174, 181, 190, 194, 201, 209, 218, 221, 226, 233, 242, 246, 251, 258,
+        267, 272, 276, 280, 284, 289, 294, 302, 311, 317, 321, 326, 329, 333, 338, 345, 354, 359,
+        363, 367, 372, 379, 388, 392, 398, 407, 421, 425, 429, 436, 445, 449, 452, 456, 460, 463,
+        466, 469, 472, 474, 476, 482, 484, 490, 492, 494, 496, 498, 500, 502, 504, 506, 508, 515,
+        521, 524, 530, 533, 536, 539, 542, 544, 549, 555, 561, 565, 568, 571, 578, 585, 591, 598,
+        602, 605, 608, 611, 614, 617, 620, 622, 625, 629, 637, 646, 651, 657, 665, 670, 678, 688,
+        692, 698, 706, 716, 718, 723, 731, 741, 744, 750, 758, 763, 770, 779, 781, 787, 795, 805,
+        810, 815, 818, 824, 831, 840, 843, 847, 854, 863, 866, 869, 872, 875, 878, 882, 886, 890,
+        893, 896, 899, 902, 904, 908, 911, 914, 917, 923, 931, 940, 942, 946, 949, 955, 963, 972,
+        975, 981, 990, 1004, 1007, 1011, 1018, 1027, 1030, 1033, 1037, 1041, 1046, 1048, 1050,
+        1057, 1063, 1069, 1075, 1078, 1081, 1084, 1087, 1090, 1093, 1097, 1100, 1103, 1110, 1117,
+        1120, 1127, 1130, 1133, 1136, 1139, 1142, 1145, 1148, 1150, 1156, 1163, 1172, 1174, 1180,
+        1188, 1198, 1202, 1208, 1216, 1218, 1223, 1230, 1239, 1242, 1248, 1256, 1266, 1268, 1273,
+        1280, 1289, 1292, 1299, 1308, 1315, 1322, 1324, 1326, 1328, 1330, 1332, 1337, 1342, 1348,
+        1355, 1362, 1368, 1370, 1376, 1383, 1392, 1398, 1406, 1416, 1420, 1426, 1434, 1439, 1446,
+        1455, 1457, 1459, 1462, 1467, 1474, 1483, 1488, 1496, 1506, 1509, 1512, 1519, 1528, 1535,
+        1544, 1549, 1552, 1558, 1566, 1575, 1578, 1583, 1591, 1594, 1599, 1606, 1619, 1623, 1629,
+        1637, 1642, 1647, 1659, 1662, 1669, 1676, 1678, 1683, 1688, 1690, 1700, 1705, 1712, 1719,
+        1722, 1727, 1732, 1735, 1738, 1741,
     ] {
         let idx_v = egraph.base_to_value(idx);
-        let value = egraph.lookup_function("ToExtract", &[idx_v]).expect("ToExtract(idx) missing");
+        let value = egraph
+            .lookup_function("ToExtract", &[idx_v])
+            .expect("ToExtract(idx) missing");
         let value = egraph.get_canonical_value(value, &sort);
         let _ = egraph.extract_value(&sort, value).unwrap();
     }
 
     egraph.serialize(egglog::SerializeConfig::default());
 }
-

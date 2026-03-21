@@ -9,7 +9,9 @@ struct IVec {
 
 #[eggplant::dsl]
 enum X {
+    #[eggplant::display("a")]
     a {},
+    #[eggplant::display("b")]
     b {},
 }
 

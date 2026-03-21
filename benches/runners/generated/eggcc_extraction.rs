@@ -5,7 +5,9 @@ use eggplant::prelude::*;
 use eggplant::wrap::EgglogTy;
 
 // Helpers for action-side vec operations (avoid prim_call("vec-*", ...)).
-fn vec_len<T: EgglogTy>(v: &VecContainer<T>) -> i64 { (&*v).into_iter().count() as i64 }
+fn vec_len<T: EgglogTy>(v: &VecContainer<T>) -> i64 {
+    (&*v).into_iter().count() as i64
+}
 fn vec_push<T: EgglogTy>(v: &VecContainer<T>, elem: egglog::Value) -> VecContainer<T> {
     let mut data: Vec<egglog::Value> = (&*v).into_iter().copied().collect();
     data.push(elem);
@@ -14,7 +16,9 @@ fn vec_push<T: EgglogTy>(v: &VecContainer<T>, elem: egglog::Value) -> VecContain
 fn vec_set<T: EgglogTy>(v: &VecContainer<T>, idx: i64, elem: egglog::Value) -> VecContainer<T> {
     let mut data: Vec<egglog::Value> = (&*v).into_iter().copied().collect();
     let i = idx as usize;
-    if i < data.len() { data[i] = elem; }
+    if i < data.len() {
+        data[i] = elem;
+    }
     VecContainer::from(data)
 }
 
@@ -35,202 +39,486 @@ struct EcxVecVecOperandBase {
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxBody {
-    EcxGamma { a0: EcxOperand, a1: EcxVecOperand, a2: EcxVecVecOperand },
+    #[eggplant::display("Gamma({a0}, {a1}, {a2})")]
+    EcxGamma {
+        a0: EcxOperand,
+        a1: EcxVecOperand,
+        a2: EcxVecVecOperand,
+    },
+    #[eggplant::display("OperandGroup({a0})")]
     EcxOperandGroup { a0: EcxVecOperand },
+    #[eggplant::display("PureOp({a0})")]
     EcxPureOp { a0: EcxExpr },
+    #[eggplant::display("ShiftBody({a0}, {a1}, {a2})")]
     EcxShiftBody { a0: EcxBody, a1: i64, a2: i64 },
-    EcxSubstBody { a0: EcxBody, a1: i64, a2: EcxOperand },
+    #[eggplant::display("SubstBody({a0}, {a1}, {a2})")]
+    EcxSubstBody {
+        a0: EcxBody,
+        a1: i64,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("SubstBodyAll({a0}, {a1})")]
     EcxSubstBodyAll { a0: EcxBody, a1: EcxVecOperand },
-    EcxTheta { a0: EcxOperand, a1: EcxVecOperand, a2: EcxVecOperand },
+    #[eggplant::display("Theta({a0}, {a1}, {a2})")]
+    EcxTheta {
+        a0: EcxOperand,
+        a1: EcxVecOperand,
+        a2: EcxVecOperand,
+    },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxConstOps {
-    Ecxkw_const {} ,
+    #[eggplant::display("kw_const")]
+    Ecxkw_const {},
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxEffectType {
+    #[eggplant::display("Bril({a0})")]
     EcxBril { a0: EcxType },
-    EcxPrintState {} ,
+    #[eggplant::display("PrintState")]
+    EcxPrintState {},
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxExpr {
-    EcxCall { a0: EcxOptionType, a1: String, a2: EcxVecOperand, a3: i64 },
-    EcxConst { a0: EcxType, a1: EcxConstOps, a2: EcxLiteral },
+    #[eggplant::display("Call({a0}, {a1}, {a2}, {a3})")]
+    EcxCall {
+        a0: EcxOptionType,
+        a1: String,
+        a2: EcxVecOperand,
+        a3: i64,
+    },
+    #[eggplant::display("Const({a0}, {a1}, {a2})")]
+    EcxConst {
+        a0: EcxType,
+        a1: EcxConstOps,
+        a2: EcxLiteral,
+    },
+    #[eggplant::display("PRINT({a0}, {a1})")]
     EcxPRINT { a0: EcxOperand, a1: EcxOperand },
+    #[eggplant::display("ShiftExpr({a0}, {a1}, {a2})")]
     EcxShiftExpr { a0: EcxExpr, a1: i64, a2: i64 },
-    EcxSubstExpr { a0: EcxExpr, a1: i64, a2: EcxOperand },
+    #[eggplant::display("SubstExpr({a0}, {a1}, {a2})")]
+    EcxSubstExpr {
+        a0: EcxExpr,
+        a1: i64,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("SubstExprAll({a0}, {a1})")]
     EcxSubstExprAll { a0: EcxExpr, a1: EcxVecOperand },
-    Ecxbadd { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxband { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbdiv { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbeq { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbfmul { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbge { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbgt { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxble { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxblt { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbmul { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbnot { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbor { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
-    Ecxbsub { a0: EcxType, a1: EcxOperand, a2: EcxOperand },
+    #[eggplant::display("badd({a0}, {a1}, {a2})")]
+    Ecxbadd {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("band({a0}, {a1}, {a2})")]
+    Ecxband {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bdiv({a0}, {a1}, {a2})")]
+    Ecxbdiv {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("beq({a0}, {a1}, {a2})")]
+    Ecxbeq {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bfmul({a0}, {a1}, {a2})")]
+    Ecxbfmul {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bge({a0}, {a1}, {a2})")]
+    Ecxbge {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bgt({a0}, {a1}, {a2})")]
+    Ecxbgt {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("ble({a0}, {a1}, {a2})")]
+    Ecxble {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("blt({a0}, {a1}, {a2})")]
+    Ecxblt {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bmul({a0}, {a1}, {a2})")]
+    Ecxbmul {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bnot({a0}, {a1}, {a2})")]
+    Ecxbnot {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bor({a0}, {a1}, {a2})")]
+    Ecxbor {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("bsub({a0}, {a1}, {a2})")]
+    Ecxbsub {
+        a0: EcxType,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxFunction {
-    EcxFunc { a0: String, a1: EcxFuncSigs, a2: EcxFuncSigs, a3: EcxVecOperand },
+    #[eggplant::display("Func({a0}, {a1}, {a2}, {a3})")]
+    EcxFunc {
+        a0: String,
+        a1: EcxFuncSigs,
+        a2: EcxFuncSigs,
+        a3: EcxVecOperand,
+    },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxInterval {
+    #[eggplant::display("BoolI({a0}, {a1})")]
     EcxBoolI { a0: bool, a1: bool },
+    #[eggplant::display("IntI({a0}, {a1})")]
     EcxIntI { a0: i64, a1: i64 },
+    #[eggplant::display("interval_intersect({a0}, {a1})")]
     Ecxinterval_intersect { a0: EcxInterval, a1: EcxInterval },
+    #[eggplant::display("interval_union({a0}, {a1})")]
     Ecxinterval_union { a0: EcxInterval, a1: EcxInterval },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxLiteral {
+    #[eggplant::display("Bool({a0})")]
     EcxBool { a0: bool },
+    #[eggplant::display("Char({a0})")]
     EcxChar { a0: String },
+    #[eggplant::display("Float({a0})")]
     EcxFloat { a0: f64 },
+    #[eggplant::display("Num({a0})")]
     EcxNum { a0: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxOperand {
+    #[eggplant::display("Arg({a0})")]
     EcxArg { a0: i64 },
+    #[eggplant::display("Node({a0})")]
     EcxNode { a0: EcxBody },
+    #[eggplant::display("Project({a0}, {a1})")]
     EcxProject { a0: i64, a1: EcxBody },
+    #[eggplant::display("ShiftOperand({a0}, {a1}, {a2})")]
     EcxShiftOperand { a0: EcxOperand, a1: i64, a2: i64 },
-    EcxSubstOperand { a0: EcxOperand, a1: i64, a2: EcxOperand },
+    #[eggplant::display("SubstOperand({a0}, {a1}, {a2})")]
+    EcxSubstOperand {
+        a0: EcxOperand,
+        a1: i64,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("SubstOperandAll({a0}, {a1})")]
     EcxSubstOperandAll { a0: EcxOperand, a1: EcxVecOperand },
+    #[eggplant::display("VecOperand_get({a0}, {a1})")]
     EcxVecOperand_get { a0: EcxVecOperand, a1: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxOptionType {
-    EcxNoneType {} ,
+    #[eggplant::display("NoneType")]
+    EcxNoneType {},
+    #[eggplant::display("SomeType({a0})")]
     EcxSomeType { a0: EcxType },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxTermAndCost {
+    #[eggplant::display("BodyAndCost({a0}, {a1})")]
     EcxBodyAndCost { a0: EcxBody, a1: i64 },
+    #[eggplant::display("ExprAndCost({a0}, {a1})")]
     EcxExprAndCost { a0: EcxExpr, a1: i64 },
+    #[eggplant::display("OperandAndCost({a0}, {a1})")]
     EcxOperandAndCost { a0: EcxOperand, a1: i64 },
-    EcxSmaller { a0: EcxTermAndCost, a1: EcxTermAndCost },
+    #[eggplant::display("Smaller({a0}, {a1})")]
+    EcxSmaller {
+        a0: EcxTermAndCost,
+        a1: EcxTermAndCost,
+    },
+    #[eggplant::display("VecOperandAndCost({a0}, {a1})")]
     EcxVecOperandAndCost { a0: EcxVecOperand, a1: i64 },
+    #[eggplant::display("VecVecOperandAndCost({a0}, {a1})")]
     EcxVecVecOperandAndCost { a0: EcxVecVecOperand, a1: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxType {
-    EcxBoolT {} ,
-    EcxCharT {} ,
-    EcxFloatT {} ,
-    EcxIntT {} ,
+    #[eggplant::display("BoolT")]
+    EcxBoolT {},
+    #[eggplant::display("CharT")]
+    EcxCharT {},
+    #[eggplant::display("FloatT")]
+    EcxFloatT {},
+    #[eggplant::display("IntT")]
+    EcxIntT {},
+    #[eggplant::display("PointerT({a0})")]
     EcxPointerT { a0: EcxType },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxVecOperand {
+    #[eggplant::display("BodyToVecOperand({a0}, {a1})")]
     EcxBodyToVecOperand { a0: i64, a1: EcxBody },
-    EcxBodyToVecOperandHelper { a0: i64, a1: i64, a2: EcxBody, a3: EcxVecOperandBase },
+    #[eggplant::display("BodyToVecOperandHelper({a0}, {a1}, {a2}, {a3})")]
+    EcxBodyToVecOperandHelper {
+        a0: i64,
+        a1: i64,
+        a2: EcxBody,
+        a3: EcxVecOperandBase,
+    },
+    #[eggplant::display("PassThroughArguments({a0})")]
     EcxPassThroughArguments { a0: i64 },
+    #[eggplant::display("PassThroughArgumentsHelper({a0}, {a1})")]
     EcxPassThroughArgumentsHelper { a0: i64, a1: EcxVecOperand },
+    #[eggplant::display("ShiftVecOperand({a0}, {a1}, {a2})")]
     EcxShiftVecOperand { a0: EcxVecOperand, a1: i64, a2: i64 },
-    EcxShiftVecOperand_helper { a0: EcxVecOperand, a1: i64, a2: i64, a3: i64 },
-    EcxSubstVecOperand { a0: EcxVecOperand, a1: i64, a2: EcxOperand },
-    EcxSubstVecOperand_helper { a0: EcxVecOperand, a1: i64, a2: EcxOperand, a3: i64 },
-    EcxSubstVecOperandAll { a0: EcxVecOperand, a1: EcxVecOperand },
-    EcxSubstVecOperandAll_helper { a0: EcxVecOperand, a1: EcxVecOperand, a2: i64 },
+    #[eggplant::display("ShiftVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    EcxShiftVecOperand_helper {
+        a0: EcxVecOperand,
+        a1: i64,
+        a2: i64,
+        a3: i64,
+    },
+    #[eggplant::display("SubstVecOperand({a0}, {a1}, {a2})")]
+    EcxSubstVecOperand {
+        a0: EcxVecOperand,
+        a1: i64,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("SubstVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    EcxSubstVecOperand_helper {
+        a0: EcxVecOperand,
+        a1: i64,
+        a2: EcxOperand,
+        a3: i64,
+    },
+    #[eggplant::display("SubstVecOperandAll({a0}, {a1})")]
+    EcxSubstVecOperandAll {
+        a0: EcxVecOperand,
+        a1: EcxVecOperand,
+    },
+    #[eggplant::display("SubstVecOperandAll_helper({a0}, {a1}, {a2})")]
+    EcxSubstVecOperandAll_helper {
+        a0: EcxVecOperand,
+        a1: EcxVecOperand,
+        a2: i64,
+    },
+    #[eggplant::display("VO({a0})")]
     EcxVO { a0: EcxVecOperandBase },
+    #[eggplant::display("VecVecOperand_get({a0}, {a1})")]
     EcxVecVecOperand_get { a0: EcxVecVecOperand, a1: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxVecVecOperand {
-    EcxShiftVecVecOperand { a0: EcxVecVecOperand, a1: i64, a2: i64 },
-    EcxShiftVecVecOperand_helper { a0: EcxVecVecOperand, a1: i64, a2: i64, a3: i64 },
-    EcxSubstVecVecOperand { a0: EcxVecVecOperand, a1: i64, a2: EcxOperand },
-    EcxSubstVecVecOperand_helper { a0: EcxVecVecOperand, a1: i64, a2: EcxOperand, a3: i64 },
-    EcxSubstVecVecOperandAll { a0: EcxVecVecOperand, a1: EcxVecOperand },
-    EcxSubstVecVecOperandAll_helper { a0: EcxVecVecOperand, a1: EcxVecOperand, a2: i64 },
+    #[eggplant::display("ShiftVecVecOperand({a0}, {a1}, {a2})")]
+    EcxShiftVecVecOperand {
+        a0: EcxVecVecOperand,
+        a1: i64,
+        a2: i64,
+    },
+    #[eggplant::display("ShiftVecVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    EcxShiftVecVecOperand_helper {
+        a0: EcxVecVecOperand,
+        a1: i64,
+        a2: i64,
+        a3: i64,
+    },
+    #[eggplant::display("SubstVecVecOperand({a0}, {a1}, {a2})")]
+    EcxSubstVecVecOperand {
+        a0: EcxVecVecOperand,
+        a1: i64,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("SubstVecVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    EcxSubstVecVecOperand_helper {
+        a0: EcxVecVecOperand,
+        a1: i64,
+        a2: EcxOperand,
+        a3: i64,
+    },
+    #[eggplant::display("SubstVecVecOperandAll({a0}, {a1})")]
+    EcxSubstVecVecOperandAll {
+        a0: EcxVecVecOperand,
+        a1: EcxVecOperand,
+    },
+    #[eggplant::display("SubstVecVecOperandAll_helper({a0}, {a1}, {a2})")]
+    EcxSubstVecVecOperandAll_helper {
+        a0: EcxVecVecOperand,
+        a1: EcxVecOperand,
+        a2: i64,
+    },
+    #[eggplant::display("VVO({a0})")]
     EcxVVO { a0: EcxVecVecOperandBase },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxRel {
+    #[eggplant::display("Body_contains_Body({a0}, {a1}, {a2})")]
     EcxBody_contains_Body { a0: EcxBody, a1: i64, a2: EcxBody },
+    #[eggplant::display("Body_contains_Expr({a0}, {a1}, {a2})")]
     EcxBody_contains_Expr { a0: EcxBody, a1: i64, a2: EcxExpr },
-    EcxBody_contains_Operand { a0: EcxBody, a1: i64, a2: EcxOperand },
+    #[eggplant::display("Body_contains_Operand({a0}, {a1}, {a2})")]
+    EcxBody_contains_Operand {
+        a0: EcxBody,
+        a1: i64,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("Body_is_pure({a0})")]
     EcxBody_is_pure { a0: EcxBody },
+    #[eggplant::display("Expr_is_pure({a0})")]
     EcxExpr_is_pure { a0: EcxExpr },
+    #[eggplant::display("Function_is_pure({a0})")]
     EcxFunction_is_pure { a0: EcxFunction },
+    #[eggplant::display("Operand_is_pure({a0})")]
     EcxOperand_is_pure { a0: EcxOperand },
+    #[eggplant::display("VecOperand_is_pure({a0})")]
     EcxVecOperand_is_pure { a0: EcxVecOperand },
+    #[eggplant::display("VecVecOperand_is_pure({a0})")]
     EcxVecVecOperand_is_pure { a0: EcxVecVecOperand },
-    Ecxcan_subst_Body_beneath { a0: EcxBody, a1: EcxBody, a2: EcxBody },
-    Ecxcan_subst_Expr_beneath { a0: EcxBody, a1: EcxExpr, a2: EcxExpr },
-    Ecxcan_subst_Operand_beneath { a0: EcxBody, a1: EcxOperand, a2: EcxOperand },
-    Ecxcan_subst_VecOperand_beneath { a0: EcxBody, a1: EcxVecOperand, a2: EcxVecOperand },
-    Ecxcan_subst_VecVecOperand_beneath { a0: EcxBody, a1: EcxVecVecOperand, a2: EcxVecVecOperand },
+    #[eggplant::display("can_subst_Body_beneath({a0}, {a1}, {a2})")]
+    Ecxcan_subst_Body_beneath {
+        a0: EcxBody,
+        a1: EcxBody,
+        a2: EcxBody,
+    },
+    #[eggplant::display("can_subst_Expr_beneath({a0}, {a1}, {a2})")]
+    Ecxcan_subst_Expr_beneath {
+        a0: EcxBody,
+        a1: EcxExpr,
+        a2: EcxExpr,
+    },
+    #[eggplant::display("can_subst_Operand_beneath({a0}, {a1}, {a2})")]
+    Ecxcan_subst_Operand_beneath {
+        a0: EcxBody,
+        a1: EcxOperand,
+        a2: EcxOperand,
+    },
+    #[eggplant::display("can_subst_VecOperand_beneath({a0}, {a1}, {a2})")]
+    Ecxcan_subst_VecOperand_beneath {
+        a0: EcxBody,
+        a1: EcxVecOperand,
+        a2: EcxVecOperand,
+    },
+    #[eggplant::display("can_subst_VecVecOperand_beneath({a0}, {a1}, {a2})")]
+    Ecxcan_subst_VecVecOperand_beneath {
+        a0: EcxBody,
+        a1: EcxVecVecOperand,
+        a2: EcxVecVecOperand,
+    },
 }
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxTermAndCost, merge = "(EcxSmaller old new)")]
-struct EcxExtractedBody { a0: EcxBody }
+struct EcxExtractedBody {
+    a0: EcxBody,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxTermAndCost, merge = "(EcxSmaller old new)")]
-struct EcxExtractedExpr { a0: EcxExpr }
+struct EcxExtractedExpr {
+    a0: EcxExpr,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxTermAndCost, merge = "(EcxSmaller old new)")]
-struct EcxExtractedOperand { a0: EcxOperand }
+struct EcxExtractedOperand {
+    a0: EcxOperand,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxTermAndCost, merge = "(EcxSmaller old new)")]
-struct EcxExtractedVecOperand { a0: EcxVecOperand }
+struct EcxExtractedVecOperand {
+    a0: EcxVecOperand,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxTermAndCost, merge = "(EcxSmaller old new)")]
-struct EcxExtractedVecOperandHelper { a0: EcxVecOperand, a1: i64 }
+struct EcxExtractedVecOperandHelper {
+    a0: EcxVecOperand,
+    a1: i64,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxTermAndCost, merge = "(EcxSmaller old new)")]
-struct EcxExtractedVecVecOperand { a0: EcxVecVecOperand }
+struct EcxExtractedVecVecOperand {
+    a0: EcxVecVecOperand,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxTermAndCost, merge = "(EcxSmaller old new)")]
-struct EcxExtractedVecVecOperandHelper { a0: EcxVecVecOperand, a1: i64 }
+struct EcxExtractedVecVecOperandHelper {
+    a0: EcxVecVecOperand,
+    a1: i64,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = i64, no_merge)]
-struct EcxVecOperand_length { a0: EcxVecOperand }
+struct EcxVecOperand_length {
+    a0: EcxVecOperand,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = i64, merge = "(max old new)")]
-struct EcxVecOperand_pure_prefix { a0: EcxVecOperand }
+struct EcxVecOperand_pure_prefix {
+    a0: EcxVecOperand,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = i64, no_merge)]
-struct EcxVecVecOperand_length { a0: EcxVecVecOperand }
+struct EcxVecVecOperand_length {
+    a0: EcxVecVecOperand,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = i64, merge = "(max old new)")]
-struct EcxVecVecOperand_pure_prefix { a0: EcxVecVecOperand }
+struct EcxVecVecOperand_pure_prefix {
+    a0: EcxVecVecOperand,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxInterval, merge = "(Ecxinterval_intersect old new)")]
-struct Ecxcontext_ival { a0: EcxOperand, a1: EcxBody }
+struct Ecxcontext_ival {
+    a0: EcxOperand,
+    a1: EcxBody,
+}
 
 #[allow(non_camel_case_types)]
 #[eggplant::func(output = EcxInterval, merge = "(Ecxinterval_intersect old new)")]
-struct Ecxival { a0: EcxOperand }
+struct Ecxival {
+    a0: EcxOperand,
+}
 
 #[eggplant::pat_vars]
 struct Pat0001<PR: PatRecSgl> {
@@ -271,7 +559,10 @@ fn pat_pat0002<PR: PatRecSgl>() -> Pat0002<PR> {
     let c0 = j.handle().eq(&_t1.handle_a1());
     let c1 = i.handle().eq(&(j.handle() + (&(1_i64)).as_handle()));
     let c2 = i.handle().lt(&_f3.handle());
-    Pat0002::new(i, j, x, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0002::new(i, j, x, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -325,7 +616,10 @@ fn pat_pat0005<PR: PatRecSgl>() -> Pat0005<PR> {
     let c0 = j.handle().eq(&_t1.handle_a1());
     let c1 = i.handle().eq(&(j.handle() + (&(1_i64)).as_handle()));
     let c2 = i.handle().lt(&_f3.handle());
-    Pat0005::new(i, j, x, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0005::new(i, j, x, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -390,7 +684,23 @@ fn pat_pat0008<PR: PatRecSgl>() -> Pat0008<PR> {
     let c1 = n_outs.handle().eq(&_t1.handle_a3());
     let c2 = f.handle().eq(&_t1.handle());
     let c3 = name.handle().eq(&_t3.handle_a0());
-    Pat0008::new(args, body, f, input_types, n_outs, name, output_types, ty, _t1, _rel2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0008::new(
+        args,
+        body,
+        f,
+        input_types,
+        n_outs,
+        name,
+        output_types,
+        ty,
+        _t1,
+        _rel2,
+        _t3,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -680,7 +990,10 @@ fn pat_pat0022<PR: PatRecSgl>() -> Pat0022<PR> {
     let c0 = i.handle().eq(&_f1.handle());
     let c1 = i.handle().lt(&_f2.handle());
     let c2 = i.handle().eq(&_t4.handle_a1());
-    Pat0022::new(f, i, _f1, _f2, _rel3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0022::new(f, i, _f1, _f2, _rel3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -733,7 +1046,10 @@ fn pat_pat0025<PR: PatRecSgl>() -> Pat0025<PR> {
     let c0 = i.handle().eq(&_f1.handle());
     let c1 = i.handle().lt(&_f2.handle());
     let c2 = i.handle().eq(&_t4.handle_a1());
-    Pat0025::new(f, i, _f1, _f2, _rel3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0025::new(f, i, _f1, _f2, _rel3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -772,7 +1088,9 @@ fn pat_pat0027<PR: PatRecSgl>() -> Pat0027<PR> {
     let _rel2 = EcxVecOperand_is_pure::query(&body);
     let c0 = name.handle().eq(&_t1.handle_a0());
     let c1 = f.handle().eq(&_t1.handle());
-    Pat0027::new(body, f, input_types, name, output_types, _t1, _rel2).assert(c0).assert(c1)
+    Pat0027::new(body, f, input_types, name, output_types, _t1, _rel2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -822,7 +1140,12 @@ fn pat_pat0029<PR: PatRecSgl>() -> Pat0029<PR> {
     let c2 = outputs_i.handle().eq(&_t2.handle());
     let c3 = j.handle().eq(&_t3.handle_a1());
     let c4 = x.handle().eq(&_t3.handle());
-    Pat0029::new(f, i, inputs, j, outputs, outputs_i, pred, x, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0029::new(f, i, inputs, j, outputs, outputs_i, pred, x, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -868,7 +1191,10 @@ fn pat_pat0031<PR: PatRecSgl>() -> Pat0031<PR> {
     let c0 = f.handle().eq(&_t1.handle());
     let c1 = i.handle().eq(&_t2.handle_a1());
     let c2 = x.handle().eq(&_t2.handle());
-    Pat0031::new(f, i, inputs, outputs, pred, x, _t1, _t2).assert(c0).assert(c1).assert(c2)
+    Pat0031::new(f, i, inputs, outputs, pred, x, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -891,7 +1217,10 @@ fn pat_pat0032<PR: PatRecSgl>() -> Pat0032<PR> {
     let c0 = f.handle().eq(&_t1.handle());
     let c1 = i.handle().eq(&_t2.handle_a1());
     let c2 = x.handle().eq(&_t2.handle());
-    Pat0032::new(f, i, vec, x, _t1, _t2).assert(c0).assert(c1).assert(c2)
+    Pat0032::new(f, i, vec, x, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -964,7 +1293,10 @@ fn pat_pat0035<PR: PatRecSgl>() -> Pat0035<PR> {
     let c0 = i.handle().eq(&_rel1.handle_a1());
     let c1 = any.handle().eq(&_t3.handle_a1());
     let c2 = x.handle().eq(&_t3.handle());
-    Pat0035::new(any, f, i, inputs, outputs, pred, x, _rel1, _t2, _t3).assert(c0).assert(c1).assert(c2)
+    Pat0035::new(any, f, i, inputs, outputs, pred, x, _rel1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -995,7 +1327,10 @@ fn pat_pat0036<PR: PatRecSgl>() -> Pat0036<PR> {
     let c0 = i.handle().eq(&_rel1.handle_a1());
     let c1 = any.handle().eq(&_t3.handle_a1());
     let c2 = x.handle().eq(&_t3.handle());
-    Pat0036::new(any, f, i, inputs, outputs, pred, x, _rel1, _t2, _t3).assert(c0).assert(c1).assert(c2)
+    Pat0036::new(any, f, i, inputs, outputs, pred, x, _rel1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -1022,7 +1357,10 @@ fn pat_pat0037<PR: PatRecSgl>() -> Pat0037<PR> {
     let c0 = i.handle().eq(&_rel1.handle_a1());
     let c1 = any.handle().eq(&_t3.handle_a1());
     let c2 = x.handle().eq(&_t3.handle());
-    Pat0037::new(any, f, i, vec, x, _rel1, _t2, _t3).assert(c0).assert(c1).assert(c2)
+    Pat0037::new(any, f, i, vec, x, _rel1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -1057,7 +1395,12 @@ fn pat_pat0038<PR: PatRecSgl>() -> Pat0038<PR> {
     let c2 = i.handle().eq(&_rel1.handle_a1());
     let c3 = any.handle().eq(&_t3.handle_a1());
     let c4 = x.handle().eq(&_t3.handle());
-    Pat0038::new(any, args, f, i, n_outs, name, ty, x, _rel1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0038::new(any, args, f, i, n_outs, name, ty, x, _rel1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -1305,7 +1648,18 @@ fn pat_pat0049<PR: PatRecSgl>() -> Pat0049<PR> {
     let _rel2 = Ecxcan_subst_VecOperand_beneath::query(&above, &outputs_from, &outputs_to);
     let _t3 = EcxTheta::query(&pred_from, &inputs, &outputs_from);
     let c0 = above.handle().eq(&_t3.handle());
-    Pat0049::new(above, inputs, outputs_from, outputs_to, pred_from, pred_to, _rel1, _rel2, _t3).assert(c0)
+    Pat0049::new(
+        above,
+        inputs,
+        outputs_from,
+        outputs_to,
+        pred_from,
+        pred_to,
+        _rel1,
+        _rel2,
+        _t3,
+    )
+    .assert(c0)
 }
 
 #[eggplant::pat_vars]
@@ -1392,7 +1746,9 @@ fn pat_pat0053<PR: PatRecSgl>() -> Pat0053<PR> {
     let _t2 = EcxProject::query(&from);
     let c0 = i.handle().eq(&_t2.handle_a0());
     let c1 = new_from.handle().eq(&_t2.handle());
-    Pat0053::new(above, from, i, new_from, to, _rel1, _t2).assert(c0).assert(c1)
+    Pat0053::new(above, from, i, new_from, to, _rel1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -1538,7 +1894,10 @@ fn pat_pat0059<PR: PatRecSgl>() -> Pat0059<PR> {
     let c0 = f.handle().eq(&_t2.handle_a1());
     let c1 = n_outs.handle().eq(&_t2.handle_a3());
     let c2 = new_from.handle().eq(&_t2.handle());
-    Pat0059::new(above, f, from, n_outs, new_from, to, ty, _rel1, _t2).assert(c0).assert(c1).assert(c2)
+    Pat0059::new(above, f, from, n_outs, new_from, to, ty, _rel1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -1814,7 +2173,9 @@ fn pat_pat0070<PR: PatRecSgl>() -> Pat0070<PR> {
     let _t2 = EcxVecOperand_get::query(&_t3);
     let c0 = i.handle().eq(&_t2.handle_a1());
     let c1 = from.handle().eq(&_t2.handle());
-    Pat0070::new(above, from, i, to, vec, _rel1, _t2, _t3).assert(c0).assert(c1)
+    Pat0070::new(above, from, i, to, vec, _rel1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -1840,7 +2201,9 @@ fn pat_pat0071<PR: PatRecSgl>() -> Pat0071<PR> {
     let _t2 = EcxVecVecOperand_get::query(&_t3);
     let c0 = i.handle().eq(&_t2.handle_a1());
     let c1 = from.handle().eq(&_t2.handle());
-    Pat0071::new(above, from, i, to, vec, _rel1, _t2, _t3).assert(c0).assert(c1)
+    Pat0071::new(above, from, i, to, vec, _rel1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2005,7 +2368,10 @@ fn pat_pat0078<PR: PatRecSgl>() -> Pat0078<PR> {
     let c0 = f.handle().eq(&_t2.handle_a1());
     let c1 = n_outs.handle().eq(&_t2.handle_a3());
     let c2 = x0.handle().eq(&_t1.handle_a1());
-    Pat0078::new(args, f, n_outs, ty, x0, x1, _t1, _t2).assert(c0).assert(c1).assert(c2)
+    Pat0078::new(args, f, n_outs, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -2068,7 +2434,11 @@ fn pat_pat0081<PR: PatRecSgl>() -> Pat0081<PR> {
     let c1 = x.handle().eq(&_t1.handle_a1());
     let c2 = f.handle().eq(&_t1.handle());
     let c3 = y.handle().ne(&x.handle());
-    Pat0081::new(f, v, x, y, _t1, _t2).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0081::new(f, v, x, y, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -2221,7 +2591,11 @@ fn pat_pat0088<PR: PatRecSgl>() -> Pat0088<PR> {
     let c1 = i.handle().eq(&_t1.handle_a3());
     let c2 = f.handle().eq(&_t1.handle());
     let c3 = i.handle().lt(&_f3.handle());
-    Pat0088::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0088::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -2251,7 +2625,11 @@ fn pat_pat0089<PR: PatRecSgl>() -> Pat0089<PR> {
     let c1 = i.handle().eq(&_t1.handle_a3());
     let c2 = f.handle().eq(&_t1.handle());
     let c3 = i.handle().eq(&_f3.handle());
-    Pat0089::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0089::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -2298,7 +2676,11 @@ fn pat_pat0091<PR: PatRecSgl>() -> Pat0091<PR> {
     let c1 = i.handle().eq(&_t1.handle_a3());
     let c2 = f.handle().eq(&_t1.handle());
     let c3 = i.handle().lt(&_f3.handle());
-    Pat0091::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0091::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -2328,7 +2710,11 @@ fn pat_pat0092<PR: PatRecSgl>() -> Pat0092<PR> {
     let c1 = i.handle().eq(&_t1.handle_a3());
     let c2 = f.handle().eq(&_t1.handle());
     let c3 = i.handle().eq(&_f3.handle());
-    Pat0092::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0092::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -2472,7 +2858,9 @@ fn pat_pat0099<PR: PatRecSgl>() -> Pat0099<PR> {
     let _t1 = EcxSubstExprAll::query(&_t2, &x0);
     let c0 = f.handle().eq(&_t2.handle_a1());
     let c1 = n_outs.handle().eq(&_t2.handle_a3());
-    Pat0099::new(args, f, n_outs, ty, x0, _t1, _t2).assert(c0).assert(c1)
+    Pat0099::new(args, f, n_outs, ty, x0, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2517,7 +2905,10 @@ fn pat_pat0101<PR: PatRecSgl>() -> Pat0101<PR> {
     let c0 = x.handle().eq(&_t2.handle_a0());
     let c1 = f.handle().eq(&_t1.handle());
     let c2 = x.handle().lt(&_f4.handle());
-    Pat0101::new(f, ops, x, _t1, _t2, _t3, _f4, _t5).assert(c0).assert(c1).assert(c2)
+    Pat0101::new(f, ops, x, _t1, _t2, _t3, _f4, _t5)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -2649,7 +3040,10 @@ fn pat_pat0108<PR: PatRecSgl>() -> Pat0108<PR> {
     let c0 = i.handle().eq(&_t1.handle_a2());
     let c1 = f.handle().eq(&_t1.handle());
     let c2 = i.handle().lt(&_f3.handle());
-    Pat0108::new(f, i, vec, x0, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0108::new(f, i, vec, x0, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -2676,7 +3070,10 @@ fn pat_pat0109<PR: PatRecSgl>() -> Pat0109<PR> {
     let c0 = i.handle().eq(&_t1.handle_a2());
     let c1 = f.handle().eq(&_t1.handle());
     let c2 = i.handle().eq(&_f3.handle());
-    Pat0109::new(f, i, vec, x0, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0109::new(f, i, vec, x0, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -2717,7 +3114,10 @@ fn pat_pat0111<PR: PatRecSgl>() -> Pat0111<PR> {
     let c0 = i.handle().eq(&_t1.handle_a2());
     let c1 = f.handle().eq(&_t1.handle());
     let c2 = i.handle().lt(&_f3.handle());
-    Pat0111::new(f, i, vec, x0, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0111::new(f, i, vec, x0, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -2744,7 +3144,10 @@ fn pat_pat0112<PR: PatRecSgl>() -> Pat0112<PR> {
     let c0 = i.handle().eq(&_t1.handle_a2());
     let c1 = f.handle().eq(&_t1.handle());
     let c2 = i.handle().eq(&_f3.handle());
-    Pat0112::new(f, i, vec, x0, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0112::new(f, i, vec, x0, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -2768,7 +3171,9 @@ fn pat_pat0113<PR: PatRecSgl>() -> Pat0113<PR> {
     let _t1 = EcxShiftExpr::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0113::new(a, b, ty, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0113::new(a, b, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2792,7 +3197,9 @@ fn pat_pat0114<PR: PatRecSgl>() -> Pat0114<PR> {
     let _t1 = EcxShiftExpr::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0114::new(a, b, ty, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0114::new(a, b, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2816,7 +3223,9 @@ fn pat_pat0115<PR: PatRecSgl>() -> Pat0115<PR> {
     let _t1 = EcxShiftExpr::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0115::new(a, b, ty, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0115::new(a, b, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2840,7 +3249,9 @@ fn pat_pat0116<PR: PatRecSgl>() -> Pat0116<PR> {
     let _t1 = EcxShiftExpr::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0116::new(a, b, ty, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0116::new(a, b, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2864,7 +3275,9 @@ fn pat_pat0117<PR: PatRecSgl>() -> Pat0117<PR> {
     let _t1 = EcxShiftExpr::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0117::new(a, b, ty, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0117::new(a, b, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2888,7 +3301,9 @@ fn pat_pat0118<PR: PatRecSgl>() -> Pat0118<PR> {
     let _t1 = EcxShiftExpr::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0118::new(lit, ops, ty, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0118::new(lit, ops, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -2916,7 +3331,11 @@ fn pat_pat0119<PR: PatRecSgl>() -> Pat0119<PR> {
     let c1 = n_outs.handle().eq(&_t2.handle_a3());
     let c2 = x0.handle().eq(&_t1.handle_a1());
     let c3 = x1.handle().eq(&_t1.handle_a2());
-    Pat0119::new(args, f, n_outs, ty, x0, x1, _t1, _t2).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0119::new(args, f, n_outs, ty, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -2963,7 +3382,12 @@ fn pat_pat0121<PR: PatRecSgl>() -> Pat0121<PR> {
     let c2 = amt.handle().eq(&_t1.handle_a2());
     let c3 = f.handle().eq(&_t1.handle());
     let c4 = x.handle().le(&last_unshifted.handle());
-    Pat0121::new(amt, f, last_unshifted, x, _t1, _t2).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0121::new(amt, f, last_unshifted, x, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -2988,7 +3412,12 @@ fn pat_pat0122<PR: PatRecSgl>() -> Pat0122<PR> {
     let c2 = amt.handle().eq(&_t1.handle_a2());
     let c3 = f.handle().eq(&_t1.handle());
     let c4 = x.handle().gt(&last_unshifted.handle());
-    Pat0122::new(amt, f, last_unshifted, x, _t1, _t2).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0122::new(amt, f, last_unshifted, x, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -3031,7 +3460,10 @@ fn pat_pat0124<PR: PatRecSgl>() -> Pat0124<PR> {
     let c0 = i.handle().eq(&_t2.handle_a0());
     let c1 = x0.handle().eq(&_t1.handle_a1());
     let c2 = x1.handle().eq(&_t1.handle_a2());
-    Pat0124::new(b, i, x0, x1, _t1, _t2).assert(c0).assert(c1).assert(c2)
+    Pat0124::new(b, i, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -3075,7 +3507,9 @@ fn pat_pat0126<PR: PatRecSgl>() -> Pat0126<PR> {
     let _t1 = EcxShiftBody::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0126::new(inputs, outputs, pred, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0126::new(inputs, outputs, pred, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3099,7 +3533,9 @@ fn pat_pat0127<PR: PatRecSgl>() -> Pat0127<PR> {
     let _t1 = EcxShiftBody::query(&_t2);
     let c0 = x0.handle().eq(&_t1.handle_a1());
     let c1 = x1.handle().eq(&_t1.handle_a2());
-    Pat0127::new(inputs, outputs, pred, x0, x1, _t1, _t2).assert(c0).assert(c1)
+    Pat0127::new(inputs, outputs, pred, x0, x1, _t1, _t2)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3148,7 +3584,12 @@ fn pat_pat0129<PR: PatRecSgl>() -> Pat0129<PR> {
     let c2 = i.handle().eq(&_t1.handle_a3());
     let c3 = f.handle().eq(&_t1.handle());
     let c4 = i.handle().lt(&_f3.handle());
-    Pat0129::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0129::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -3179,7 +3620,12 @@ fn pat_pat0130<PR: PatRecSgl>() -> Pat0130<PR> {
     let c2 = i.handle().eq(&_t1.handle_a3());
     let c3 = f.handle().eq(&_t1.handle());
     let c4 = i.handle().eq(&_f3.handle());
-    Pat0130::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0130::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -3228,7 +3674,12 @@ fn pat_pat0132<PR: PatRecSgl>() -> Pat0132<PR> {
     let c2 = i.handle().eq(&_t1.handle_a3());
     let c3 = f.handle().eq(&_t1.handle());
     let c4 = i.handle().lt(&_f3.handle());
-    Pat0132::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0132::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -3259,7 +3710,12 @@ fn pat_pat0133<PR: PatRecSgl>() -> Pat0133<PR> {
     let c2 = i.handle().eq(&_t1.handle_a3());
     let c3 = f.handle().eq(&_t1.handle());
     let c4 = i.handle().eq(&_f3.handle());
-    Pat0133::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0133::new(f, i, vec, x0, x1, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
+        .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -3297,7 +3753,10 @@ fn pat_pat0135<PR: PatRecSgl>() -> Pat0135<PR> {
     let c0 = i.handle().eq(&_t1.handle_a0());
     let c1 = lhs.handle().eq(&_t1.handle());
     let c2 = _f3.handle().lt(&i.handle());
-    Pat0135::new(i, lhs, rest, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0135::new(i, lhs, rest, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -3322,7 +3781,10 @@ fn pat_pat0136<PR: PatRecSgl>() -> Pat0136<PR> {
     let c0 = i.handle().eq(&_t1.handle_a0());
     let c1 = lhs.handle().eq(&_t1.handle());
     let c2 = _f3.handle().eq(&i.handle());
-    Pat0136::new(i, lhs, rest, _t1, _t2, _f3, _t4).assert(c0).assert(c1).assert(c2)
+    Pat0136::new(i, lhs, rest, _t1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -3361,7 +3823,11 @@ fn pat_pat0138<PR: PatRecSgl>() -> Pat0138<PR> {
     let c1 = body_len.handle().eq(&_t1.handle_a1());
     let c2 = helper.handle().eq(&_t1.handle());
     let c3 = index.handle().lt(&body_len.handle());
-    Pat0138::new(body, body_len, helper, index, so_far, _t1).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0138::new(body, body_len, helper, index, so_far, _t1)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3385,7 +3851,11 @@ fn pat_pat0139<PR: PatRecSgl>() -> Pat0139<PR> {
     let c1 = body_len.handle().eq(&_t1.handle_a1());
     let c2 = helper.handle().eq(&_t1.handle());
     let c3 = index.handle().eq(&body_len.handle());
-    Pat0139::new(body, body_len, helper, index, so_far, _t1).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0139::new(body, body_len, helper, index, so_far, _t1)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3417,7 +3887,11 @@ fn pat_pat0140<PR: PatRecSgl>() -> Pat0140<PR> {
     let _t1 = EcxGamma::query(&_t2, &inputs, &_t8);
     let c0 = _t7.handle_a0().eq(&(true));
     let c1 = gamma.handle().eq(&_t1.handle());
-    Pat0140::new(gamma, inputs, outputs, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8).assert(c0).assert(c1)
+    Pat0140::new(
+        gamma, inputs, outputs, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3449,7 +3923,11 @@ fn pat_pat0141<PR: PatRecSgl>() -> Pat0141<PR> {
     let _t1 = EcxGamma::query(&_t2, &inputs, &_t8);
     let c0 = _t7.handle_a0().eq(&(false));
     let c1 = gamma.handle().eq(&_t1.handle());
-    Pat0141::new(gamma, inputs, outputs, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8).assert(c0).assert(c1)
+    Pat0141::new(
+        gamma, inputs, outputs, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3483,7 +3961,11 @@ fn pat_pat0142<PR: PatRecSgl>() -> Pat0142<PR> {
     let _t1 = EcxTheta::query(&_t2, &_t8, &_t9);
     let c0 = _t7.handle_a0().eq(&(false));
     let c1 = theta.handle().eq(&_t1.handle());
-    Pat0142::new(inputs, outputs, theta, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9).assert(c0).assert(c1)
+    Pat0142::new(
+        inputs, outputs, theta, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3525,7 +4007,26 @@ fn pat_pat0143<PR: PatRecSgl>() -> Pat0143<PR> {
     let _t1 = Ecxbadd::query(&output_type, &_t2, &_t7);
     let c0 = n1.handle().eq(&_t6.handle_a0());
     let c1 = n2.handle().eq(&_t11.handle_a0());
-    Pat0143::new(n1, n2, output_type, ty2, ty3, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11).assert(c0).assert(c1)
+    Pat0143::new(
+        n1,
+        n2,
+        output_type,
+        ty2,
+        ty3,
+        _t1,
+        _t2,
+        _t3,
+        _t4,
+        _t5,
+        _t6,
+        _t7,
+        _t8,
+        _t9,
+        _t10,
+        _t11,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3567,7 +4068,26 @@ fn pat_pat0144<PR: PatRecSgl>() -> Pat0144<PR> {
     let _t1 = Ecxbsub::query(&output_type, &_t2, &_t7);
     let c0 = n1.handle().eq(&_t6.handle_a0());
     let c1 = n2.handle().eq(&_t11.handle_a0());
-    Pat0144::new(n1, n2, output_type, ty2, ty3, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11).assert(c0).assert(c1)
+    Pat0144::new(
+        n1,
+        n2,
+        output_type,
+        ty2,
+        ty3,
+        _t1,
+        _t2,
+        _t3,
+        _t4,
+        _t5,
+        _t6,
+        _t7,
+        _t8,
+        _t9,
+        _t10,
+        _t11,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3609,7 +4129,26 @@ fn pat_pat0145<PR: PatRecSgl>() -> Pat0145<PR> {
     let _t1 = Ecxbmul::query(&output_type, &_t2, &_t7);
     let c0 = n1.handle().eq(&_t6.handle_a0());
     let c1 = n2.handle().eq(&_t11.handle_a0());
-    Pat0145::new(n1, n2, output_type, ty2, ty3, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11).assert(c0).assert(c1)
+    Pat0145::new(
+        n1,
+        n2,
+        output_type,
+        ty2,
+        ty3,
+        _t1,
+        _t2,
+        _t3,
+        _t4,
+        _t5,
+        _t6,
+        _t7,
+        _t8,
+        _t9,
+        _t10,
+        _t11,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3651,7 +4190,26 @@ fn pat_pat0146<PR: PatRecSgl>() -> Pat0146<PR> {
     let _t1 = Ecxbdiv::query(&output_type, &_t2, &_t7);
     let c0 = n1.handle().eq(&_t6.handle_a0());
     let c1 = n2.handle().eq(&_t11.handle_a0());
-    Pat0146::new(n1, n2, output_type, ty2, ty3, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11).assert(c0).assert(c1)
+    Pat0146::new(
+        n1,
+        n2,
+        output_type,
+        ty2,
+        ty3,
+        _t1,
+        _t2,
+        _t3,
+        _t4,
+        _t5,
+        _t6,
+        _t7,
+        _t8,
+        _t9,
+        _t10,
+        _t11,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3693,7 +4251,26 @@ fn pat_pat0147<PR: PatRecSgl>() -> Pat0147<PR> {
     let _t1 = Ecxblt::query(&output_type, &_t2, &_t7);
     let c0 = n1.handle().eq(&_t6.handle_a0());
     let c1 = n2.handle().eq(&_t11.handle_a0());
-    Pat0147::new(n1, n2, output_type, ty2, ty3, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11).assert(c0).assert(c1)
+    Pat0147::new(
+        n1,
+        n2,
+        output_type,
+        ty2,
+        ty3,
+        _t1,
+        _t2,
+        _t3,
+        _t4,
+        _t5,
+        _t6,
+        _t7,
+        _t8,
+        _t9,
+        _t10,
+        _t11,
+    )
+    .assert(c0)
+    .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -3721,7 +4298,11 @@ fn pat_pat0148<PR: PatRecSgl>() -> Pat0148<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().le(&cost2.handle());
-    Pat0148::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0148::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3749,7 +4330,11 @@ fn pat_pat0149<PR: PatRecSgl>() -> Pat0149<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().gt(&cost2.handle());
-    Pat0149::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0149::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3777,7 +4362,11 @@ fn pat_pat0150<PR: PatRecSgl>() -> Pat0150<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().le(&cost2.handle());
-    Pat0150::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0150::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3805,7 +4394,11 @@ fn pat_pat0151<PR: PatRecSgl>() -> Pat0151<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().gt(&cost2.handle());
-    Pat0151::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0151::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3833,7 +4426,11 @@ fn pat_pat0152<PR: PatRecSgl>() -> Pat0152<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().le(&cost2.handle());
-    Pat0152::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0152::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3861,7 +4458,11 @@ fn pat_pat0153<PR: PatRecSgl>() -> Pat0153<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().gt(&cost2.handle());
-    Pat0153::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0153::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3889,7 +4490,11 @@ fn pat_pat0154<PR: PatRecSgl>() -> Pat0154<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().le(&cost2.handle());
-    Pat0154::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0154::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3917,7 +4522,11 @@ fn pat_pat0155<PR: PatRecSgl>() -> Pat0155<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().gt(&cost2.handle());
-    Pat0155::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0155::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3945,7 +4554,11 @@ fn pat_pat0156<PR: PatRecSgl>() -> Pat0156<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().le(&cost2.handle());
-    Pat0156::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0156::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -3973,7 +4586,11 @@ fn pat_pat0157<PR: PatRecSgl>() -> Pat0157<PR> {
     let c1 = cost2.handle().eq(&_t3.handle_a1());
     let c2 = lhs.handle().eq(&_t1.handle());
     let c3 = cost1.handle().gt(&cost2.handle());
-    Pat0157::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0157::new(cost1, cost2, lhs, t1, t2, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -4012,7 +4629,14 @@ fn pat_pat0158<PR: PatRecSgl>() -> Pat0158<PR> {
     let c2 = _t2.handle().eq(&_f3.handle());
     let c3 = cost2.handle().eq(&_t4.handle_a1());
     let c4 = _t4.handle().eq(&_f5.handle());
-    Pat0158::new(a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0158::new(
+        a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -4051,7 +4675,14 @@ fn pat_pat0159<PR: PatRecSgl>() -> Pat0159<PR> {
     let c2 = _t2.handle().eq(&_f3.handle());
     let c3 = cost2.handle().eq(&_t4.handle_a1());
     let c4 = _t4.handle().eq(&_f5.handle());
-    Pat0159::new(a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0159::new(
+        a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -4090,7 +4721,14 @@ fn pat_pat0160<PR: PatRecSgl>() -> Pat0160<PR> {
     let c2 = _t2.handle().eq(&_f3.handle());
     let c3 = cost2.handle().eq(&_t4.handle_a1());
     let c4 = _t4.handle().eq(&_f5.handle());
-    Pat0160::new(a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0160::new(
+        a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -4129,7 +4767,14 @@ fn pat_pat0161<PR: PatRecSgl>() -> Pat0161<PR> {
     let c2 = _t2.handle().eq(&_f3.handle());
     let c3 = cost2.handle().eq(&_t4.handle_a1());
     let c4 = _t4.handle().eq(&_f5.handle());
-    Pat0161::new(a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0161::new(
+        a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -4168,7 +4813,14 @@ fn pat_pat0162<PR: PatRecSgl>() -> Pat0162<PR> {
     let c2 = _t2.handle().eq(&_f3.handle());
     let c3 = cost2.handle().eq(&_t4.handle_a1());
     let c4 = _t4.handle().eq(&_f5.handle());
-    Pat0162::new(a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0162::new(
+        a, b, cost1, cost2, expr1, expr2, lhs, ty, _t1, _t2, _f3, _t4, _f5,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -4205,7 +4857,14 @@ fn pat_pat0163<PR: PatRecSgl>() -> Pat0163<PR> {
     let c2 = _t2.handle().eq(&_f3.handle());
     let c3 = cost2.handle().eq(&_t4.handle_a1());
     let c4 = _t4.handle().eq(&_f5.handle());
-    Pat0163::new(a, b, cost1, cost2, expr1, expr2, lhs, _t1, _t2, _f3, _t4, _f5).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0163::new(
+        a, b, cost1, cost2, expr1, expr2, lhs, _t1, _t2, _f3, _t4, _f5,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -4263,7 +4922,30 @@ fn pat_pat0165<PR: PatRecSgl>() -> Pat0165<PR> {
     let c3 = index.handle().eq(&_t8.handle_a1());
     let c4 = expr_cost.handle().eq(&_t10.handle_a1());
     let c5 = _f7.handle().eq(&_t10.handle());
-    Pat0165::new(current, current_cost, expr, expr_cost, index, vec, _t1, _t2, _f3, _t4, _f5, _t6, _f7, _t8, _t9, _t10).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5)
+    Pat0165::new(
+        current,
+        current_cost,
+        expr,
+        expr_cost,
+        index,
+        vec,
+        _t1,
+        _t2,
+        _f3,
+        _t4,
+        _f5,
+        _t6,
+        _f7,
+        _t8,
+        _t9,
+        _t10,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
 }
 
 #[eggplant::pat_vars]
@@ -4287,7 +4969,9 @@ fn pat_pat0166<PR: PatRecSgl>() -> Pat0166<PR> {
     let _f3 = EcxVecOperand_length::query(&_t4);
     let c0 = result.handle().eq(&_f1.handle());
     let c1 = index.handle().eq(&_f3.handle());
-    Pat0166::new(index, result, vec, _f1, _t2, _f3, _t4).assert(c0).assert(c1)
+    Pat0166::new(index, result, vec, _f1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -4345,7 +5029,30 @@ fn pat_pat0168<PR: PatRecSgl>() -> Pat0168<PR> {
     let c3 = index.handle().eq(&_t8.handle_a1());
     let c4 = expr_cost.handle().eq(&_t10.handle_a1());
     let c5 = _f7.handle().eq(&_t10.handle());
-    Pat0168::new(current, current_cost, expr, expr_cost, index, vec, _t1, _t2, _f3, _t4, _f5, _t6, _f7, _t8, _t9, _t10).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5)
+    Pat0168::new(
+        current,
+        current_cost,
+        expr,
+        expr_cost,
+        index,
+        vec,
+        _t1,
+        _t2,
+        _f3,
+        _t4,
+        _f5,
+        _t6,
+        _f7,
+        _t8,
+        _t9,
+        _t10,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
 }
 
 #[eggplant::pat_vars]
@@ -4369,7 +5076,9 @@ fn pat_pat0169<PR: PatRecSgl>() -> Pat0169<PR> {
     let _f3 = EcxVecVecOperand_length::query(&_t4);
     let c0 = result.handle().eq(&_f1.handle());
     let c1 = index.handle().eq(&_f3.handle());
-    Pat0169::new(index, result, vec, _f1, _t2, _f3, _t4).assert(c0).assert(c1)
+    Pat0169::new(index, result, vec, _f1, _t2, _f3, _t4)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -4429,7 +5138,10 @@ fn pat_pat0172<PR: PatRecSgl>() -> Pat0172<PR> {
     let c0 = lhs.handle().eq(&_t1.handle());
     let c1 = expr_cost.handle().eq(&_t2.handle_a1());
     let c2 = _t2.handle().eq(&_f3.handle());
-    Pat0172::new(expr, expr_cost, expr_extracted, lhs, _t1, _t2, _f3).assert(c0).assert(c1).assert(c2)
+    Pat0172::new(expr, expr_cost, expr_extracted, lhs, _t1, _t2, _f3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -4454,7 +5166,10 @@ fn pat_pat0173<PR: PatRecSgl>() -> Pat0173<PR> {
     let c0 = lhs.handle().eq(&_t1.handle());
     let c1 = body_cost.handle().eq(&_t2.handle_a1());
     let c2 = _t2.handle().eq(&_f3.handle());
-    Pat0173::new(body, body_cost, body_extracted, lhs, _t1, _t2, _f3).assert(c0).assert(c1).assert(c2)
+    Pat0173::new(body, body_cost, body_extracted, lhs, _t1, _t2, _f3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -4503,7 +5218,32 @@ fn pat_pat0174<PR: PatRecSgl>() -> Pat0174<PR> {
     let c4 = _t4.handle().eq(&_f5.handle());
     let c5 = outputs_cost.handle().eq(&_t6.handle_a1());
     let c6 = _t6.handle().eq(&_f7.handle());
-    Pat0174::new(inputs, inputs_cost, inputs_extracted, lhs, outputs, outputs_cost, outputs_extracted, pred, pred_cost, pred_extracted, _t1, _t2, _f3, _t4, _f5, _t6, _f7).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6)
+    Pat0174::new(
+        inputs,
+        inputs_cost,
+        inputs_extracted,
+        lhs,
+        outputs,
+        outputs_cost,
+        outputs_extracted,
+        pred,
+        pred_cost,
+        pred_extracted,
+        _t1,
+        _t2,
+        _f3,
+        _t4,
+        _f5,
+        _t6,
+        _f7,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
 }
 
 #[eggplant::pat_vars]
@@ -4552,7 +5292,32 @@ fn pat_pat0175<PR: PatRecSgl>() -> Pat0175<PR> {
     let c4 = _t4.handle().eq(&_f5.handle());
     let c5 = outputs_cost.handle().eq(&_t6.handle_a1());
     let c6 = _t6.handle().eq(&_f7.handle());
-    Pat0175::new(inputs, inputs_cost, inputs_extracted, lhs, outputs, outputs_cost, outputs_extracted, pred, pred_cost, pred_extracted, _t1, _t2, _f3, _t4, _f5, _t6, _f7).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6)
+    Pat0175::new(
+        inputs,
+        inputs_cost,
+        inputs_extracted,
+        lhs,
+        outputs,
+        outputs_cost,
+        outputs_extracted,
+        pred,
+        pred_cost,
+        pred_extracted,
+        _t1,
+        _t2,
+        _f3,
+        _t4,
+        _f5,
+        _t6,
+        _f7,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
 }
 
 #[eggplant::pat_vars]
@@ -4580,7 +5345,11 @@ fn pat_pat0176<PR: PatRecSgl>() -> Pat0176<PR> {
     let c1 = lhs.handle().eq(&_t1.handle());
     let c2 = body_cost.handle().eq(&_t2.handle_a1());
     let c3 = _t2.handle().eq(&_f3.handle());
-    Pat0176::new(body, body_cost, body_extracted, index, lhs, _t1, _t2, _f3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0176::new(body, body_cost, body_extracted, index, lhs, _t1, _t2, _f3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -4622,7 +5391,29 @@ fn pat_pat0177<PR: PatRecSgl>() -> Pat0177<PR> {
     let c5 = _t3.handle().eq(&_t4.handle());
     let c6 = index.handle().eq(&_t6.handle_a1());
     let c7 = passedthrough.handle().eq(&_f5.handle());
-    Pat0177::new(index, inputs, lhs, kw_loop, outputs, passedthrough, pred, _t1, _t2, _t3, _t4, _f5, _t6).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6).assert(c7)
+    Pat0177::new(
+        index,
+        inputs,
+        lhs,
+        kw_loop,
+        outputs,
+        passedthrough,
+        pred,
+        _t1,
+        _t2,
+        _t3,
+        _t4,
+        _f5,
+        _t6,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
+    .assert(c7)
 }
 
 #[eggplant::pat_vars]
@@ -4693,7 +5484,48 @@ fn pat_pat0178<PR: PatRecSgl>() -> Pat0178<PR> {
     let c14 = _t10.handle().eq(&_t11.handle());
     let c15 = index.handle().eq(&_t13.handle_a1());
     let c16 = passedthrough.handle().eq(&_f12.handle());
-    Pat0178::new(index, inputs, lhs, kw_loop, outputs, outputs_inner, outputs0, outputs1, passedthrough, pred, _t1, _t2, _t3, _f4, _t5, _t6, _t7, _t8, _t9, _t10, _t11, _f12, _t13).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6).assert(c7).assert(c8).assert(c9).assert(c10).assert(c11).assert(c12).assert(c13).assert(c14).assert(c15).assert(c16)
+    Pat0178::new(
+        index,
+        inputs,
+        lhs,
+        kw_loop,
+        outputs,
+        outputs_inner,
+        outputs0,
+        outputs1,
+        passedthrough,
+        pred,
+        _t1,
+        _t2,
+        _t3,
+        _f4,
+        _t5,
+        _t6,
+        _t7,
+        _t8,
+        _t9,
+        _t10,
+        _t11,
+        _f12,
+        _t13,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
+    .assert(c7)
+    .assert(c8)
+    .assert(c9)
+    .assert(c10)
+    .assert(c11)
+    .assert(c12)
+    .assert(c13)
+    .assert(c14)
+    .assert(c15)
+    .assert(c16)
 }
 
 #[eggplant::pat_vars]
@@ -4722,7 +5554,10 @@ fn pat_pat0179<PR: PatRecSgl>() -> Pat0179<PR> {
     let c0 = theta.handle().eq(&_t1.handle());
     let c1 = cost.handle().eq(&_t2.handle_a1());
     let c2 = _t2.handle().eq(&_f3.handle());
-    Pat0179::new(cost, extracted, inputs, outputs, pred, theta, _t1, _t2, _f3).assert(c0).assert(c1).assert(c2)
+    Pat0179::new(cost, extracted, inputs, outputs, pred, theta, _t1, _t2, _f3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -4751,7 +5586,10 @@ fn pat_pat0180<PR: PatRecSgl>() -> Pat0180<PR> {
     let c0 = gamma.handle().eq(&_t1.handle());
     let c1 = cost.handle().eq(&_t2.handle_a1());
     let c2 = _t2.handle().eq(&_f3.handle());
-    Pat0180::new(cost, extracted, gamma, inputs, outputs, pred, _t1, _t2, _f3).assert(c0).assert(c1).assert(c2)
+    Pat0180::new(cost, extracted, gamma, inputs, outputs, pred, _t1, _t2, _f3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -4783,7 +5621,13 @@ fn pat_pat0181<PR: PatRecSgl>() -> Pat0181<PR> {
     let c1 = func.handle().eq(&_t1.handle());
     let c2 = cost.handle().eq(&_t2.handle_a1());
     let c3 = _t2.handle().eq(&_f3.handle());
-    Pat0181::new(body, cost, extracted, func, intypes, name, outtypes, _t1, _t2, _f3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0181::new(
+        body, cost, extracted, func, intypes, name, outtypes, _t1, _t2, _f3,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -4855,7 +5699,18 @@ fn pat_pat0182<PR: PatRecSgl>() -> Pat0182<PR> {
     let c5 = _t13.handle().eq(&_t15.handle());
     let c6 = args.handle().eq(&_f16.handle());
     let c7 = rets.handle().eq(&_f18.handle());
-    Pat0182::new(A, B, a, args, b, gamma, inputs, outputs, rets, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _f8, _t9, _t10, _t11, _t12, _t13, _t14, _t15, _f16, _t17, _f18, _t19).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6).assert(c7)
+    Pat0182::new(
+        A, B, a, args, b, gamma, inputs, outputs, rets, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _f8,
+        _t9, _t10, _t11, _t12, _t13, _t14, _t15, _f16, _t17, _f18, _t19,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
+    .assert(c7)
 }
 
 #[eggplant::pat_vars]
@@ -4927,7 +5782,18 @@ fn pat_pat0183<PR: PatRecSgl>() -> Pat0183<PR> {
     let c5 = _t13.handle().eq(&_t15.handle());
     let c6 = args.handle().eq(&_f16.handle());
     let c7 = rets.handle().eq(&_f18.handle());
-    Pat0183::new(A, B, a, args, b, gamma, inputs, outputs, rets, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _f8, _t9, _t10, _t11, _t12, _t13, _t14, _t15, _f16, _t17, _f18, _t19).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6).assert(c7)
+    Pat0183::new(
+        A, B, a, args, b, gamma, inputs, outputs, rets, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _f8,
+        _t9, _t10, _t11, _t12, _t13, _t14, _t15, _f16, _t17, _f18, _t19,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
+    .assert(c7)
 }
 
 #[eggplant::pat_vars]
@@ -4964,7 +5830,14 @@ fn pat_pat0184<PR: PatRecSgl>() -> Pat0184<PR> {
     let c2 = _t5.handle_a1().eq(&(0_i64));
     let c3 = _t7.handle_a1().eq(&(1_i64));
     let c4 = _t5.handle().eq(&_t7.handle());
-    Pat0184::new(condition, gamma, inputs, outputs, _t1, _t2, _f3, _t4, _t5, _t6, _t7, _t8).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0184::new(
+        condition, gamma, inputs, outputs, _t1, _t2, _f3, _t4, _t5, _t6, _t7, _t8,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 #[eggplant::pat_vars]
@@ -5013,7 +5886,11 @@ fn pat_pat0186<PR: PatRecSgl>() -> Pat0186<PR> {
     let c1 = ha.handle().eq(&_t2.handle_a1());
     let c2 = lb.handle().eq(&_t3.handle_a0());
     let c3 = hb.handle().eq(&_t3.handle_a1());
-    Pat0186::new(ha, hb, la, lb, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0186::new(ha, hb, la, lb, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -5039,7 +5916,11 @@ fn pat_pat0187<PR: PatRecSgl>() -> Pat0187<PR> {
     let c1 = ha.handle().eq(&_t2.handle_a1());
     let c2 = lb.handle().eq(&_t3.handle_a0());
     let c3 = hb.handle().eq(&_t3.handle_a1());
-    Pat0187::new(ha, hb, la, lb, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0187::new(ha, hb, la, lb, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -5065,7 +5946,11 @@ fn pat_pat0188<PR: PatRecSgl>() -> Pat0188<PR> {
     let c1 = ha.handle().eq(&_t2.handle_a1());
     let c2 = lb.handle().eq(&_t3.handle_a0());
     let c3 = hb.handle().eq(&_t3.handle_a1());
-    Pat0188::new(ha, hb, la, lb, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0188::new(ha, hb, la, lb, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -5091,7 +5976,11 @@ fn pat_pat0189<PR: PatRecSgl>() -> Pat0189<PR> {
     let c1 = ha.handle().eq(&_t2.handle_a1());
     let c2 = lb.handle().eq(&_t3.handle_a0());
     let c3 = hb.handle().eq(&_t3.handle_a1());
-    Pat0189::new(ha, hb, la, lb, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0189::new(ha, hb, la, lb, _t1, _t2, _t3)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -5117,7 +6006,9 @@ fn pat_pat0190<PR: PatRecSgl>() -> Pat0190<PR> {
     let _t1 = EcxNode::query(&_t2);
     let c0 = b.handle().eq(&_t6.handle_a0());
     let c1 = lhs.handle().eq(&_t1.handle());
-    Pat0190::new(b, lhs, _t1, _t2, _t3, _t4, _t5, _t6).assert(c0).assert(c1)
+    Pat0190::new(b, lhs, _t1, _t2, _t3, _t4, _t5, _t6)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -5143,7 +6034,9 @@ fn pat_pat0191<PR: PatRecSgl>() -> Pat0191<PR> {
     let _t1 = EcxNode::query(&_t2);
     let c0 = n.handle().eq(&_t6.handle_a0());
     let c1 = lhs.handle().eq(&_t1.handle());
-    Pat0191::new(lhs, n, _t1, _t2, _t3, _t4, _t5, _t6).assert(c0).assert(c1)
+    Pat0191::new(lhs, n, _t1, _t2, _t3, _t4, _t5, _t6)
+        .assert(c0)
+        .assert(c1)
 }
 
 #[eggplant::pat_vars]
@@ -5188,7 +6081,16 @@ fn pat_pat0192<PR: PatRecSgl>() -> Pat0192<PR> {
     let c4 = lb.handle().eq(&_t7.handle_a0());
     let c5 = hb.handle().eq(&_t7.handle_a1());
     let c6 = _t7.handle().eq(&_f8.handle());
-    Pat0192::new(a, b, ha, hb, la, lb, lhs, _t1, _t2, _t3, _t4, _t5, _f6, _t7, _f8).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6)
+    Pat0192::new(
+        a, b, ha, hb, la, lb, lhs, _t1, _t2, _t3, _t4, _t5, _f6, _t7, _f8,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
 }
 
 #[eggplant::pat_vars]
@@ -5254,7 +6156,20 @@ fn pat_pat0193<PR: PatRecSgl>() -> Pat0193<PR> {
     let c7 = thenival.handle().eq(&_f10.handle());
     let c8 = i.handle().eq(&_t14.handle_a1());
     let c9 = elseival.handle().eq(&_f13.handle());
-    Pat0193::new(elseival, elses, i, ins, lhs, outs, pred, thenival, thens, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _f10, _t11, _t12, _f13, _t14, _t15).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4).assert(c5).assert(c6).assert(c7).assert(c8).assert(c9)
+    Pat0193::new(
+        elseival, elses, i, ins, lhs, outs, pred, thenival, thens, _t1, _t2, _t3, _t4, _t5, _t6,
+        _t7, _t8, _t9, _f10, _t11, _t12, _f13, _t14, _t15,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
+    .assert(c5)
+    .assert(c6)
+    .assert(c7)
+    .assert(c8)
+    .assert(c9)
 }
 
 #[eggplant::pat_vars]
@@ -5282,7 +6197,11 @@ fn pat_pat0194<PR: PatRecSgl>() -> Pat0194<PR> {
     let c1 = _t3.handle_a0().eq(&(true));
     let c2 = _t3.handle_a1().eq(&(true));
     let c3 = _t3.handle().eq(&_f4.handle());
-    Pat0194::new(gamma, inputs, outputs, pred, _t1, _t2, _t3, _f4).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0194::new(gamma, inputs, outputs, pred, _t1, _t2, _t3, _f4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -5310,7 +6229,11 @@ fn pat_pat0195<PR: PatRecSgl>() -> Pat0195<PR> {
     let c1 = _t3.handle_a0().eq(&(false));
     let c2 = _t3.handle_a1().eq(&(false));
     let c3 = _t3.handle().eq(&_f4.handle());
-    Pat0195::new(gamma, inputs, outputs, pred, _t1, _t2, _t3, _f4).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0195::new(gamma, inputs, outputs, pred, _t1, _t2, _t3, _f4)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
+        .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -5344,7 +6267,23 @@ fn pat_pat0196<PR: PatRecSgl>() -> Pat0196<PR> {
     let c1 = num.handle().eq(&_t2.handle_a3());
     let c2 = kw_return.handle().eq(&_t1.handle());
     let c3 = name.handle().eq(&_t3.handle_a0());
-    Pat0196::new(args, body, input_types, name, num, output_types, kw_return, ty, _t1, _t2, _t3).assert(c0).assert(c1).assert(c2).assert(c3)
+    Pat0196::new(
+        args,
+        body,
+        input_types,
+        name,
+        num,
+        output_types,
+        kw_return,
+        ty,
+        _t1,
+        _t2,
+        _t3,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
 }
 
 #[eggplant::pat_vars]
@@ -5379,7 +6318,10 @@ fn pat_pat0197<PR: PatRecSgl>() -> Pat0197<PR> {
     let c0 = n1.handle().eq(&_t6.handle_a0());
     let c1 = num.handle().eq(&_t1.handle());
     let c2 = lhs.handle().eq(&_t7.handle());
-    Pat0197::new(lhs, n1, num, other, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8).assert(c0).assert(c1).assert(c2)
+    Pat0197::new(lhs, n1, num, other, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -5414,7 +6356,10 @@ fn pat_pat0198<PR: PatRecSgl>() -> Pat0198<PR> {
     let c0 = n1.handle().eq(&_t6.handle_a0());
     let c1 = num.handle().eq(&_t1.handle());
     let c2 = lhs.handle().eq(&_t7.handle());
-    Pat0198::new(lhs, n1, num, other, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8).assert(c0).assert(c1).assert(c2)
+    Pat0198::new(lhs, n1, num, other, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8)
+        .assert(c0)
+        .assert(c1)
+        .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -5488,7 +6433,12 @@ fn pat_pat0200<PR: PatRecSgl>() -> Pat0200<PR> {
     let c0 = lhs.handle().eq(&_t1.handle());
     let c1 = n1.handle().eq(&_t12.handle_a0());
     let c2 = b.handle().eq(&_t7.handle());
-    Pat0200::new(a, b, c, lhs, n1, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11, _t12).assert(c0).assert(c1).assert(c2)
+    Pat0200::new(
+        a, b, c, lhs, n1, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11, _t12,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
 }
 
 #[eggplant::pat_vars]
@@ -5549,7 +6499,15 @@ fn pat_pat0201<PR: PatRecSgl>() -> Pat0201<PR> {
     let c2 = a.handle().eq(&_t7.handle());
     let c3 = n2.handle().eq(&_t18.handle_a0());
     let c4 = b.handle().eq(&_t13.handle());
-    Pat0201::new(a, b, c, lhs, n1, n2, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11, _t12, _t13, _t14, _t15, _t16, _t17, _t18).assert(c0).assert(c1).assert(c2).assert(c3).assert(c4)
+    Pat0201::new(
+        a, b, c, lhs, n1, n2, _t1, _t2, _t3, _t4, _t5, _t6, _t7, _t8, _t9, _t10, _t11, _t12, _t13,
+        _t14, _t15, _t16, _t17, _t18,
+    )
+    .assert(c0)
+    .assert(c1)
+    .assert(c2)
+    .assert(c3)
+    .assert(c4)
 }
 
 pub fn bench() {
@@ -5562,1003 +6520,1304 @@ pub fn bench() {
 
     // Rules
     MyTxEggccExtraction::add_rule("r0001", fast, pat_pat0001, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.x);
-            let t1 = ctx.insert_ecx_vec_operand_get(t2, 0_i64);
-            let t4 = ctx.insert_ecx_vo(pat.x);
-            let t3 = ctx.insert_ecx_vec_operand_get(t4, 0_i64);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.x);
+        let t1 = ctx.insert_ecx_vec_operand_get(t2, 0_i64);
+        let t4 = ctx.insert_ecx_vo(pat.x);
+        let t3 = ctx.insert_ecx_vec_operand_get(t4, 0_i64);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0002", fast, pat_pat0002, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.x);
-            let t1 = ctx.insert_ecx_vec_operand_get(t2, ctx.devalue(pat.i));
-            let t4 = ctx.insert_ecx_vo(pat.x);
-            let t3 = ctx.insert_ecx_vec_operand_get(t4, ctx.devalue(pat.i));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.x);
+        let t1 = ctx.insert_ecx_vec_operand_get(t2, ctx.devalue(pat.i));
+        let t4 = ctx.insert_ecx_vo(pat.x);
+        let t3 = ctx.insert_ecx_vec_operand_get(t4, ctx.devalue(pat.i));
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0003", fast, pat_pat0003, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vo(pat.x);
-            ctx.set_ecx_vec_operand_length(t1, vec_len(&*ctx.devalue(pat.x)));
-            });
+        let t1 = ctx.insert_ecx_vo(pat.x);
+        ctx.set_ecx_vec_operand_length(t1, vec_len(&*ctx.devalue(pat.x)));
+    });
     MyTxEggccExtraction::add_rule("r0004", fast, pat_pat0004, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.x);
-            let t1 = ctx.insert_ecx_vec_vec_operand_get(t2, 0_i64);
-            let t4 = ctx.insert_ecx_vvo(pat.x);
-            let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.x);
+        let t1 = ctx.insert_ecx_vec_vec_operand_get(t2, 0_i64);
+        let t4 = ctx.insert_ecx_vvo(pat.x);
+        let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0005", fast, pat_pat0005, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.x);
-            let t1 = ctx.insert_ecx_vec_vec_operand_get(t2, ctx.devalue(pat.i));
-            let t4 = ctx.insert_ecx_vvo(pat.x);
-            let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, ctx.devalue(pat.i));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.x);
+        let t1 = ctx.insert_ecx_vec_vec_operand_get(t2, ctx.devalue(pat.i));
+        let t4 = ctx.insert_ecx_vvo(pat.x);
+        let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, ctx.devalue(pat.i));
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0006", fast, pat_pat0006, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vvo(pat.x);
-            ctx.set_ecx_vec_vec_operand_length(t1, vec_len(&*ctx.devalue(pat.x)));
-            });
+        let t1 = ctx.insert_ecx_vvo(pat.x);
+        ctx.set_ecx_vec_vec_operand_length(t1, vec_len(&*ctx.devalue(pat.x)));
+    });
     MyTxEggccExtraction::add_rule("r0007", fast, pat_pat0007, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0008", fast, pat_pat0008, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0009", fast, pat_pat0009, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0010", fast, pat_pat0010, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0011", fast, pat_pat0011, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0012", fast, pat_pat0012, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0013", fast, pat_pat0013, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_expr_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0014", fast, pat_pat0014, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_operand_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_operand_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0015", fast, pat_pat0015, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_operand_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_operand_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0016", fast, pat_pat0016, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_operand_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_operand_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0017", fast, pat_pat0017, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0018", fast, pat_pat0018, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0019", fast, pat_pat0019, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0020", fast, pat_pat0020, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_body_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0021", fast, pat_pat0021, |ctx, pat| {
-            ctx.set_ecx_vec_operand_pure_prefix(pat.f, 0_i64);
-            });
+        ctx.set_ecx_vec_operand_pure_prefix(pat.f, 0_i64);
+    });
     MyTxEggccExtraction::add_rule("r0022", fast, pat_pat0022, |ctx, pat| {
-            ctx.set_ecx_vec_operand_pure_prefix(pat.f, (ctx.devalue(pat.i) + 1_i64));
-            });
+        ctx.set_ecx_vec_operand_pure_prefix(pat.f, (ctx.devalue(pat.i) + 1_i64));
+    });
     MyTxEggccExtraction::add_rule("r0023", fast, pat_pat0023, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_vec_operand_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_vec_operand_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0024", fast, pat_pat0024, |ctx, pat| {
-            ctx.set_ecx_vec_vec_operand_pure_prefix(pat.f, 0_i64);
-            });
+        ctx.set_ecx_vec_vec_operand_pure_prefix(pat.f, 0_i64);
+    });
     MyTxEggccExtraction::add_rule("r0025", fast, pat_pat0025, |ctx, pat| {
-            ctx.set_ecx_vec_vec_operand_pure_prefix(pat.f, (ctx.devalue(pat.i) + 1_i64));
-            });
+        ctx.set_ecx_vec_vec_operand_pure_prefix(pat.f, (ctx.devalue(pat.i) + 1_i64));
+    });
     MyTxEggccExtraction::add_rule("r0026", fast, pat_pat0026, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_vec_vec_operand_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_vec_vec_operand_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0027", fast, pat_pat0027, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_function_is_pure(pat.f);
-            });
+        let rel1 = ctx.insert_ecx_function_is_pure(pat.f);
+    });
     MyTxEggccExtraction::add_rule("r0028", fast, pat_pat0028, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_expr(pat.f, 0_i64, pat.e);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_expr(pat.f, 0_i64, pat.e);
+    });
     MyTxEggccExtraction::add_rule("r0029", fast, pat_pat0029, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
+    });
     MyTxEggccExtraction::add_rule("r0030", fast, pat_pat0030, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, -1_i64, pat.pred);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, -1_i64, pat.pred);
+    });
     MyTxEggccExtraction::add_rule("r0031", fast, pat_pat0031, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
+    });
     MyTxEggccExtraction::add_rule("r0032", fast, pat_pat0032, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
+    });
     MyTxEggccExtraction::add_rule("r0033", fast, pat_pat0033, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_expr(pat.f, ctx.devalue(pat.i), pat.e);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_expr(pat.f, ctx.devalue(pat.i), pat.e);
+    });
     MyTxEggccExtraction::add_rule("r0034", fast, pat_pat0034, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.pred);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.pred);
+    });
     MyTxEggccExtraction::add_rule("r0035", fast, pat_pat0035, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
+    });
     MyTxEggccExtraction::add_rule("r0036", fast, pat_pat0036, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
+    });
     MyTxEggccExtraction::add_rule("r0037", fast, pat_pat0037, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
+    });
     MyTxEggccExtraction::add_rule("r0038", fast, pat_pat0038, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.x);
+    });
     MyTxEggccExtraction::add_rule("r0039", fast, pat_pat0039, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
-            let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
+        let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
+    });
     MyTxEggccExtraction::add_rule("r0040", fast, pat_pat0040, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
-            let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
+        let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
+    });
     MyTxEggccExtraction::add_rule("r0041", fast, pat_pat0041, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
-            let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
+        let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
+    });
     MyTxEggccExtraction::add_rule("r0042", fast, pat_pat0042, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
-            let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
+        let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
+    });
     MyTxEggccExtraction::add_rule("r0043", fast, pat_pat0043, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
-            let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
+        let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
+    });
     MyTxEggccExtraction::add_rule("r0044", fast, pat_pat0044, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
-            let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e1);
+        let rel2 = ctx.insert_ecx_body_contains_operand(pat.f, ctx.devalue(pat.i), pat.e2);
+    });
     MyTxEggccExtraction::add_rule("r0045", fast, pat_pat0045, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_body(pat.f, ctx.devalue(pat.i), pat.body);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_body(pat.f, ctx.devalue(pat.i), pat.body);
+    });
     MyTxEggccExtraction::add_rule("r0046", fast, pat_pat0046, |ctx, pat| {
-            let rel1 = ctx.insert_ecx_body_contains_body(pat.f, ctx.devalue(pat.i), pat.body);
-            });
+        let rel1 = ctx.insert_ecx_body_contains_body(pat.f, ctx.devalue(pat.i), pat.body);
+    });
     MyTxEggccExtraction::add_rule("r0047", subst, pat_pat0047, |ctx, pat| {
-            let t1 = ctx.insert_ecx_theta(pat.to, pat.inputs, pat.outputs);
-            ctx.union(pat.above, t1);
-            });
+        let t1 = ctx.insert_ecx_theta(pat.to, pat.inputs, pat.outputs);
+        ctx.union(pat.above, t1);
+    });
     MyTxEggccExtraction::add_rule("r0048", subst, pat_pat0048, |ctx, pat| {
-            let t1 = ctx.insert_ecx_theta(pat.pred, pat.inputs, pat.to);
-            ctx.union(pat.above, t1);
-            });
+        let t1 = ctx.insert_ecx_theta(pat.pred, pat.inputs, pat.to);
+        ctx.union(pat.above, t1);
+    });
     MyTxEggccExtraction::add_rule("r0049", subst, pat_pat0049, |ctx, pat| {
-            let t1 = ctx.insert_ecx_theta(pat.pred_from, pat.inputs, pat.outputs_to);
-            ctx.union(pat.above, t1);
-            });
+        let t1 = ctx.insert_ecx_theta(pat.pred_from, pat.inputs, pat.outputs_to);
+        ctx.union(pat.above, t1);
+    });
     MyTxEggccExtraction::add_rule("r0050", subst, pat_pat0050, |ctx, pat| {
-            let t1 = ctx.insert_ecx_gamma(pat.pred, pat.inputs, pat.to);
-            ctx.union(pat.above, t1);
-            });
+        let t1 = ctx.insert_ecx_gamma(pat.pred, pat.inputs, pat.to);
+        ctx.union(pat.above, t1);
+    });
     MyTxEggccExtraction::add_rule("r0051", subst, pat_pat0051, |ctx, pat| {
-            let t1 = ctx.insert_ecx_operand_group(pat.to);
-            ctx.union(pat.above, t1);
-            });
+        let t1 = ctx.insert_ecx_operand_group(pat.to);
+        ctx.union(pat.above, t1);
+    });
     MyTxEggccExtraction::add_rule("r0052", subst, pat_pat0052, |ctx, pat| {
-            let t2 = ctx.insert_ecx_node(pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_operand_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_node(pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_operand_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0053", subst, pat_pat0053, |ctx, pat| {
-            let t2 = ctx.insert_ecx_project(ctx.devalue(pat.i), pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_operand_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_project(ctx.devalue(pat.i), pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_operand_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0054", subst, pat_pat0054, |ctx, pat| {
-            let t2 = ctx.insert_ecx_pure_op(pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_pure_op(pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0055", subst, pat_pat0055, |ctx, pat| {
-            let t2 = ctx.insert_ecx_gamma(pat.to, pat.inputs, pat.outputs);
-            let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_gamma(pat.to, pat.inputs, pat.outputs);
+        let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0056", subst, pat_pat0056, |ctx, pat| {
-            let t2 = ctx.insert_ecx_gamma(pat.pred, pat.to, pat.outputs);
-            let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_gamma(pat.pred, pat.to, pat.outputs);
+        let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0057", subst, pat_pat0057, |ctx, pat| {
-            let t2 = ctx.insert_ecx_theta(pat.pred, pat.to, pat.outputs);
-            let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_theta(pat.pred, pat.to, pat.outputs);
+        let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0058", subst, pat_pat0058, |ctx, pat| {
-            let t2 = ctx.insert_ecx_operand_group(pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_operand_group(pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_body_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0059", subst, pat_pat0059, |ctx, pat| {
-            let t2 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), pat.to, ctx.devalue(pat.n_outs));
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), pat.to, ctx.devalue(pat.n_outs));
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0060", subst, pat_pat0060, |ctx, pat| {
-            let t2 = ctx.insert_ecxbadd(pat.kw_type, pat.to, pat.e2);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbadd(pat.kw_type, pat.to, pat.e2);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0061", subst, pat_pat0061, |ctx, pat| {
-            let t2 = ctx.insert_ecxbadd(pat.kw_type, pat.e1, pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbadd(pat.kw_type, pat.e1, pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0062", subst, pat_pat0062, |ctx, pat| {
-            let t2 = ctx.insert_ecxbsub(pat.kw_type, pat.to, pat.e2);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbsub(pat.kw_type, pat.to, pat.e2);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0063", subst, pat_pat0063, |ctx, pat| {
-            let t2 = ctx.insert_ecxbsub(pat.kw_type, pat.e1, pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbsub(pat.kw_type, pat.e1, pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0064", subst, pat_pat0064, |ctx, pat| {
-            let t2 = ctx.insert_ecxbmul(pat.kw_type, pat.to, pat.e2);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbmul(pat.kw_type, pat.to, pat.e2);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0065", subst, pat_pat0065, |ctx, pat| {
-            let t2 = ctx.insert_ecxbmul(pat.kw_type, pat.e1, pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbmul(pat.kw_type, pat.e1, pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0066", subst, pat_pat0066, |ctx, pat| {
-            let t2 = ctx.insert_ecxbdiv(pat.kw_type, pat.to, pat.e2);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbdiv(pat.kw_type, pat.to, pat.e2);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0067", subst, pat_pat0067, |ctx, pat| {
-            let t2 = ctx.insert_ecxbdiv(pat.kw_type, pat.e1, pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxbdiv(pat.kw_type, pat.e1, pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0068", subst, pat_pat0068, |ctx, pat| {
-            let t2 = ctx.insert_ecxblt(pat.kw_type, pat.to, pat.e2);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxblt(pat.kw_type, pat.to, pat.e2);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0069", subst, pat_pat0069, |ctx, pat| {
-            let t2 = ctx.insert_ecxblt(pat.kw_type, pat.e1, pat.to);
-            let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
-            });
+        let t2 = ctx.insert_ecxblt(pat.kw_type, pat.e1, pat.to);
+        let rel1 = ctx.insert_ecxcan_subst_expr_beneath(pat.above, pat.new_from, t2);
+    });
     MyTxEggccExtraction::add_rule("r0070", subst, pat_pat0070, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.vec);
-            let t3 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<EcxOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), pat.to.erase())));
-            let rel1 = ctx.insert_ecxcan_subst_vec_operand_beneath(pat.above, t2, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.vec);
+        let t3 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                pat.to.erase(),
+            )),
+        );
+        let rel1 = ctx.insert_ecxcan_subst_vec_operand_beneath(pat.above, t2, t3);
+    });
     MyTxEggccExtraction::add_rule("r0071", subst, pat_pat0071, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.vec);
-            let t3 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<EcxVecOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), pat.to.erase())));
-            let rel1 = ctx.insert_ecxcan_subst_vec_vec_operand_beneath(pat.above, t2, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.vec);
+        let t3 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<
+                EcxVecOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                pat.to.erase(),
+            )),
+        );
+        let rel1 = ctx.insert_ecxcan_subst_vec_vec_operand_beneath(pat.above, t2, t3);
+    });
     MyTxEggccExtraction::add_rule("r0072", subst, pat_pat0072, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
-            let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecxbadd(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
+        let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecxbadd(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0073", subst, pat_pat0073, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
-            let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecxbsub(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
+        let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecxbsub(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0074", subst, pat_pat0074, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
-            let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecxbmul(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
+        let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecxbmul(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0075", subst, pat_pat0075, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
-            let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecxbdiv(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
+        let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecxbdiv(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0076", subst, pat_pat0076, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
-            let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecxblt(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
+        let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecxblt(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0077", subst, pat_pat0077, |ctx, pat| {
-            let t1 = ctx.insert_ecx_const(pat.ty, pat.ops, pat.lit);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_const(pat.ty, pat.ops, pat.lit);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0078", subst, pat_pat0078, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_vec_operand(pat.args, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), t2, ctx.devalue(pat.n_outs));
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_vec_operand(pat.args, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), t2, ctx.devalue(pat.n_outs));
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0079", subst, pat_pat0079, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
-            let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecx_print(t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand(pat.a, ctx.devalue(pat.x0), pat.x1);
+        let t3 = ctx.insert_ecx_subst_operand(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecx_print(t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0080", subst, pat_pat0080, |ctx, pat| {
-            ctx.union(pat._t1, pat.v);
-            });
+        ctx.union(pat._t1, pat.v);
+    });
     MyTxEggccExtraction::add_rule("r0081", subst, pat_pat0081, |ctx, pat| {
-            let t1 = ctx.insert_ecx_arg(ctx.devalue(pat.y));
-            ctx.union(pat.f, t1);
-            });
+        let t1 = ctx.insert_ecx_arg(ctx.devalue(pat.y));
+        ctx.union(pat.f, t1);
+    });
     MyTxEggccExtraction::add_rule("r0082", subst, pat_pat0082, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_body(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecx_node(t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_body(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecx_node(t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0083", subst, pat_pat0083, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_body(pat.b, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecx_project(ctx.devalue(pat.i), t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_body(pat.b, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecx_project(ctx.devalue(pat.i), t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0084", subst, pat_pat0084, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_expr(pat.e, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecx_pure_op(t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_expr(pat.e, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecx_pure_op(t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0085", subst, pat_pat0085, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand(pat.pred, ctx.devalue(pat.x0), pat.x1);
-            let t3 = ctx.insert_ecx_subst_vec_operand(pat.inputs, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecx_gamma(t2, t3, pat.outputs);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand(pat.pred, ctx.devalue(pat.x0), pat.x1);
+        let t3 = ctx.insert_ecx_subst_vec_operand(pat.inputs, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecx_gamma(t2, t3, pat.outputs);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0086", subst, pat_pat0086, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_vec_operand(pat.inputs, ctx.devalue(pat.x0), pat.x1);
-            let t1 = ctx.insert_ecx_theta(pat.pred, t2, pat.outputs);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_vec_operand(pat.inputs, ctx.devalue(pat.x0), pat.x1);
+        let t1 = ctx.insert_ecx_theta(pat.pred, t2, pat.outputs);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0087", subst, pat_pat0087, |ctx, pat| {
-            let t1 = ctx.insert_ecx_subst_vec_operand_helper(pat.vec, ctx.devalue(pat.x0), pat.x1, 0_i64);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 =
+            ctx.insert_ecx_subst_vec_operand_helper(pat.vec, ctx.devalue(pat.x0), pat.x1, 0_i64);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0088", subst, pat_pat0088, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_operand_helper(t2, ctx.devalue(pat.x0), pat.x1, ctx.devalue(pat.i));
-            let t7 = ctx.insert_ecx_vo(pat.vec);
-            let t6 = ctx.insert_ecx_vec_operand_get(t7, ctx.devalue(pat.i));
-            let t5 = ctx.insert_ecx_subst_operand(t6, ctx.devalue(pat.x0), pat.x1);
-            let t4 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<EcxOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), t5.erase())));
-            let t3 = ctx.insert_ecx_subst_vec_operand_helper(t4, ctx.devalue(pat.x0), pat.x1, (ctx.devalue(pat.i) + 1_i64));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            pat.x1,
+            ctx.devalue(pat.i),
+        );
+        let t7 = ctx.insert_ecx_vo(pat.vec);
+        let t6 = ctx.insert_ecx_vec_operand_get(t7, ctx.devalue(pat.i));
+        let t5 = ctx.insert_ecx_subst_operand(t6, ctx.devalue(pat.x0), pat.x1);
+        let t4 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                t5.erase(),
+            )),
+        );
+        let t3 = ctx.insert_ecx_subst_vec_operand_helper(
+            t4,
+            ctx.devalue(pat.x0),
+            pat.x1,
+            (ctx.devalue(pat.i) + 1_i64),
+        );
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0089", subst, pat_pat0089, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_operand_helper(t2, ctx.devalue(pat.x0), pat.x1, ctx.devalue(pat.i));
-            let t3 = ctx.insert_ecx_vo(pat.vec);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            pat.x1,
+            ctx.devalue(pat.i),
+        );
+        let t3 = ctx.insert_ecx_vo(pat.vec);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0090", subst, pat_pat0090, |ctx, pat| {
-            let t1 = ctx.insert_ecx_subst_vec_vec_operand_helper(pat.vec, ctx.devalue(pat.x0), pat.x1, 0_i64);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_subst_vec_vec_operand_helper(
+            pat.vec,
+            ctx.devalue(pat.x0),
+            pat.x1,
+            0_i64,
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0091", subst, pat_pat0091, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_vec_operand_helper(t2, ctx.devalue(pat.x0), pat.x1, ctx.devalue(pat.i));
-            let t7 = ctx.insert_ecx_vvo(pat.vec);
-            let t6 = ctx.insert_ecx_vec_vec_operand_get(t7, ctx.devalue(pat.i));
-            let t5 = ctx.insert_ecx_subst_vec_operand(t6, ctx.devalue(pat.x0), pat.x1);
-            let t4 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<EcxVecOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), t5.erase())));
-            let t3 = ctx.insert_ecx_subst_vec_vec_operand_helper(t4, ctx.devalue(pat.x0), pat.x1, (ctx.devalue(pat.i) + 1_i64));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            pat.x1,
+            ctx.devalue(pat.i),
+        );
+        let t7 = ctx.insert_ecx_vvo(pat.vec);
+        let t6 = ctx.insert_ecx_vec_vec_operand_get(t7, ctx.devalue(pat.i));
+        let t5 = ctx.insert_ecx_subst_vec_operand(t6, ctx.devalue(pat.x0), pat.x1);
+        let t4 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<
+                EcxVecOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                t5.erase(),
+            )),
+        );
+        let t3 = ctx.insert_ecx_subst_vec_vec_operand_helper(
+            t4,
+            ctx.devalue(pat.x0),
+            pat.x1,
+            (ctx.devalue(pat.i) + 1_i64),
+        );
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0092", subst, pat_pat0092, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_vec_operand_helper(t2, ctx.devalue(pat.x0), pat.x1, ctx.devalue(pat.i));
-            let t3 = ctx.insert_ecx_vvo(pat.vec);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            pat.x1,
+            ctx.devalue(pat.i),
+        );
+        let t3 = ctx.insert_ecx_vvo(pat.vec);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0093", subst, pat_pat0093, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
-            let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecxbadd(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
+        let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecxbadd(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0094", subst, pat_pat0094, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
-            let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecxbsub(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
+        let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecxbsub(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0095", subst, pat_pat0095, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
-            let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecxbmul(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
+        let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecxbmul(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0096", subst, pat_pat0096, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
-            let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecxbdiv(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
+        let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecxbdiv(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0097", subst, pat_pat0097, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
-            let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecxblt(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
+        let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecxblt(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0098", subst, pat_pat0098, |ctx, pat| {
-            let t1 = ctx.insert_ecx_const(pat.ty, pat.ops, pat.lit);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_const(pat.ty, pat.ops, pat.lit);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0099", subst, pat_pat0099, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(pat.args, pat.x0);
-            let t1 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), t2, ctx.devalue(pat.n_outs));
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(pat.args, pat.x0);
+        let t1 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), t2, ctx.devalue(pat.n_outs));
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0100", subst, pat_pat0100, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
-            let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecx_print(t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand_all(pat.a, pat.x0);
+        let t3 = ctx.insert_ecx_subst_operand_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecx_print(t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0101", subst, pat_pat0101, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.ops);
-            let t1 = ctx.insert_ecx_vec_operand_get(t2, ctx.devalue(pat.x));
-            ctx.union(pat.f, t1);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.ops);
+        let t1 = ctx.insert_ecx_vec_operand_get(t2, ctx.devalue(pat.x));
+        ctx.union(pat.f, t1);
+    });
     MyTxEggccExtraction::add_rule("r0102", subst, pat_pat0102, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_body_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecx_node(t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_body_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecx_node(t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0103", subst, pat_pat0103, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_body_all(pat.b, pat.x0);
-            let t1 = ctx.insert_ecx_project(ctx.devalue(pat.i), t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_body_all(pat.b, pat.x0);
+        let t1 = ctx.insert_ecx_project(ctx.devalue(pat.i), t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0104", subst, pat_pat0104, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_expr_all(pat.e, pat.x0);
-            let t1 = ctx.insert_ecx_pure_op(t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_expr_all(pat.e, pat.x0);
+        let t1 = ctx.insert_ecx_pure_op(t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0105", subst, pat_pat0105, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_operand_all(pat.pred, pat.x0);
-            let t3 = ctx.insert_ecx_subst_vec_operand_all(pat.inputs, pat.x0);
-            let t1 = ctx.insert_ecx_gamma(t2, t3, pat.outputs);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_operand_all(pat.pred, pat.x0);
+        let t3 = ctx.insert_ecx_subst_vec_operand_all(pat.inputs, pat.x0);
+        let t1 = ctx.insert_ecx_gamma(t2, t3, pat.outputs);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0106", subst, pat_pat0106, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(pat.inputs, pat.x0);
-            let t1 = ctx.insert_ecx_theta(pat.pred, t2, pat.outputs);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(pat.inputs, pat.x0);
+        let t1 = ctx.insert_ecx_theta(pat.pred, t2, pat.outputs);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0107", subst, pat_pat0107, |ctx, pat| {
-            let t1 = ctx.insert_ecx_subst_vec_operand_all_helper(pat.vec, pat.x0, 0_i64);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_subst_vec_operand_all_helper(pat.vec, pat.x0, 0_i64);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0108", subst, pat_pat0108, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
-            let t7 = ctx.insert_ecx_vo(pat.vec);
-            let t6 = ctx.insert_ecx_vec_operand_get(t7, ctx.devalue(pat.i));
-            let t5 = ctx.insert_ecx_subst_operand_all(t6, pat.x0);
-            let t4 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<EcxOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), t5.erase())));
-            let t3 = ctx.insert_ecx_subst_vec_operand_all_helper(t4, pat.x0, (ctx.devalue(pat.i) + 1_i64));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
+        let t7 = ctx.insert_ecx_vo(pat.vec);
+        let t6 = ctx.insert_ecx_vec_operand_get(t7, ctx.devalue(pat.i));
+        let t5 = ctx.insert_ecx_subst_operand_all(t6, pat.x0);
+        let t4 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                t5.erase(),
+            )),
+        );
+        let t3 =
+            ctx.insert_ecx_subst_vec_operand_all_helper(t4, pat.x0, (ctx.devalue(pat.i) + 1_i64));
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0109", subst, pat_pat0109, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
-            let t3 = ctx.insert_ecx_vo(pat.vec);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
+        let t3 = ctx.insert_ecx_vo(pat.vec);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0110", subst, pat_pat0110, |ctx, pat| {
-            let t1 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(pat.vec, pat.x0, 0_i64);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(pat.vec, pat.x0, 0_i64);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0111", subst, pat_pat0111, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
-            let t7 = ctx.insert_ecx_vvo(pat.vec);
-            let t6 = ctx.insert_ecx_vec_vec_operand_get(t7, ctx.devalue(pat.i));
-            let t5 = ctx.insert_ecx_subst_vec_operand_all(t6, pat.x0);
-            let t4 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<EcxVecOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), t5.erase())));
-            let t3 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(t4, pat.x0, (ctx.devalue(pat.i) + 1_i64));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
+        let t7 = ctx.insert_ecx_vvo(pat.vec);
+        let t6 = ctx.insert_ecx_vec_vec_operand_get(t7, ctx.devalue(pat.i));
+        let t5 = ctx.insert_ecx_subst_vec_operand_all(t6, pat.x0);
+        let t4 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<
+                EcxVecOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                t5.erase(),
+            )),
+        );
+        let t3 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(
+            t4,
+            pat.x0,
+            (ctx.devalue(pat.i) + 1_i64),
+        );
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0112", subst, pat_pat0112, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.vec);
-            let t1 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
-            let t3 = ctx.insert_ecx_vvo(pat.vec);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.vec);
+        let t1 = ctx.insert_ecx_subst_vec_vec_operand_all_helper(t2, pat.x0, ctx.devalue(pat.i));
+        let t3 = ctx.insert_ecx_vvo(pat.vec);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0113", _shift, pat_pat0113, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecxbadd(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecxbadd(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0114", _shift, pat_pat0114, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecxbsub(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecxbsub(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0115", _shift, pat_pat0115, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecxbmul(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecxbmul(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0116", _shift, pat_pat0116, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecxbdiv(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecxbdiv(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0117", _shift, pat_pat0117, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecxblt(pat.ty, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecxblt(pat.ty, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0118", _shift, pat_pat0118, |ctx, pat| {
-            let t1 = ctx.insert_ecx_const(pat.ty, pat.ops, pat.lit);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_const(pat.ty, pat.ops, pat.lit);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0119", _shift, pat_pat0119, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_vec_operand(pat.args, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), t2, ctx.devalue(pat.n_outs));
-            ctx.union(pat._t1, t1);
-            });
+        let t2 =
+            ctx.insert_ecx_shift_vec_operand(pat.args, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecx_call(pat.ty, ctx.devalue(pat.f), t2, ctx.devalue(pat.n_outs));
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0120", _shift, pat_pat0120, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecx_print(t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_operand(pat.a, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t3 = ctx.insert_ecx_shift_operand(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecx_print(t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0121", _shift, pat_pat0121, |ctx, pat| {
-            let t1 = ctx.insert_ecx_arg(ctx.devalue(pat.x));
-            ctx.union(pat.f, t1);
-            });
+        let t1 = ctx.insert_ecx_arg(ctx.devalue(pat.x));
+        ctx.union(pat.f, t1);
+    });
     MyTxEggccExtraction::add_rule("r0122", _shift, pat_pat0122, |ctx, pat| {
-            let t1 = ctx.insert_ecx_arg((ctx.devalue(pat.x) + ctx.devalue(pat.amt)));
-            ctx.union(pat.f, t1);
-            });
+        let t1 = ctx.insert_ecx_arg((ctx.devalue(pat.x) + ctx.devalue(pat.amt)));
+        ctx.union(pat.f, t1);
+    });
     MyTxEggccExtraction::add_rule("r0123", _shift, pat_pat0123, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_body(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecx_node(t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_body(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecx_node(t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0124", _shift, pat_pat0124, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_body(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecx_project(ctx.devalue(pat.i), t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_body(pat.b, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecx_project(ctx.devalue(pat.i), t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0125", _shift, pat_pat0125, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_expr(pat.e, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecx_pure_op(t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_expr(pat.e, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecx_pure_op(t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0126", _shift, pat_pat0126, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_operand(pat.pred, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t3 = ctx.insert_ecx_shift_vec_operand(pat.inputs, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecx_gamma(t2, t3, pat.outputs);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_shift_operand(pat.pred, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t3 =
+            ctx.insert_ecx_shift_vec_operand(pat.inputs, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecx_gamma(t2, t3, pat.outputs);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0127", _shift, pat_pat0127, |ctx, pat| {
-            let t2 = ctx.insert_ecx_shift_vec_operand(pat.inputs, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t1 = ctx.insert_ecx_theta(pat.pred, t2, pat.outputs);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 =
+            ctx.insert_ecx_shift_vec_operand(pat.inputs, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t1 = ctx.insert_ecx_theta(pat.pred, t2, pat.outputs);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0128", _shift, pat_pat0128, |ctx, pat| {
-            let t1 = ctx.insert_ecx_shift_vec_operand_helper(pat.vec, ctx.devalue(pat.x0), ctx.devalue(pat.x1), 0_i64);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_shift_vec_operand_helper(
+            pat.vec,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            0_i64,
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0129", _shift, pat_pat0129, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.vec);
-            let t1 = ctx.insert_ecx_shift_vec_operand_helper(t2, ctx.devalue(pat.x0), ctx.devalue(pat.x1), ctx.devalue(pat.i));
-            let t7 = ctx.insert_ecx_vo(pat.vec);
-            let t6 = ctx.insert_ecx_vec_operand_get(t7, ctx.devalue(pat.i));
-            let t5 = ctx.insert_ecx_shift_operand(t6, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t4 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<EcxOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), t5.erase())));
-            let t3 = ctx.insert_ecx_shift_vec_operand_helper(t4, ctx.devalue(pat.x0), ctx.devalue(pat.x1), (ctx.devalue(pat.i) + 1_i64));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.vec);
+        let t1 = ctx.insert_ecx_shift_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            ctx.devalue(pat.i),
+        );
+        let t7 = ctx.insert_ecx_vo(pat.vec);
+        let t6 = ctx.insert_ecx_vec_operand_get(t7, ctx.devalue(pat.i));
+        let t5 = ctx.insert_ecx_shift_operand(t6, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t4 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_set::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                t5.erase(),
+            )),
+        );
+        let t3 = ctx.insert_ecx_shift_vec_operand_helper(
+            t4,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            (ctx.devalue(pat.i) + 1_i64),
+        );
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0130", _shift, pat_pat0130, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.vec);
-            let t1 = ctx.insert_ecx_shift_vec_operand_helper(t2, ctx.devalue(pat.x0), ctx.devalue(pat.x1), ctx.devalue(pat.i));
-            let t3 = ctx.insert_ecx_vo(pat.vec);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.vec);
+        let t1 = ctx.insert_ecx_shift_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            ctx.devalue(pat.i),
+        );
+        let t3 = ctx.insert_ecx_vo(pat.vec);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0131", _shift, pat_pat0131, |ctx, pat| {
-            let t1 = ctx.insert_ecx_shift_vec_vec_operand_helper(pat.vec, ctx.devalue(pat.x0), ctx.devalue(pat.x1), 0_i64);
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_shift_vec_vec_operand_helper(
+            pat.vec,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            0_i64,
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0132", _shift, pat_pat0132, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.vec);
-            let t1 = ctx.insert_ecx_shift_vec_vec_operand_helper(t2, ctx.devalue(pat.x0), ctx.devalue(pat.x1), ctx.devalue(pat.i));
-            let t7 = ctx.insert_ecx_vvo(pat.vec);
-            let t6 = ctx.insert_ecx_vec_vec_operand_get(t7, ctx.devalue(pat.i));
-            let t5 = ctx.insert_ecx_shift_vec_operand(t6, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
-            let t4 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<EcxVecOperand>(&*ctx.devalue(pat.vec), ctx.devalue(pat.i), t5.erase())));
-            let t3 = ctx.insert_ecx_shift_vec_vec_operand_helper(t4, ctx.devalue(pat.x0), ctx.devalue(pat.x1), (ctx.devalue(pat.i) + 1_i64));
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.vec);
+        let t1 = ctx.insert_ecx_shift_vec_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            ctx.devalue(pat.i),
+        );
+        let t7 = ctx.insert_ecx_vvo(pat.vec);
+        let t6 = ctx.insert_ecx_vec_vec_operand_get(t7, ctx.devalue(pat.i));
+        let t5 = ctx.insert_ecx_shift_vec_operand(t6, ctx.devalue(pat.x0), ctx.devalue(pat.x1));
+        let t4 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_set::<
+                EcxVecOperand,
+            >(
+                &*ctx.devalue(pat.vec),
+                ctx.devalue(pat.i),
+                t5.erase(),
+            )),
+        );
+        let t3 = ctx.insert_ecx_shift_vec_vec_operand_helper(
+            t4,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            (ctx.devalue(pat.i) + 1_i64),
+        );
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0133", _shift, pat_pat0133, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vvo(pat.vec);
-            let t1 = ctx.insert_ecx_shift_vec_vec_operand_helper(t2, ctx.devalue(pat.x0), ctx.devalue(pat.x1), ctx.devalue(pat.i));
-            let t3 = ctx.insert_ecx_vvo(pat.vec);
-            ctx.union(t1, t3);
-            });
+        let t2 = ctx.insert_ecx_vvo(pat.vec);
+        let t1 = ctx.insert_ecx_shift_vec_vec_operand_helper(
+            t2,
+            ctx.devalue(pat.x0),
+            ctx.devalue(pat.x1),
+            ctx.devalue(pat.i),
+        );
+        let t3 = ctx.insert_ecx_vvo(pat.vec);
+        ctx.union(t1, t3);
+    });
     MyTxEggccExtraction::add_rule("r0134", subst, pat_pat0134, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(VecContainer::<EcxOperand>::new()));
-            let t1 = ctx.insert_ecx_pass_through_arguments_helper(ctx.devalue(pat.i), t2);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(VecContainer::<
+                EcxOperand,
+            >::new(
+            )),
+        );
+        let t1 = ctx.insert_ecx_pass_through_arguments_helper(ctx.devalue(pat.i), t2);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0135", subst, pat_pat0135, |ctx, pat| {
-            let t3 = ctx.insert_ecx_arg(vec_len(&*ctx.devalue(pat.rest)));
-            let t2 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<EcxOperand>(&*ctx.devalue(pat.rest), t3.erase())));
-            let t1 = ctx.insert_ecx_pass_through_arguments_helper(ctx.devalue(pat.i), t2);
-            ctx.union(pat.lhs, t1);
-            });
+        let t3 = ctx.insert_ecx_arg(vec_len(&*ctx.devalue(pat.rest)));
+        let t2 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.rest),
+                t3.erase(),
+            )),
+        );
+        let t1 = ctx.insert_ecx_pass_through_arguments_helper(ctx.devalue(pat.i), t2);
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0136", subst, pat_pat0136, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vo(pat.rest);
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_vo(pat.rest);
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0137", default_rs, pat_pat0137, |ctx, pat| {
-            let t1 = ctx.insert_ecx_body_to_vec_operand_helper(0_i64, ctx.devalue(pat.body_len), pat.body, ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(VecContainer::<EcxOperand>::new()));
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_body_to_vec_operand_helper(
+            0_i64,
+            ctx.devalue(pat.body_len),
+            pat.body,
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(VecContainer::<
+                EcxOperand,
+            >::new(
+            )),
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0138", subst, pat_pat0138, |ctx, pat| {
-            let t2 = ctx.insert_ecx_project(ctx.devalue(pat.index), pat.body);
-            let t1 = ctx.insert_ecx_body_to_vec_operand_helper((ctx.devalue(pat.index) + 1_i64), ctx.devalue(pat.body_len), pat.body, ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<EcxOperand>(&*ctx.devalue(pat.so_far), t2.erase())));
-            ctx.union(pat.helper, t1);
-            });
+        let t2 = ctx.insert_ecx_project(ctx.devalue(pat.index), pat.body);
+        let t1 = ctx.insert_ecx_body_to_vec_operand_helper(
+            (ctx.devalue(pat.index) + 1_i64),
+            ctx.devalue(pat.body_len),
+            pat.body,
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.so_far),
+                t2.erase(),
+            )),
+        );
+        ctx.union(pat.helper, t1);
+    });
     MyTxEggccExtraction::add_rule("r0139", subst, pat_pat0139, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vo(pat.so_far);
-            ctx.union(pat.helper, t1);
-            });
+        let t1 = ctx.insert_ecx_vo(pat.so_far);
+        ctx.union(pat.helper, t1);
+    });
     MyTxEggccExtraction::add_rule("r0140", default_rs, pat_pat0140, |ctx, pat| {
-            let t4 = ctx.insert_ecx_vvo(pat.outputs);
-            let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 1_i64);
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
-            let t1 = ctx.insert_ecx_operand_group(t2);
-            ctx.union(pat.gamma, t1);
-            });
+        let t4 = ctx.insert_ecx_vvo(pat.outputs);
+        let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 1_i64);
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
+        let t1 = ctx.insert_ecx_operand_group(t2);
+        ctx.union(pat.gamma, t1);
+    });
     MyTxEggccExtraction::add_rule("r0141", default_rs, pat_pat0141, |ctx, pat| {
-            let t4 = ctx.insert_ecx_vvo(pat.outputs);
-            let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
-            let t1 = ctx.insert_ecx_operand_group(t2);
-            ctx.union(pat.gamma, t1);
-            });
+        let t4 = ctx.insert_ecx_vvo(pat.outputs);
+        let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
+        let t1 = ctx.insert_ecx_operand_group(t2);
+        ctx.union(pat.gamma, t1);
+    });
     MyTxEggccExtraction::add_rule("r0142", default_rs, pat_pat0142, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.outputs);
-            let t3 = ctx.insert_ecx_vo(pat.inputs);
-            let t1 = ctx.insert_ecx_subst_vec_operand_all(t2, t3);
-            let after_one_iter = t1;
-            let t4 = ctx.insert_ecx_operand_group(after_one_iter);
-            ctx.union(pat.theta, t4);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.outputs);
+        let t3 = ctx.insert_ecx_vo(pat.inputs);
+        let t1 = ctx.insert_ecx_subst_vec_operand_all(t2, t3);
+        let after_one_iter = t1;
+        let t4 = ctx.insert_ecx_operand_group(after_one_iter);
+        ctx.union(pat.theta, t4);
+    });
     MyTxEggccExtraction::add_rule("r0143", default_rs, pat_pat0143, |ctx, pat| {
-            let t2 = ctx.insert_ecxkw_const();
-            let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) + ctx.devalue(pat.n2)));
-            let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecxkw_const();
+        let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) + ctx.devalue(pat.n2)));
+        let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0144", default_rs, pat_pat0144, |ctx, pat| {
-            let t2 = ctx.insert_ecxkw_const();
-            let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) - ctx.devalue(pat.n2)));
-            let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecxkw_const();
+        let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) - ctx.devalue(pat.n2)));
+        let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0145", default_rs, pat_pat0145, |ctx, pat| {
-            let t2 = ctx.insert_ecxkw_const();
-            let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) * ctx.devalue(pat.n2)));
-            let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecxkw_const();
+        let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) * ctx.devalue(pat.n2)));
+        let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0146", default_rs, pat_pat0146, |ctx, pat| {
-            let t2 = ctx.insert_ecxkw_const();
-            let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) / ctx.devalue(pat.n2)));
-            let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecxkw_const();
+        let t3 = ctx.insert_ecx_num((ctx.devalue(pat.n1) / ctx.devalue(pat.n2)));
+        let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0147", default_rs, pat_pat0147, |ctx, pat| {
-            let t2 = ctx.insert_ecxkw_const();
-            let t3 = ctx.insert_ecx_bool((ctx.devalue(pat.n1) < ctx.devalue(pat.n2)));
-            let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
-            ctx.union(pat._t1, t1);
-            });
+        let t2 = ctx.insert_ecxkw_const();
+        let t3 = ctx.insert_ecx_bool((ctx.devalue(pat.n1) < ctx.devalue(pat.n2)));
+        let t1 = ctx.insert_ecx_const(pat.output_type, t2, t3);
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0148", fast, pat_pat0148, |ctx, pat| {
-            let t1 = ctx.insert_ecx_expr_and_cost(pat.t1, ctx.devalue(pat.cost1));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_expr_and_cost(pat.t1, ctx.devalue(pat.cost1));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0149", fast, pat_pat0149, |ctx, pat| {
-            let t1 = ctx.insert_ecx_expr_and_cost(pat.t2, ctx.devalue(pat.cost2));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_expr_and_cost(pat.t2, ctx.devalue(pat.cost2));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0150", fast, pat_pat0150, |ctx, pat| {
-            let t1 = ctx.insert_ecx_operand_and_cost(pat.t1, ctx.devalue(pat.cost1));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_operand_and_cost(pat.t1, ctx.devalue(pat.cost1));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0151", fast, pat_pat0151, |ctx, pat| {
-            let t1 = ctx.insert_ecx_operand_and_cost(pat.t2, ctx.devalue(pat.cost2));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_operand_and_cost(pat.t2, ctx.devalue(pat.cost2));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0152", fast, pat_pat0152, |ctx, pat| {
-            let t1 = ctx.insert_ecx_body_and_cost(pat.t1, ctx.devalue(pat.cost1));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_body_and_cost(pat.t1, ctx.devalue(pat.cost1));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0153", fast, pat_pat0153, |ctx, pat| {
-            let t1 = ctx.insert_ecx_body_and_cost(pat.t2, ctx.devalue(pat.cost2));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_body_and_cost(pat.t2, ctx.devalue(pat.cost2));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0154", fast, pat_pat0154, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vec_operand_and_cost(pat.t1, ctx.devalue(pat.cost1));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_vec_operand_and_cost(pat.t1, ctx.devalue(pat.cost1));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0155", fast, pat_pat0155, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vec_operand_and_cost(pat.t2, ctx.devalue(pat.cost2));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_vec_operand_and_cost(pat.t2, ctx.devalue(pat.cost2));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0156", fast, pat_pat0156, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vec_vec_operand_and_cost(pat.t1, ctx.devalue(pat.cost1));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_vec_vec_operand_and_cost(pat.t1, ctx.devalue(pat.cost1));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0157", fast, pat_pat0157, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vec_vec_operand_and_cost(pat.t2, ctx.devalue(pat.cost2));
-            ctx.union(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_vec_vec_operand_and_cost(pat.t2, ctx.devalue(pat.cost2));
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0158", fast, pat_pat0158, |ctx, pat| {
-            let t2 = ctx.insert_ecxbadd(pat.ty, pat.expr1, pat.expr2);
-            let t1 = ctx.insert_ecx_expr_and_cost(t2, (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))));
-            ctx.set_ecx_extracted_expr(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecxbadd(pat.ty, pat.expr1, pat.expr2);
+        let t1 = ctx.insert_ecx_expr_and_cost(
+            t2,
+            (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))),
+        );
+        ctx.set_ecx_extracted_expr(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0159", fast, pat_pat0159, |ctx, pat| {
-            let t2 = ctx.insert_ecxbsub(pat.ty, pat.expr1, pat.expr2);
-            let t1 = ctx.insert_ecx_expr_and_cost(t2, (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))));
-            ctx.set_ecx_extracted_expr(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecxbsub(pat.ty, pat.expr1, pat.expr2);
+        let t1 = ctx.insert_ecx_expr_and_cost(
+            t2,
+            (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))),
+        );
+        ctx.set_ecx_extracted_expr(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0160", fast, pat_pat0160, |ctx, pat| {
-            let t2 = ctx.insert_ecxbmul(pat.ty, pat.expr1, pat.expr2);
-            let t1 = ctx.insert_ecx_expr_and_cost(t2, (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))));
-            ctx.set_ecx_extracted_expr(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecxbmul(pat.ty, pat.expr1, pat.expr2);
+        let t1 = ctx.insert_ecx_expr_and_cost(
+            t2,
+            (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))),
+        );
+        ctx.set_ecx_extracted_expr(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0161", fast, pat_pat0161, |ctx, pat| {
-            let t2 = ctx.insert_ecxbdiv(pat.ty, pat.expr1, pat.expr2);
-            let t1 = ctx.insert_ecx_expr_and_cost(t2, (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))));
-            ctx.set_ecx_extracted_expr(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecxbdiv(pat.ty, pat.expr1, pat.expr2);
+        let t1 = ctx.insert_ecx_expr_and_cost(
+            t2,
+            (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))),
+        );
+        ctx.set_ecx_extracted_expr(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0162", fast, pat_pat0162, |ctx, pat| {
-            let t2 = ctx.insert_ecxblt(pat.ty, pat.expr1, pat.expr2);
-            let t1 = ctx.insert_ecx_expr_and_cost(t2, (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))));
-            ctx.set_ecx_extracted_expr(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecxblt(pat.ty, pat.expr1, pat.expr2);
+        let t1 = ctx.insert_ecx_expr_and_cost(
+            t2,
+            (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))),
+        );
+        ctx.set_ecx_extracted_expr(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0163", fast, pat_pat0163, |ctx, pat| {
-            let t2 = ctx.insert_ecx_print(pat.expr1, pat.expr2);
-            let t1 = ctx.insert_ecx_expr_and_cost(t2, (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))));
-            ctx.set_ecx_extracted_expr(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_print(pat.expr1, pat.expr2);
+        let t1 = ctx.insert_ecx_expr_and_cost(
+            t2,
+            (1_i64 + (ctx.devalue(pat.cost1) + ctx.devalue(pat.cost2))),
+        );
+        ctx.set_ecx_extracted_expr(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0164", fast, pat_pat0164, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vo(pat.vec);
-            let t3 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(VecContainer::<EcxOperand>::new()));
-            let t2 = ctx.insert_ecx_vec_operand_and_cost(t3, 0_i64);
-            ctx.set_ecx_extracted_vec_operand_helper(t1, 0_i64, t2);
-            });
+        let t1 = ctx.insert_ecx_vo(pat.vec);
+        let t3 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(VecContainer::<
+                EcxOperand,
+            >::new(
+            )),
+        );
+        let t2 = ctx.insert_ecx_vec_operand_and_cost(t3, 0_i64);
+        ctx.set_ecx_extracted_vec_operand_helper(t1, 0_i64, t2);
+    });
     MyTxEggccExtraction::add_rule("r0165", fast, pat_pat0165, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vo(pat.vec);
-            let t3 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<EcxOperand>(&*ctx.devalue(pat.current), pat.expr.erase())));
-            let t2 = ctx.insert_ecx_vec_operand_and_cost(t3, (ctx.devalue(pat.current_cost) + ctx.devalue(pat.expr_cost)));
-            ctx.set_ecx_extracted_vec_operand_helper(t1, (ctx.devalue(pat.index) + 1_i64), t2);
-            });
+        let t1 = ctx.insert_ecx_vo(pat.vec);
+        let t3 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.current),
+                pat.expr.erase(),
+            )),
+        );
+        let t2 = ctx.insert_ecx_vec_operand_and_cost(
+            t3,
+            (ctx.devalue(pat.current_cost) + ctx.devalue(pat.expr_cost)),
+        );
+        ctx.set_ecx_extracted_vec_operand_helper(t1, (ctx.devalue(pat.index) + 1_i64), t2);
+    });
     MyTxEggccExtraction::add_rule("r0166", fast, pat_pat0166, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vo(pat.vec);
-            ctx.set_ecx_extracted_vec_operand(t1, pat.result);
-            });
+        let t1 = ctx.insert_ecx_vo(pat.vec);
+        ctx.set_ecx_extracted_vec_operand(t1, pat.result);
+    });
     MyTxEggccExtraction::add_rule("r0167", fast, pat_pat0167, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vvo(pat.vec);
-            let t3 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(VecContainer::<EcxVecOperand>::new()));
-            let t2 = ctx.insert_ecx_vec_vec_operand_and_cost(t3, 0_i64);
-            ctx.set_ecx_extracted_vec_vec_operand_helper(t1, 0_i64, t2);
-            });
+        let t1 = ctx.insert_ecx_vvo(pat.vec);
+        let t3 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(
+                VecContainer::<EcxVecOperand>::new(),
+            ),
+        );
+        let t2 = ctx.insert_ecx_vec_vec_operand_and_cost(t3, 0_i64);
+        ctx.set_ecx_extracted_vec_vec_operand_helper(t1, 0_i64, t2);
+    });
     MyTxEggccExtraction::add_rule("r0168", fast, pat_pat0168, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vvo(pat.vec);
-            let t3 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(vec_push::<EcxVecOperand>(&*ctx.devalue(pat.current), pat.expr.erase())));
-            let t2 = ctx.insert_ecx_vec_vec_operand_and_cost(t3, (ctx.devalue(pat.current_cost) + ctx.devalue(pat.expr_cost)));
-            ctx.set_ecx_extracted_vec_vec_operand_helper(t1, (ctx.devalue(pat.index) + 1_i64), t2);
-            });
+        let t1 = ctx.insert_ecx_vvo(pat.vec);
+        let t3 =
+            ctx.insert_ecx_vvo(
+                ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(
+                    vec_push::<EcxVecOperand>(&*ctx.devalue(pat.current), pat.expr.erase()),
+                ),
+            );
+        let t2 = ctx.insert_ecx_vec_vec_operand_and_cost(
+            t3,
+            (ctx.devalue(pat.current_cost) + ctx.devalue(pat.expr_cost)),
+        );
+        ctx.set_ecx_extracted_vec_vec_operand_helper(t1, (ctx.devalue(pat.index) + 1_i64), t2);
+    });
     MyTxEggccExtraction::add_rule("r0169", fast, pat_pat0169, |ctx, pat| {
-            let t1 = ctx.insert_ecx_vvo(pat.vec);
-            ctx.set_ecx_extracted_vec_vec_operand(t1, pat.result);
-            });
+        let t1 = ctx.insert_ecx_vvo(pat.vec);
+        ctx.set_ecx_extracted_vec_vec_operand(t1, pat.result);
+    });
     MyTxEggccExtraction::add_rule("r0170", fast, pat_pat0170, |ctx, pat| {
-            let t1 = ctx.insert_ecx_expr_and_cost(pat.lhs, 1_i64);
-            ctx.set_ecx_extracted_expr(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_expr_and_cost(pat.lhs, 1_i64);
+        ctx.set_ecx_extracted_expr(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0171", fast, pat_pat0171, |ctx, pat| {
-            let t1 = ctx.insert_ecx_operand_and_cost(pat.lhs, 1_i64);
-            ctx.set_ecx_extracted_operand(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_operand_and_cost(pat.lhs, 1_i64);
+        ctx.set_ecx_extracted_operand(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0172", fast, pat_pat0172, |ctx, pat| {
-            let t2 = ctx.insert_ecx_pure_op(pat.expr_extracted);
-            let t1 = ctx.insert_ecx_body_and_cost(t2, ctx.devalue(pat.expr_cost));
-            ctx.set_ecx_extracted_body(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_pure_op(pat.expr_extracted);
+        let t1 = ctx.insert_ecx_body_and_cost(t2, ctx.devalue(pat.expr_cost));
+        ctx.set_ecx_extracted_body(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0173", fast, pat_pat0173, |ctx, pat| {
-            let t2 = ctx.insert_ecx_node(pat.body_extracted);
-            let t1 = ctx.insert_ecx_operand_and_cost(t2, ctx.devalue(pat.body_cost));
-            ctx.set_ecx_extracted_operand(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_node(pat.body_extracted);
+        let t1 = ctx.insert_ecx_operand_and_cost(t2, ctx.devalue(pat.body_cost));
+        ctx.set_ecx_extracted_operand(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0174", fast, pat_pat0174, |ctx, pat| {
-            let t2 = ctx.insert_ecx_theta(pat.pred_extracted, pat.inputs_extracted, pat.outputs_extracted);
-            let t1 = ctx.insert_ecx_body_and_cost(t2, (1_i64 + (ctx.devalue(pat.pred_cost) + (ctx.devalue(pat.inputs_cost) + ctx.devalue(pat.outputs_cost)))));
-            ctx.set_ecx_extracted_body(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_theta(
+            pat.pred_extracted,
+            pat.inputs_extracted,
+            pat.outputs_extracted,
+        );
+        let t1 = ctx.insert_ecx_body_and_cost(
+            t2,
+            (1_i64
+                + (ctx.devalue(pat.pred_cost)
+                    + (ctx.devalue(pat.inputs_cost) + ctx.devalue(pat.outputs_cost)))),
+        );
+        ctx.set_ecx_extracted_body(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0175", fast, pat_pat0175, |ctx, pat| {
-            let t2 = ctx.insert_ecx_gamma(pat.pred_extracted, pat.inputs_extracted, pat.outputs_extracted);
-            let t1 = ctx.insert_ecx_body_and_cost(t2, (1_i64 + (ctx.devalue(pat.pred_cost) + (ctx.devalue(pat.inputs_cost) + ctx.devalue(pat.outputs_cost)))));
-            ctx.set_ecx_extracted_body(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_gamma(
+            pat.pred_extracted,
+            pat.inputs_extracted,
+            pat.outputs_extracted,
+        );
+        let t1 = ctx.insert_ecx_body_and_cost(
+            t2,
+            (1_i64
+                + (ctx.devalue(pat.pred_cost)
+                    + (ctx.devalue(pat.inputs_cost) + ctx.devalue(pat.outputs_cost)))),
+        );
+        ctx.set_ecx_extracted_body(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0176", fast, pat_pat0176, |ctx, pat| {
-            let t2 = ctx.insert_ecx_project(ctx.devalue(pat.index), pat.body_extracted);
-            let t1 = ctx.insert_ecx_operand_and_cost(t2, ctx.devalue(pat.body_cost));
-            ctx.set_ecx_extracted_operand(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_project(ctx.devalue(pat.index), pat.body_extracted);
+        let t1 = ctx.insert_ecx_operand_and_cost(t2, ctx.devalue(pat.body_cost));
+        ctx.set_ecx_extracted_operand(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0177", fast, pat_pat0177, |ctx, pat| {
-            ctx.set_ecx_extracted_operand(pat.lhs, pat.passedthrough);
-            });
+        ctx.set_ecx_extracted_operand(pat.lhs, pat.passedthrough);
+    });
     MyTxEggccExtraction::add_rule("r0178", fast, pat_pat0178, |ctx, pat| {
-            ctx.set_ecx_extracted_operand(pat.lhs, pat.passedthrough);
-            });
+        ctx.set_ecx_extracted_operand(pat.lhs, pat.passedthrough);
+    });
     MyTxEggccExtraction::add_rule("r0179", fast, pat_pat0179, |ctx, pat| {
-            ctx.union(pat.theta, pat.extracted);
-            });
+        ctx.union(pat.theta, pat.extracted);
+    });
     MyTxEggccExtraction::add_rule("r0180", fast, pat_pat0180, |ctx, pat| {
-            ctx.union(pat.gamma, pat.extracted);
-            });
+        ctx.union(pat.gamma, pat.extracted);
+    });
     MyTxEggccExtraction::add_rule("r0181", fast, pat_pat0181, |ctx, pat| {
-            let t1 = ctx.insert_ecx_func(ctx.devalue(pat.name), pat.intypes, pat.outtypes, pat.extracted);
-            ctx.union(pat.func, t1);
-            });
+        let t1 = ctx.insert_ecx_func(
+            ctx.devalue(pat.name),
+            pat.intypes,
+            pat.outtypes,
+            pat.extracted,
+        );
+        ctx.union(pat.func, t1);
+    });
     MyTxEggccExtraction::add_rule("r0182", default_rs, pat_pat0182, |ctx, pat| {
-            let t2 = ctx.insert_ecx_arg(ctx.devalue(pat.args));
-            let t3 = ctx.insert_ecx_pass_through_arguments(ctx.devalue(pat.args));
-            let t5 = ctx.insert_ecx_vo(pat.B);
-            let t6 = ctx.insert_ecx_vo(pat.A);
-            let t4 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(VecContainer::<EcxVecOperand>::from(vec![t5.erase(), t6.erase()])));
-            let t1 = ctx.insert_ecx_gamma(t2, t3, t4);
-            let inner = t1;
-            let t8 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<EcxOperand>(&*ctx.devalue(pat.inputs), pat.b.erase())));
-            let t10 = ctx.insert_ecx_vo(pat.B);
-            let t11 = ctx.insert_ecx_body_to_vec_operand(ctx.devalue(pat.rets), inner);
-            let t9 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(VecContainer::<EcxVecOperand>::from(vec![t10.erase(), t11.erase()])));
-            let t7 = ctx.insert_ecx_gamma(pat.a, t8, t9);
-            ctx.union(pat.gamma, t7);
-            });
+        let t2 = ctx.insert_ecx_arg(ctx.devalue(pat.args));
+        let t3 = ctx.insert_ecx_pass_through_arguments(ctx.devalue(pat.args));
+        let t5 = ctx.insert_ecx_vo(pat.B);
+        let t6 = ctx.insert_ecx_vo(pat.A);
+        let t4 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(
+                VecContainer::<EcxVecOperand>::from(vec![t5.erase(), t6.erase()]),
+            ),
+        );
+        let t1 = ctx.insert_ecx_gamma(t2, t3, t4);
+        let inner = t1;
+        let t8 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.inputs),
+                pat.b.erase(),
+            )),
+        );
+        let t10 = ctx.insert_ecx_vo(pat.B);
+        let t11 = ctx.insert_ecx_body_to_vec_operand(ctx.devalue(pat.rets), inner);
+        let t9 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(
+                VecContainer::<EcxVecOperand>::from(vec![t10.erase(), t11.erase()]),
+            ),
+        );
+        let t7 = ctx.insert_ecx_gamma(pat.a, t8, t9);
+        ctx.union(pat.gamma, t7);
+    });
     MyTxEggccExtraction::add_rule("r0183", default_rs, pat_pat0183, |ctx, pat| {
-            let t2 = ctx.insert_ecx_arg(ctx.devalue(pat.args));
-            let t3 = ctx.insert_ecx_pass_through_arguments(ctx.devalue(pat.args));
-            let t5 = ctx.insert_ecx_vo(pat.B);
-            let t6 = ctx.insert_ecx_vo(pat.A);
-            let t4 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(VecContainer::<EcxVecOperand>::from(vec![t5.erase(), t6.erase()])));
-            let t1 = ctx.insert_ecx_gamma(t2, t3, t4);
-            let inner = t1;
-            let t8 = ctx.insert_ecx_vo(ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<EcxOperand>(&*ctx.devalue(pat.inputs), pat.b.erase())));
-            let t10 = ctx.insert_ecx_body_to_vec_operand(ctx.devalue(pat.rets), inner);
-            let t11 = ctx.insert_ecx_vo(pat.A);
-            let t9 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(VecContainer::<EcxVecOperand>::from(vec![t10.erase(), t11.erase()])));
-            let t7 = ctx.insert_ecx_gamma(pat.a, t8, t9);
-            ctx.union(pat.gamma, t7);
-            });
+        let t2 = ctx.insert_ecx_arg(ctx.devalue(pat.args));
+        let t3 = ctx.insert_ecx_pass_through_arguments(ctx.devalue(pat.args));
+        let t5 = ctx.insert_ecx_vo(pat.B);
+        let t6 = ctx.insert_ecx_vo(pat.A);
+        let t4 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(
+                VecContainer::<EcxVecOperand>::from(vec![t5.erase(), t6.erase()]),
+            ),
+        );
+        let t1 = ctx.insert_ecx_gamma(t2, t3, t4);
+        let inner = t1;
+        let t8 = ctx.insert_ecx_vo(
+            ctx.intern_container::<EcxVecOperandBase, VecContainer<EcxOperand>>(vec_push::<
+                EcxOperand,
+            >(
+                &*ctx.devalue(pat.inputs),
+                pat.b.erase(),
+            )),
+        );
+        let t10 = ctx.insert_ecx_body_to_vec_operand(ctx.devalue(pat.rets), inner);
+        let t11 = ctx.insert_ecx_vo(pat.A);
+        let t9 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(
+                VecContainer::<EcxVecOperand>::from(vec![t10.erase(), t11.erase()]),
+            ),
+        );
+        let t7 = ctx.insert_ecx_gamma(pat.a, t8, t9);
+        ctx.union(pat.gamma, t7);
+    });
     MyTxEggccExtraction::add_rule("r0184", default_rs, pat_pat0184, |ctx, pat| {
-            let t4 = ctx.insert_ecx_vvo(pat.outputs);
-            let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
-            let t1 = ctx.insert_ecx_operand_group(t2);
-            ctx.union(pat.gamma, t1);
-            });
+        let t4 = ctx.insert_ecx_vvo(pat.outputs);
+        let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
+        let t1 = ctx.insert_ecx_operand_group(t2);
+        ctx.union(pat.gamma, t1);
+    });
     MyTxEggccExtraction::add_rule("r0185", default_rs, pat_pat0185, |ctx, pat| {
-            let t2 = ctx.insert_ecx_vo(pat.outputs);
-            let t3 = ctx.insert_ecx_vo(pat.inputs);
-            let t1 = ctx.insert_ecx_subst_vec_operand_all(t2, t3);
-            let after_one_iter = t1;
-            let t4 = ctx.insert_ecx_pass_through_arguments(vec_len(&*ctx.devalue(pat.outputs)));
-            let pass_through = t4;
-            let t6 = ctx.insert_ecx_subst_operand_all(pat.pred, after_one_iter);
-            let t10 = ctx.insert_ecx_vo(pat.outputs);
-            let t9 = ctx.insert_ecx_theta(pat.pred, pass_through, t10);
-            let t8 = ctx.insert_ecx_body_to_vec_operand(vec_len(&*ctx.devalue(pat.outputs)), t9);
-            let t7 = ctx.insert_ecx_vvo(ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(VecContainer::<EcxVecOperand>::from(vec![pass_through.erase(), t8.erase()])));
-            let t5 = ctx.insert_ecx_gamma(t6, after_one_iter, t7);
-            ctx.union(pat.theta, t5);
-            });
+        let t2 = ctx.insert_ecx_vo(pat.outputs);
+        let t3 = ctx.insert_ecx_vo(pat.inputs);
+        let t1 = ctx.insert_ecx_subst_vec_operand_all(t2, t3);
+        let after_one_iter = t1;
+        let t4 = ctx.insert_ecx_pass_through_arguments(vec_len(&*ctx.devalue(pat.outputs)));
+        let pass_through = t4;
+        let t6 = ctx.insert_ecx_subst_operand_all(pat.pred, after_one_iter);
+        let t10 = ctx.insert_ecx_vo(pat.outputs);
+        let t9 = ctx.insert_ecx_theta(pat.pred, pass_through, t10);
+        let t8 = ctx.insert_ecx_body_to_vec_operand(vec_len(&*ctx.devalue(pat.outputs)), t9);
+        let t7 = ctx.insert_ecx_vvo(
+            ctx.intern_container::<EcxVecVecOperandBase, VecContainer<EcxVecOperand>>(
+                VecContainer::<EcxVecOperand>::from(vec![pass_through.erase(), t8.erase()]),
+            ),
+        );
+        let t5 = ctx.insert_ecx_gamma(t6, after_one_iter, t7);
+        ctx.union(pat.theta, t5);
+    });
     MyTxEggccExtraction::add_rule("r0186", default_rs, pat_pat0186, |ctx, pat| {
-            let t1 = ctx.insert_ecx_int_i(std::cmp::max(ctx.devalue(pat.la), ctx.devalue(pat.lb)), std::cmp::min(ctx.devalue(pat.ha), ctx.devalue(pat.hb)));
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_int_i(
+            std::cmp::max(ctx.devalue(pat.la), ctx.devalue(pat.lb)),
+            std::cmp::min(ctx.devalue(pat.ha), ctx.devalue(pat.hb)),
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0187", default_rs, pat_pat0187, |ctx, pat| {
-            let t1 = ctx.insert_ecx_int_i(std::cmp::min(ctx.devalue(pat.la), ctx.devalue(pat.lb)), std::cmp::max(ctx.devalue(pat.ha), ctx.devalue(pat.hb)));
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_int_i(
+            std::cmp::min(ctx.devalue(pat.la), ctx.devalue(pat.lb)),
+            std::cmp::max(ctx.devalue(pat.ha), ctx.devalue(pat.hb)),
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0188", default_rs, pat_pat0188, |ctx, pat| {
-            let t1 = ctx.insert_ecx_bool_i((ctx.devalue(pat.la) || ctx.devalue(pat.lb)), (ctx.devalue(pat.ha) && ctx.devalue(pat.hb)));
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_bool_i(
+            (ctx.devalue(pat.la) || ctx.devalue(pat.lb)),
+            (ctx.devalue(pat.ha) && ctx.devalue(pat.hb)),
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0189", default_rs, pat_pat0189, |ctx, pat| {
-            let t1 = ctx.insert_ecx_bool_i((ctx.devalue(pat.la) && ctx.devalue(pat.lb)), (ctx.devalue(pat.ha) || ctx.devalue(pat.hb)));
-            ctx.union(pat._t1, t1);
-            });
+        let t1 = ctx.insert_ecx_bool_i(
+            (ctx.devalue(pat.la) && ctx.devalue(pat.lb)),
+            (ctx.devalue(pat.ha) || ctx.devalue(pat.hb)),
+        );
+        ctx.union(pat._t1, t1);
+    });
     MyTxEggccExtraction::add_rule("r0190", default_rs, pat_pat0190, |ctx, pat| {
-            let t1 = ctx.insert_ecx_bool_i(ctx.devalue(pat.b), ctx.devalue(pat.b));
-            ctx.set_ecxival(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_bool_i(ctx.devalue(pat.b), ctx.devalue(pat.b));
+        ctx.set_ecxival(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0191", default_rs, pat_pat0191, |ctx, pat| {
-            let t1 = ctx.insert_ecx_int_i(ctx.devalue(pat.n), ctx.devalue(pat.n));
-            ctx.set_ecxival(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_int_i(ctx.devalue(pat.n), ctx.devalue(pat.n));
+        ctx.set_ecxival(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0192", default_rs, pat_pat0192, |ctx, pat| {
-            let t1 = ctx.insert_ecx_bool_i((ctx.devalue(pat.ha) < ctx.devalue(pat.lb)), (ctx.devalue(pat.la) < ctx.devalue(pat.hb)));
-            ctx.set_ecxival(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecx_bool_i(
+            (ctx.devalue(pat.ha) < ctx.devalue(pat.lb)),
+            (ctx.devalue(pat.la) < ctx.devalue(pat.hb)),
+        );
+        ctx.set_ecxival(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0193", default_rs, pat_pat0193, |ctx, pat| {
-            let t1 = ctx.insert_ecxinterval_union(pat.thenival, pat.elseival);
-            ctx.set_ecxival(pat.lhs, t1);
-            });
+        let t1 = ctx.insert_ecxinterval_union(pat.thenival, pat.elseival);
+        ctx.set_ecxival(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0194", default_rs, pat_pat0194, |ctx, pat| {
-            let t4 = ctx.insert_ecx_vvo(pat.outputs);
-            let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 1_i64);
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
-            let t1 = ctx.insert_ecx_operand_group(t2);
-            ctx.union(pat.gamma, t1);
-            });
+        let t4 = ctx.insert_ecx_vvo(pat.outputs);
+        let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 1_i64);
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
+        let t1 = ctx.insert_ecx_operand_group(t2);
+        ctx.union(pat.gamma, t1);
+    });
     MyTxEggccExtraction::add_rule("r0195", default_rs, pat_pat0195, |ctx, pat| {
-            let t4 = ctx.insert_ecx_vvo(pat.outputs);
-            let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
-            let t1 = ctx.insert_ecx_operand_group(t2);
-            ctx.union(pat.gamma, t1);
-            });
+        let t4 = ctx.insert_ecx_vvo(pat.outputs);
+        let t3 = ctx.insert_ecx_vec_vec_operand_get(t4, 0_i64);
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(t3, pat.inputs);
+        let t1 = ctx.insert_ecx_operand_group(t2);
+        ctx.union(pat.gamma, t1);
+    });
     MyTxEggccExtraction::add_rule("r0196", default_rs, pat_pat0196, |ctx, pat| {
-            let t2 = ctx.insert_ecx_subst_vec_operand_all(pat.body, pat.args);
-            let t1 = ctx.insert_ecx_operand_group(t2);
-            ctx.union(pat.kw_return, t1);
-            });
+        let t2 = ctx.insert_ecx_subst_vec_operand_all(pat.body, pat.args);
+        let t1 = ctx.insert_ecx_operand_group(t2);
+        ctx.union(pat.kw_return, t1);
+    });
     MyTxEggccExtraction::add_rule("r0197", default_rs, pat_pat0197, |ctx, pat| {
-            let t2 = ctx.insert_ecx_int_t();
-            let t1 = ctx.insert_ecxbadd(t2, pat.num, pat.other);
-            ctx.union(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_int_t();
+        let t1 = ctx.insert_ecxbadd(t2, pat.num, pat.other);
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0198", default_rs, pat_pat0198, |ctx, pat| {
-            let t2 = ctx.insert_ecx_int_t();
-            let t1 = ctx.insert_ecxbmul(t2, pat.num, pat.other);
-            ctx.union(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_int_t();
+        let t1 = ctx.insert_ecxbmul(t2, pat.num, pat.other);
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0199", default_rs, pat_pat0199, |ctx, pat| {
-            let t2 = ctx.insert_ecx_int_t();
-            let t6 = ctx.insert_ecx_int_t();
-            let t5 = ctx.insert_ecxbadd(t6, pat.b, pat.c);
-            let t4 = ctx.insert_ecx_pure_op(t5);
-            let t3 = ctx.insert_ecx_node(t4);
-            let t1 = ctx.insert_ecxbadd(t2, pat.a, t3);
-            ctx.union(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_int_t();
+        let t6 = ctx.insert_ecx_int_t();
+        let t5 = ctx.insert_ecxbadd(t6, pat.b, pat.c);
+        let t4 = ctx.insert_ecx_pure_op(t5);
+        let t3 = ctx.insert_ecx_node(t4);
+        let t1 = ctx.insert_ecxbadd(t2, pat.a, t3);
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0200", default_rs, pat_pat0200, |ctx, pat| {
-            let t2 = ctx.insert_ecx_int_t();
-            let t6 = ctx.insert_ecx_int_t();
-            let t5 = ctx.insert_ecxbadd(t6, pat.a, pat.c);
-            let t4 = ctx.insert_ecx_pure_op(t5);
-            let t3 = ctx.insert_ecx_node(t4);
-            let t1 = ctx.insert_ecxbadd(t2, pat.b, t3);
-            ctx.union(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_int_t();
+        let t6 = ctx.insert_ecx_int_t();
+        let t5 = ctx.insert_ecxbadd(t6, pat.a, pat.c);
+        let t4 = ctx.insert_ecx_pure_op(t5);
+        let t3 = ctx.insert_ecx_node(t4);
+        let t1 = ctx.insert_ecxbadd(t2, pat.b, t3);
+        ctx.union(pat.lhs, t1);
+    });
     MyTxEggccExtraction::add_rule("r0201", default_rs, pat_pat0201, |ctx, pat| {
-            let t2 = ctx.insert_ecx_int_t();
-            let t6 = ctx.insert_ecx_int_t();
-            let t7 = ctx.insert_ecxkw_const();
-            let t8 = ctx.insert_ecx_num((ctx.devalue(pat.n1) + ctx.devalue(pat.n2)));
-            let t5 = ctx.insert_ecx_const(t6, t7, t8);
-            let t4 = ctx.insert_ecx_pure_op(t5);
-            let t3 = ctx.insert_ecx_node(t4);
-            let t1 = ctx.insert_ecxbadd(t2, t3, pat.c);
-            ctx.union(pat.lhs, t1);
-            });
+        let t2 = ctx.insert_ecx_int_t();
+        let t6 = ctx.insert_ecx_int_t();
+        let t7 = ctx.insert_ecxkw_const();
+        let t8 = ctx.insert_ecx_num((ctx.devalue(pat.n1) + ctx.devalue(pat.n2)));
+        let t5 = ctx.insert_ecx_const(t6, t7, t8);
+        let t4 = ctx.insert_ecx_pure_op(t5);
+        let t3 = ctx.insert_ecx_node(t4);
+        let t1 = ctx.insert_ecxbadd(t2, t3, pat.c);
+        ctx.union(pat.lhs, t1);
+    });
 
     // Seed IR
     let v0 = "main".to_owned();
     let v1 = EcxIntT::new();
     let v2 = EcxBril::new(&(v1.clone()));
     let v3 = EcxPrintState::new();
-    let v4 = EcxFuncSigs::new(vec![(&(v2.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>, (&(v2.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>, (&(v3.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>]);
-    let v5 = EcxFuncSigs::new(vec![(&(v3.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>]);
+    let v4 = EcxFuncSigs::new(vec![
+        (&(v2.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>,
+        (&(v2.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>,
+        (&(v3.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>,
+    ]);
+    let v5 = EcxFuncSigs::new(vec![
+        (&(v3.clone())) as &dyn AsRef<EcxEffectType<MyTxEggccExtraction, ()>>,
+    ]);
     let v6 = 1;
     let v7 = 2;
     let v8 = EcxBoolT::new();
@@ -6573,23 +7832,51 @@ pub fn bench() {
     let v17 = EcxArg::new(v7);
     let v18 = 3;
     let v19 = EcxArg::new(v18);
-    let v20 = EcxVecOperandBase::new(vec![(&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v20 = EcxVecOperandBase::new(vec![
+        (&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v21 = EcxVO::new(&(v20.clone()));
     let v22 = Ecxkw_const::new();
     let v23 = EcxNum::new(v15);
     let v24 = EcxConst::new(&(v1.clone()), &(v22.clone()), &(v23.clone()));
     let v25 = EcxPureOp::new(&(v24.clone()));
     let v26 = EcxNode::new(&(v25.clone()));
-    let v27 = EcxVecOperandBase::new(vec![(&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v27 = EcxVecOperandBase::new(vec![
+        (&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v28 = EcxVO::new(&(v27.clone()));
     let v29 = Ecxblt::new(&(v8.clone()), &(v19.clone()), &(v11.clone()));
     let v30 = EcxPureOp::new(&(v29.clone()));
     let v31 = EcxNode::new(&(v30.clone()));
     let v32 = 5;
     let v33 = EcxArg::new(v32);
-    let v34 = EcxVecOperandBase::new(vec![(&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v33.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v34 = EcxVecOperandBase::new(vec![
+        (&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v33.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v35 = EcxVO::new(&(v34.clone()));
-    let v36 = EcxVecOperandBase::new(vec![(&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v33.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v36 = EcxVecOperandBase::new(vec![
+        (&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v33.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v37 = EcxVO::new(&(v36.clone()));
     let v38 = Ecxbmul::new(&(v1.clone()), &(v9.clone()), &(v11.clone()));
     let v39 = EcxPureOp::new(&(v38.clone()));
@@ -6607,13 +7894,31 @@ pub fn bench() {
     let v51 = Ecxbadd::new(&(v1.clone()), &(v19.clone()), &(v17.clone()));
     let v52 = EcxPureOp::new(&(v51.clone()));
     let v53 = EcxNode::new(&(v52.clone()));
-    let v54 = EcxVecOperandBase::new(vec![(&(v46.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v50.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v53.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v33.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v54 = EcxVecOperandBase::new(vec![
+        (&(v46.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v50.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v53.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v33.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v55 = EcxVO::new(&(v54.clone()));
-    let v56 = EcxVecVecOperandBase::new(vec![(&(v37.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>, (&(v55.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>]);
+    let v56 = EcxVecVecOperandBase::new(vec![
+        (&(v37.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>,
+        (&(v55.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v57 = EcxVVO::new(&(v56.clone()));
     let v58 = EcxGamma::new(&(v31.clone()), &(v35.clone()), &(v57.clone()));
     let v59 = EcxProject::new(v18, &(v58.clone()));
-    let v60 = EcxVecOperandBase::new(vec![(&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v60 = EcxVecOperandBase::new(vec![
+        (&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v19.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v11.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v61 = EcxVO::new(&(v60.clone()));
     let v62 = EcxProject::new(v15, &(v58.clone()));
     let v63 = EcxProject::new(v6, &(v58.clone()));
@@ -6622,7 +7927,14 @@ pub fn bench() {
     let v66 = EcxProject::new(v32, &(v58.clone()));
     let v67 = 6;
     let v68 = EcxProject::new(v67, &(v58.clone()));
-    let v69 = EcxVecOperandBase::new(vec![(&(v62.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v63.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v64.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v65.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v66.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v68.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v69 = EcxVecOperandBase::new(vec![
+        (&(v62.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v63.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v64.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v65.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v66.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v68.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v70 = EcxVO::new(&(v69.clone()));
     let v71 = EcxTheta::new(&(v59.clone()), &(v61.clone()), &(v70.clone()));
     let v72 = EcxProject::new(v15, &(v71.clone()));
@@ -6633,20 +7945,42 @@ pub fn bench() {
     let v77 = EcxNode::new(&(v76.clone()));
     let v78 = EcxProject::new(v10, &(v71.clone()));
     let v79 = EcxProject::new(v32, &(v71.clone()));
-    let v80 = EcxVecOperandBase::new(vec![(&(v72.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v77.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v50.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v74.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v78.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v79.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v80 = EcxVecOperandBase::new(vec![
+        (&(v72.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v77.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v50.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v74.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v78.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v79.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v81 = EcxVO::new(&(v80.clone()));
-    let v82 = EcxVecVecOperandBase::new(vec![(&(v28.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>, (&(v81.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>]);
+    let v82 = EcxVecVecOperandBase::new(vec![
+        (&(v28.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>,
+        (&(v81.clone())) as &dyn AsRef<EcxVecOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v83 = EcxVVO::new(&(v82.clone()));
     let v84 = EcxGamma::new(&(v14.clone()), &(v21.clone()), &(v83.clone()));
     let v85 = EcxProject::new(v7, &(v84.clone()));
-    let v86 = EcxVecOperandBase::new(vec![(&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v50.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v86 = EcxVecOperandBase::new(vec![
+        (&(v17.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v26.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v50.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v9.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v16.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v87 = EcxVO::new(&(v86.clone()));
     let v88 = EcxProject::new(v15, &(v84.clone()));
     let v89 = EcxProject::new(v6, &(v84.clone()));
     let v90 = EcxProject::new(v18, &(v84.clone()));
     let v91 = EcxProject::new(v10, &(v84.clone()));
     let v92 = EcxProject::new(v32, &(v84.clone()));
-    let v93 = EcxVecOperandBase::new(vec![(&(v88.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v89.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v90.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v91.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>, (&(v92.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v93 = EcxVecOperandBase::new(vec![
+        (&(v88.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v89.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v90.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v91.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+        (&(v92.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v94 = EcxVO::new(&(v93.clone()));
     let v95 = EcxTheta::new(&(v85.clone()), &(v87.clone()), &(v94.clone()));
     let v96 = EcxProject::new(v6, &(v95.clone()));
@@ -6654,7 +7988,9 @@ pub fn bench() {
     let v98 = EcxPRINT::new(&(v96.clone()), &(v97.clone()));
     let v99 = EcxPureOp::new(&(v98.clone()));
     let v100 = EcxNode::new(&(v99.clone()));
-    let v101 = EcxVecOperandBase::new(vec![(&(v100.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>]);
+    let v101 = EcxVecOperandBase::new(vec![
+        (&(v100.clone())) as &dyn AsRef<EcxOperand<MyTxEggccExtraction, ()>>,
+    ]);
     let v102 = EcxVO::new(&(v101.clone()));
     let v103 = EcxFunc::new(v0.clone(), &(v4.clone()), &(v5.clone()), &(v102.clone()));
     v103.commit();

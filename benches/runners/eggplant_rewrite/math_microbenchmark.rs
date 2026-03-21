@@ -4,21 +4,34 @@ use std::time::Instant;
 
 #[eggplant::dsl]
 enum Math {
+    #[eggplant::display("{f}'({x})")]
     MDiff { x: Math, f: Math },
+    #[eggplant::display("integ {f} {x}")]
     MIntegral { f: Math, x: Math },
 
+    #[eggplant::display("{a} + {b}")]
     MAdd { a: Math, b: Math },
+    #[eggplant::display("{a} - {b}")]
     MSub { a: Math, b: Math },
+    #[eggplant::display("{a} * {b}")]
     MMul { a: Math, b: Math },
+    #[eggplant::display("{a} / {b}")]
     MDiv { a: Math, b: Math },
+    #[eggplant::display("{a} ^ {b}")]
     MPow { a: Math, b: Math },
+    #[eggplant::display("ln({a})")]
     MLn { a: Math },
+    #[eggplant::display("sqrt({a})")]
     MSqrt { a: Math },
 
+    #[eggplant::display("sin({a})")]
     MSin { a: Math },
+    #[eggplant::display("cos({a})")]
     MCos { a: Math },
 
+    #[eggplant::display("{n}")]
     MConst { n: i64 },
+    #[eggplant::display("{name}")]
     MVar { name: String },
 }
 
