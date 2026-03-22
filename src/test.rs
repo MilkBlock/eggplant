@@ -1491,6 +1491,100 @@ mod tests {
 
             assert_eq!(fib::<MyTxFib>::get(&7), 13);
         }
+
+        #[test]
+        fn action_sample_recorder_attaches_runtime_effect_ids() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            let root =
+                TraceRoot::<SampleTx>::new(&TraceAdd::new(&TraceConst::new(2), &TraceConst::new(3)));
+            root.commit();
+
+            let ruleset = SampleTx::new_ruleset("sample_trace_rules");
+            let recorder = ActionSampleRecorder::default();
+            let handle = recorder.clone();
+            SampleTx::add_rule_with_hook(
+                "sample_trace_rule",
+                ruleset,
+                sample_pat,
+                |ctx, pat| {
+                    let one = ctx.insert_trace_const(1);
+                    let sum = ctx.insert_trace_add(pat.expr, one);
+                    ctx.union(pat.expr, sum);
+                },
+                Box::new(recorder),
+            );
+
+            SampleTx::run_ruleset(ruleset, RunConfig::Once);
+
+            let events = handle.snapshot();
+            assert!(
+                events.iter().any(|event| {
+                    matches!(
+                        event,
+                        ActionSampleEvent::Insert {
+                            effect_id: Some(effect_id),
+                            ..
+                        } if effect_id.starts_with("effect@")
+                    )
+                }),
+                "{events:?}"
+            );
+            assert!(
+                events.iter().any(|event| {
+                    matches!(
+                        event,
+                        ActionSampleEvent::Union {
+                            effect_id: Some(effect_id),
+                            ..
+                        } if effect_id.starts_with("effect@")
+                    )
+                }),
+                "{events:?}"
+            );
+        }
+
+        #[test]
+        fn action_sample_recorder_emits_stable_event_ids_in_order() {
+            let _ = env_logger::builder().is_test(true).try_init();
+
+            let root =
+                TraceRoot::<SampleTx>::new(&TraceAdd::new(&TraceConst::new(2), &TraceConst::new(3)));
+            root.commit();
+
+            let ruleset = SampleTx::new_ruleset("sample_trace_event_ids");
+            let recorder = ActionSampleRecorder::default();
+            let handle = recorder.clone();
+            SampleTx::add_rule_with_hook(
+                "sample_trace_event_ids",
+                ruleset,
+                sample_pat,
+                |ctx, pat| {
+                    let one = ctx.insert_trace_const(1);
+                    let sum = ctx.insert_trace_add(pat.expr, one);
+                    ctx.union(pat.expr, sum);
+                },
+                Box::new(recorder),
+            );
+
+            SampleTx::run_ruleset(ruleset, RunConfig::Once);
+
+            let trace = handle.trace();
+            assert_eq!(trace.version, 1);
+            assert!(trace.events.len() >= 3);
+            assert!(matches!(
+                trace.events.first(),
+                Some(ActionSampleEvent::Insert { event_id, .. }) if event_id == "evt_0"
+            ));
+            assert!(matches!(
+                trace.events.get(1),
+                Some(ActionSampleEvent::Insert { event_id, .. }) if event_id == "evt_1"
+            ));
+            assert!(matches!(
+                trace.events.get(2),
+                Some(ActionSampleEvent::Union { event_id, .. }) if event_id == "evt_2"
+            ));
+        }
     }
 }
 
