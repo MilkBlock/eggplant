@@ -107,16 +107,43 @@ pub struct TyConstructor {
     pub term_to_node: TermToNode,
 }
 pub struct UserBaseSort {
+    pub name: &'static str,
     pub sort_insert_fn: fn(&mut EGraph),
 }
 pub struct UserContainerSort {
     pub sort_insert_fn: fn(&mut EGraph),
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum DslFieldKind {
+    Base,
+    UserBase,
+    Complex,
+    Container,
+}
+
+#[derive(Debug)]
+pub struct DslFieldDecl {
+    pub name: &'static str,
+    pub ty: &'static str,
+    pub kind: DslFieldKind,
+}
+
+#[derive(Debug)]
+pub struct DslVariantDecl {
+    pub owner_ty: &'static str,
+    pub variant_name: &'static str,
+    pub fields: &'static [DslFieldDecl],
+    pub display_template: Option<&'static str>,
+    pub typst_template: Option<&'static str>,
+    pub precedence: u16,
+}
+
 // collect all sorts into inventory, so that we could send the definitions of types.
 inventory::collect!(Decl);
 inventory::collect!(UserBaseSort);
 inventory::collect!(UserContainerSort);
+inventory::collect!(DslVariantDecl);
 
 #[derive(Debug)]
 pub enum Decl {

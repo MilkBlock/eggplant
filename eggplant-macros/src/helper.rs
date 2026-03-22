@@ -352,6 +352,15 @@ impl From<&str> for BasicOrComplex {
         BasicOrComplex::ComplexType
     }
 }
+
+pub fn dsl_field_kind_tokens(kind: BasicOrComplex) -> TokenStream {
+    match kind {
+        BasicOrComplex::BaseType => quote!(#W::DslFieldKind::Base),
+        BasicOrComplex::UserDefinedBaseType => quote!(#W::DslFieldKind::UserBase),
+        BasicOrComplex::UserDefinedContainerType => quote!(#W::DslFieldKind::Container),
+        BasicOrComplex::ComplexType => quote!(#W::DslFieldKind::Complex),
+    }
+}
 pub fn get_first_generic(ty: &Type) -> &Type {
     if let Type::Path(type_path) = ty
         && let Some(segment) = type_path.path.segments.last()

@@ -1309,6 +1309,31 @@ pub fn dsl(
                     |_, _| None,
                     |_, complex_type| Some(quote!(#complex_type)),
                 );
+                let ordered_field_decls = variant
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, field)| {
+                        let field_name = field
+                            .ident
+                            .as_ref()
+                            .map(|ident| ident.to_string())
+                            .unwrap_or_else(|| format!("field{idx}"));
+                        let field_name =
+                            syn::LitStr::new(&field_name, proc_macro2::Span::call_site());
+                        let ty = &field.ty;
+                        let kind = dsl_field_kind_tokens(BasicOrComplex::from(
+                            &ty.to_token_stream(),
+                        ));
+                        quote! {
+                            #W::DslFieldDecl {
+                                name: #field_name,
+                                ty: stringify!(#ty),
+                                kind: #kind,
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>();
                 let itself_valued_ty = quote!(#W::Value<#name_node<(), #variant_marker>>);
                 let decode_plan_tys = std::iter::once(itself_valued_ty.clone())
                     .chain(basic_valued_field_types.iter().cloned())
@@ -1447,6 +1472,19 @@ pub fn dsl(
                         const COMPLEX_FIELD_TYPES:&[&'static str] = &[#(stringify!(#complex_field_types)),* ];
                         type ValuedWithDefault<T> = #valued_variant_name;
                     }
+                    const _:() = {
+                        use #INVE;
+                        #INVE::submit! {
+                            #W::DslVariantDecl {
+                                owner_ty: stringify!(#name),
+                                variant_name: stringify!(#variant_name),
+                                fields: &[#(#ordered_field_decls),*],
+                                display_template: #display_template,
+                                typst_template: #typst_template,
+                                precedence: #precedence,
+                            }
+                        }
+                    };
                 })
             }).collect::<syn::Result<Vec<_>>>();
             let enum_variant_tys_def = match enum_variant_tys_def {
@@ -2147,7 +2185,7 @@ pub fn base_ty(
     let sort = format_ident!("{}Sort", ident);
     quote!(
         #input
-        #INVE::submit! { #W::UserBaseSort{ sort_insert_fn: |e| egglog::prelude::add_base_sort(e, #sort, #E::span!()).unwrap() }}
+        #INVE::submit! { #W::UserBaseSort{ name: stringify!(#ident), sort_insert_fn: |e| egglog::prelude::add_base_sort(e, #sort, #E::span!()).unwrap() }}
         impl #i_g std::fmt::Display for #ident #t_g #w_c{
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", serde_json::to_string(&self).unwrap())
