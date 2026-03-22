@@ -15,6 +15,14 @@ Based on that fact, `eggplant` provides out-of-box Graph API that allows you to 
 
 There is also a Proc-Macro library for users to quickly define a suite of DSL.
 
+## VSCode Plugin Support
+
+Pattern & Action viz for eggplant code basing on rust-analyzer.
+
+<img width="1491" height="1040" alt="image" src="https://github.com/user-attachments/assets/13f02d43-8ca5-4bfe-bdb0-6d6921c11955" />
+
+You can click the node to got the node defined rust code and define typst pattern to viz pattern & action.
+
 ## Transpiler Macros
 
 Eggplant provides transpiler macros that convert egglog DSL syntax directly to Rust code:
