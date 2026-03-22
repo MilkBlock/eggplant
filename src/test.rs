@@ -1,8 +1,8 @@
 #[cfg(test)]
 mod tests {
-    use crate::{self as eggplant, tx_rx_vt_pr};
+    use crate::{self as eggplant, schema::ArtifactSchemaHeader, tx_rx_vt_pr};
     use eggplant::prelude::*;
-    use eggplant::wrap::EgglogEnumVariantTy;
+    use eggplant::wrap::{EgglogEnumVariantTy, SchemaFieldKind};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -147,6 +147,190 @@ mod tests {
         assert_eq!(mul_add_xy_z, "(x + y) * z");
     }
 
+    #[test]
+    fn artifact_schema_header_captures_variant_metadata() {
+        let header = ArtifactSchemaHeader::current();
+        let mdiff = header
+            .dsl
+            .variants
+            .iter()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+
+        assert_eq!(mdiff.field_names, vec!["x".to_string(), "f".to_string()]);
+        assert_eq!(
+            mdiff.field_kinds,
+            vec![SchemaFieldKind::Complex, SchemaFieldKind::Complex]
+        );
+        assert_eq!(mdiff.display_template.as_deref(), Some("{x} + {f}"));
+        assert_eq!(mdiff.typst_template.as_deref(), Some("diff({x}, {f})"));
+        assert_eq!(mdiff.precedence, 5);
+    }
+
+    #[test]
+    fn continuation_compatibility_ignores_dsl_field_renames_without_refreshing_cache() {
+        let mut saved = ArtifactSchemaHeader::current();
+        let mdiff = saved
+            .dsl
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+        mdiff.field_names = vec!["lhs".to_string(), "rhs".to_string()];
+
+        let compatibility = saved.compatibility_with_current();
+        assert!(compatibility.format_version_match);
+        assert!(compatibility.continuation_allowed);
+        assert!(compatibility.engine.exact_match);
+        assert!(!compatibility.dsl.exact_match);
+        assert_eq!(compatibility.engine.diff, Default::default());
+        assert!(
+            compatibility
+                .dsl
+                .diff
+                .changed
+                .contains(&"DisplayMath::MDiff(DisplayMath,DisplayMath)".to_string())
+        );
+    }
+
+    #[test]
+    fn continuation_compatibility_rejects_engine_shape_changes_without_refreshing_cache() {
+        let mut saved = ArtifactSchemaHeader::current();
+        let mdiff = saved
+            .engine
+            .constructors
+            .iter_mut()
+            .find(|ctor| ctor.name == "MDiff" && ctor.output_sort == "DisplayMath")
+            .expect("MDiff constructor should be present in engine schema manifest");
+        mdiff.input_sorts[1] = "i64".to_string();
+
+        let compatibility = saved.compatibility_with_current();
+        assert!(!compatibility.continuation_allowed);
+        assert!(!compatibility.engine.exact_match);
+        assert!(saved.ensure_continuation_compatible().is_err());
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_reuses_schema_checks() {
+        let envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        assert!(envelope.ensure_continuation_compatible().is_ok());
+        assert_eq!(envelope.payload, "payload");
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_round_trip() {
+        let envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        let json = envelope.to_json_string().unwrap();
+        let loaded = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap();
+        assert_eq!(loaded.payload, "payload");
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_load_rejects_engine_mismatch_without_refreshing_cache()
+     {
+        let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        let mdiff = envelope
+            .schema
+            .engine
+            .constructors
+            .iter_mut()
+            .find(|ctor| ctor.name == "MDiff" && ctor.output_sort == "DisplayMath")
+            .expect("MDiff constructor should be present in engine schema manifest");
+        mdiff.input_sorts[1] = "i64".to_string();
+
+        let json = envelope.to_json_string().unwrap();
+        let err = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap_err();
+        assert!(format!("{err}").contains("not continuation-compatible"));
+    }
+
+    #[test]
+    fn continuation_compatibility_rejects_dsl_field_kind_changes() {
+        let mut saved = ArtifactSchemaHeader::current();
+        let mdiff = saved
+            .dsl
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+        mdiff.field_kinds[0] = SchemaFieldKind::Base;
+
+        let compatibility = saved.compatibility_with_current();
+        assert!(compatibility.format_version_match);
+        assert!(compatibility.engine.exact_match);
+        assert!(!compatibility.dsl_runtime_compatible);
+        assert!(!compatibility.continuation_allowed);
+        assert!(saved.ensure_continuation_compatible().is_err());
+    }
+
+    #[test]
+    fn continuation_compatibility_rejects_dsl_macro_revision_changes() {
+        let mut saved = ArtifactSchemaHeader::current();
+        saved.dsl.macro_revision.push_str("-mismatch");
+
+        let compatibility = saved.compatibility_with_current();
+        assert!(compatibility.format_version_match);
+        assert!(compatibility.engine.exact_match);
+        assert!(!compatibility.dsl_runtime_compatible);
+        assert!(!compatibility.continuation_allowed);
+        assert!(
+            compatibility
+                .dsl
+                .diff
+                .changed
+                .contains(&"dsl.macro_revision".to_string())
+        );
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_load_rejects_dsl_runtime_mismatch() {
+        let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        let mdiff = envelope
+            .schema
+            .dsl
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+        mdiff.field_kinds[0] = SchemaFieldKind::Base;
+
+        let json = envelope.to_json_string().unwrap();
+        let err = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap_err();
+        assert!(format!("{err}").contains("dsl schema diff"));
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_load_allows_metadata_only_change() {
+        let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        let mdiff = envelope
+            .schema
+            .dsl
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+        mdiff.field_names = vec!["lhs".to_string(), "rhs".to_string()];
+        mdiff.display_template = Some("{lhs} :: {rhs}".to_string());
+        mdiff.typst_template = Some("pair({lhs}, {rhs})".to_string());
+        mdiff.precedence = 99;
+        envelope.schema.refresh_fingerprints();
+
+        let json = envelope.to_json_string().unwrap();
+        let loaded = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap();
+        assert_eq!(loaded.payload, "payload");
+        assert!(loaded.compatibility_with_current().continuation_allowed);
+        assert!(!loaded.compatibility_with_current().dsl.exact_match);
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_load_rejects_format_version_mismatch() {
+        let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        envelope.schema.format_version += 1;
+
+        let json = envelope.to_json_string().unwrap();
+        let err = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap_err();
+        assert!(format!("{err}").contains("format mismatch"));
+    }
+
     #[eggplant::dsl]
     enum FuncS {
         SConst { n: i64 },
@@ -155,9 +339,33 @@ mod tests {
     enum FuncE {
         EConst { n: i64 },
     }
+    inventory::submit! {
+        eggplant::wrap::Decl::EgglogFuncTy {
+            name: "manual-hidden-let-binding-func",
+            input: &["FuncS"],
+            output: "FuncE",
+            merge: None,
+            hidden: true,
+            let_binding: true,
+        }
+    }
     #[eggplant::func(output=FuncE)]
     struct MAccumQ {
         s: FuncS,
+    }
+
+    #[test]
+    fn artifact_schema_header_captures_function_flags() {
+        let header = ArtifactSchemaHeader::current();
+        let func = header
+            .engine
+            .functions
+            .iter()
+            .find(|func| func.name == "manual-hidden-let-binding-func")
+            .expect("manual-hidden-let-binding-func should be present in engine schema manifest");
+
+        assert!(func.hidden);
+        assert!(func.let_binding);
     }
 
     #[test]

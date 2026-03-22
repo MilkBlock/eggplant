@@ -8,6 +8,7 @@ use egglog::{
     sort::{Q, Z},
     span, var,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::wrap::{
     BindingNames, EgglogEnumVariantTy, FromIndexedValues, FromPlainValues, PatRecSgl, PatVars,
@@ -97,16 +98,28 @@ impl EgglogTy for Z {
 pub struct TyConstructors(pub &'static [TyConstructor]);
 pub struct TySortString(pub &'static str);
 pub struct FuncSortString(pub &'static str);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SchemaFieldKind {
+    Base,
+    Complex,
+    Container,
+}
 #[derive(Debug)]
 pub struct TyConstructor {
     pub cons_name: &'static str,
     pub input: &'static [&'static str],
+    pub input_field_names: &'static [&'static str],
+    pub input_field_kinds: &'static [SchemaFieldKind],
     pub output: &'static str,
     pub cost: Option<u64>,
     pub unextractable: bool,
+    pub display_template: Option<&'static str>,
+    pub typst_template: Option<&'static str>,
+    pub precedence: u16,
     pub term_to_node: TermToNode,
 }
 pub struct UserBaseSort {
+    pub name: &'static str,
     pub sort_insert_fn: fn(&mut EGraph),
 }
 pub struct UserContainerSort {
@@ -137,6 +150,8 @@ pub enum Decl {
         output: &'static str,
         /// `None` means `:no-merge`. Otherwise this is the merge function name (e.g. `"new"`).
         merge: Option<&'static str>,
+        hidden: bool,
+        let_binding: bool,
     },
     EgglogRule {
         name: &'static str,
@@ -264,6 +279,8 @@ impl EgglogTypeRegistry {
                     input,
                     output,
                     merge,
+                    hidden,
+                    let_binding,
                 } => {
                     commands.push(Command::Function {
                         span: span!(),
@@ -277,8 +294,8 @@ impl EgglogTypeRegistry {
                                 panic!("failed to parse :merge expr for `{name}`: {err}")
                             })
                         }),
-                        hidden: false,
-                        let_binding: false,
+                        hidden: *hidden,
+                        let_binding: *let_binding,
                     });
                 }
                 _ => {}

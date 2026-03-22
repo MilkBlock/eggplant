@@ -27,6 +27,8 @@ inventory::submit! {
         input: &["ISetBase", "i64"],
         output: "i64",
         merge: None,
+        hidden: false,
+        let_binding: false,
     }
 }
 
