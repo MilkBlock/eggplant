@@ -1,8 +1,9 @@
 #[cfg(test)]
 mod tests {
-    use crate::{self as eggplant, tx_rx_vt_pr};
+    use crate::{self as eggplant, artifact::ArtifactDslFieldKind, tx_rx_vt_pr};
     use eggplant::prelude::*;
     use eggplant::wrap::EgglogEnumVariantTy;
+    use eggplant::wrap::{ActionSampleEvent, ActionSampleRecorder};
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -147,6 +148,89 @@ mod tests {
         assert_eq!(mul_add_xy_z, "(x + y) * z");
     }
 
+    #[test]
+    fn serialized_artifact_matches_current_schema() {
+        let artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+        let report = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            compare_artifact_to_current(&artifact, &egraph)
+        };
+
+        assert!(report.typed_continuation_allowed);
+        assert!(report.issues.is_empty());
+    }
+
+    #[test]
+    fn renaming_dsl_field_is_metadata_only_change() {
+        let mut artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+
+        let runtime_before = dsl_runtime_fingerprint(&artifact.dsl_schema).unwrap();
+        let metadata_before = dsl_metadata_fingerprint(&artifact.dsl_schema).unwrap();
+        let variant = artifact
+            .dsl_schema
+            .variants
+            .iter_mut()
+            .find(|variant| variant.owner_ty == "DisplayMath" && variant.variant_name == "MDiff")
+            .unwrap();
+        variant.fields[0].name = "renamed_x".to_string();
+
+        assert_eq!(
+            runtime_before,
+            dsl_runtime_fingerprint(&artifact.dsl_schema).unwrap()
+        );
+        assert_ne!(
+            metadata_before,
+            dsl_metadata_fingerprint(&artifact.dsl_schema).unwrap()
+        );
+
+        let report = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            compare_artifact_to_current(&artifact, &egraph)
+        };
+        assert!(report.typed_continuation_allowed);
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.layer == ArtifactSchemaLayer::DslMetadata && !issue.blocking)
+        );
+        assert!(!report.issues.iter().any(|issue| issue.blocking));
+    }
+
+    #[test]
+    fn changing_dsl_field_kind_blocks_typed_continuation() {
+        let mut artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+
+        let variant = artifact
+            .dsl_schema
+            .variants
+            .iter_mut()
+            .find(|variant| variant.owner_ty == "DisplayMath" && variant.variant_name == "MLeaf")
+            .unwrap();
+        variant.fields[0].kind = ArtifactDslFieldKind::Container;
+
+        let report = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            compare_artifact_to_current(&artifact, &egraph)
+        };
+        assert!(!report.typed_continuation_allowed);
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.layer == ArtifactSchemaLayer::DslRuntime && issue.blocking)
+        );
+    }
+
     #[eggplant::dsl]
     enum FuncS {
         SConst { n: i64 },
@@ -155,9 +239,29 @@ mod tests {
     enum FuncE {
         EConst { n: i64 },
     }
+    #[eggplant::dsl]
+    enum SampleExpr {
+        TraceConst { n: i64 },
+        TraceAdd { lhs: SampleExpr, rhs: SampleExpr },
+    }
+    #[eggplant::dsl]
+    enum SampleRoot {
+        TraceRoot { node: SampleExpr },
+    }
     #[eggplant::func(output=FuncE)]
     struct MAccumQ {
         s: FuncS,
+    }
+    tx_rx_vt_pr!(SampleTx, SamplePatRec);
+
+    #[eggplant::pat_vars]
+    struct SamplePatternVars<PR: PatRecSgl> {
+        expr: SampleExpr<PR>,
+    }
+    fn sample_pat<PR: PatRecSgl>() -> SamplePatternVars<PR> {
+        let expr = SampleExpr::query_leaf();
+        let _root = TraceRoot::query(&expr);
+        SamplePatternVars::new(expr)
     }
 
     #[test]
@@ -1261,6 +1365,100 @@ mod tests {
 
             assert_eq!(fib::<MyTxFib>::get(&7), 13);
         }
+    }
+
+    #[test]
+    fn action_sample_recorder_attaches_runtime_effect_ids() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let root =
+            TraceRoot::<SampleTx>::new(&TraceAdd::new(&TraceConst::new(2), &TraceConst::new(3)));
+        root.commit();
+
+        let ruleset = SampleTx::new_ruleset("sample_trace_rules");
+        let recorder = ActionSampleRecorder::default();
+        let handle = recorder.clone();
+        SampleTx::add_rule_with_hook(
+            "sample_trace_rule",
+            ruleset,
+            sample_pat,
+            |ctx, pat| {
+                let one = ctx.insert_trace_const(1);
+                let sum = ctx.insert_trace_add(pat.expr, one);
+                ctx.union(pat.expr, sum);
+            },
+            Box::new(recorder),
+        );
+
+        SampleTx::run_ruleset(ruleset, RunConfig::Once);
+
+        let events = handle.snapshot();
+        assert!(
+            events.iter().any(|event| {
+                matches!(
+                    event,
+                    ActionSampleEvent::Insert {
+                        effect_id: Some(effect_id),
+                        ..
+                    } if effect_id.starts_with("effect@")
+                )
+            }),
+            "{events:?}"
+        );
+        assert!(
+            events.iter().any(|event| {
+                matches!(
+                    event,
+                    ActionSampleEvent::Union {
+                        effect_id: Some(effect_id),
+                        ..
+                    } if effect_id.starts_with("effect@")
+                )
+            }),
+            "{events:?}"
+        );
+    }
+
+    #[test]
+    fn action_sample_recorder_emits_stable_event_ids_in_order() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        let root =
+            TraceRoot::<SampleTx>::new(&TraceAdd::new(&TraceConst::new(2), &TraceConst::new(3)));
+        root.commit();
+
+        let ruleset = SampleTx::new_ruleset("sample_trace_event_ids");
+        let recorder = ActionSampleRecorder::default();
+        let handle = recorder.clone();
+        SampleTx::add_rule_with_hook(
+            "sample_trace_event_ids",
+            ruleset,
+            sample_pat,
+            |ctx, pat| {
+                let one = ctx.insert_trace_const(1);
+                let sum = ctx.insert_trace_add(pat.expr, one);
+                ctx.union(pat.expr, sum);
+            },
+            Box::new(recorder),
+        );
+
+        SampleTx::run_ruleset(ruleset, RunConfig::Once);
+
+        let trace = handle.trace();
+        assert_eq!(trace.version, 1);
+        assert!(trace.events.len() >= 3);
+        assert!(matches!(
+            trace.events.first(),
+            Some(ActionSampleEvent::Insert { event_id, .. }) if event_id == "evt_0"
+        ));
+        assert!(matches!(
+            trace.events.get(1),
+            Some(ActionSampleEvent::Insert { event_id, .. }) if event_id == "evt_1"
+        ));
+        assert!(matches!(
+            trace.events.get(2),
+            Some(ActionSampleEvent::Union { event_id, .. }) if event_id == "evt_2"
+        ));
     }
 }
 

@@ -13,11 +13,15 @@ use egglog::{
     span,
 };
 use egglog_reports::RunReport;
+use serde::{Deserialize, Serialize};
 use std::cell::{RefCell, UnsafeCell};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::Deref;
+use std::panic::Location;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::sync::{Mutex, OnceLock};
 use wrap::Value;
 
 pub(crate) fn empty_premise_proofs() -> Arc<[egglog::Value]> {
@@ -27,6 +31,7 @@ pub(crate) fn empty_premise_proofs() -> Arc<[egglog::Value]> {
 
 thread_local! {
     pub(crate) static CURRENT_PREMISE_PROOFS: RefCell<Vec<Arc<[egglog::Value]>>> = RefCell::new(Vec::new());
+    static CURRENT_ACTION_EFFECT_ID: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
 pub(crate) struct PremiseProofScope;
@@ -76,6 +81,250 @@ pub trait RuleCtxHook {
     fn dyn_clone(&self) -> Box<dyn RuleCtxHook>;
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ActionSampleEvent {
+    Insert {
+        event_id: String,
+        effect_id: Option<String>,
+        table: String,
+        key_debug: Vec<String>,
+    },
+    Union {
+        event_id: String,
+        effect_id: Option<String>,
+        lhs_debug: String,
+        rhs_debug: String,
+    },
+    Subsume {
+        event_id: String,
+        effect_id: Option<String>,
+        table: String,
+        key_debug: Vec<String>,
+    },
+    Remove {
+        event_id: String,
+        effect_id: Option<String>,
+        table: String,
+        key_debug: Vec<String>,
+    },
+    DynamicUnknown {
+        event_id: String,
+        effect_id: Option<String>,
+        reason: String,
+    },
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActionSampleTrace {
+    pub version: u32,
+    pub events: Vec<ActionSampleEvent>,
+}
+
+#[derive(Debug, Default)]
+struct ActionSampleRecorderState {
+    next_event_id: u64,
+    trace: ActionSampleTrace,
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ActionSampleRecorder {
+    state: Arc<Mutex<ActionSampleRecorderState>>,
+}
+
+impl ActionSampleRecorder {
+    pub fn snapshot(&self) -> Vec<ActionSampleEvent> {
+        self.state.lock().unwrap().trace.events.clone()
+    }
+
+    pub fn trace(&self) -> ActionSampleTrace {
+        self.state.lock().unwrap().trace.clone()
+    }
+
+    fn push_event(&self, build: impl FnOnce(String, Option<String>) -> ActionSampleEvent) {
+        let mut state = self.state.lock().unwrap();
+        let event_id = format!("evt_{}", state.next_event_id);
+        state.next_event_id += 1;
+        let effect_id = current_action_effect_id();
+        state.trace.version = 1;
+        state.trace.events.push(build(event_id, effect_id));
+    }
+
+    pub fn record_dynamic_unknown(&self, reason: impl Into<String>) {
+        let reason = reason.into();
+        self.push_event(|event_id, effect_id| ActionSampleEvent::DynamicUnknown {
+            event_id,
+            effect_id,
+            reason,
+        });
+    }
+}
+
+impl RuleCtxHook for ActionSampleRecorder {
+    fn on_insert(&self, table: &str, key: &[egglog::Value]) {
+        let table = table.to_owned();
+        let key_debug = key.iter().map(|value| format!("{value:?}")).collect();
+        self.push_event(|event_id, effect_id| ActionSampleEvent::Insert {
+            event_id,
+            effect_id,
+            table,
+            key_debug,
+        });
+    }
+
+    fn on_union(&self, x: egglog::Value, y: egglog::Value) {
+        let lhs_debug = format!("{x:?}");
+        let rhs_debug = format!("{y:?}");
+        self.push_event(|event_id, effect_id| ActionSampleEvent::Union {
+            event_id,
+            effect_id,
+            lhs_debug,
+            rhs_debug,
+        });
+    }
+
+    fn on_subsume(&self, table: &str, key: &[egglog::Value]) {
+        let table = table.to_owned();
+        let key_debug = key.iter().map(|value| format!("{value:?}")).collect();
+        self.push_event(|event_id, effect_id| ActionSampleEvent::Subsume {
+            event_id,
+            effect_id,
+            table,
+            key_debug,
+        });
+    }
+
+    fn on_remove(&self, table: &str, key: &[egglog::Value]) {
+        let table = table.to_owned();
+        let key_debug = key.iter().map(|value| format!("{value:?}")).collect();
+        self.push_event(|event_id, effect_id| ActionSampleEvent::Remove {
+            event_id,
+            effect_id,
+            table,
+            key_debug,
+        });
+    }
+
+    fn dyn_clone(&self) -> Box<dyn RuleCtxHook> {
+        Box::new(self.clone())
+    }
+}
+
+pub struct ActionEffectScope {
+    previous: Option<String>,
+}
+
+impl ActionEffectScope {
+    pub fn enter(location: &'static Location<'static>) -> Self {
+        let next = resolve_action_effect_id(location);
+        let previous = CURRENT_ACTION_EFFECT_ID.with(|cell| cell.replace(next));
+        Self { previous }
+    }
+}
+
+impl Drop for ActionEffectScope {
+    fn drop(&mut self) {
+        CURRENT_ACTION_EFFECT_ID.with(|cell| {
+            let _ = cell.replace(self.previous.take());
+        });
+    }
+}
+
+pub fn current_action_effect_id() -> Option<String> {
+    CURRENT_ACTION_EFFECT_ID.with(|cell| cell.borrow().clone())
+}
+
+fn resolve_action_effect_id(location: &'static Location<'static>) -> Option<String> {
+    let fallback = format!(
+        "effect@caller:{}:{}:{}",
+        location.file(),
+        location.line(),
+        location.column()
+    );
+    let Some(cache) = load_source_cache(location.file()) else {
+        return Some(fallback);
+    };
+    let Some(start) = cache.offset_of(location.line() as usize, location.column() as usize) else {
+        return Some(fallback);
+    };
+    let end = scan_action_call_end(&cache.text, start).unwrap_or(start);
+    Some(format!("effect@{start}:{end}"))
+}
+
+#[derive(Clone)]
+struct SourceCache {
+    text: Arc<str>,
+    line_starts: Arc<[usize]>,
+}
+
+impl SourceCache {
+    fn offset_of(&self, line: usize, column: usize) -> Option<usize> {
+        let line_start = *self.line_starts.get(line.checked_sub(1)?)?;
+        Some(line_start + column.checked_sub(1)?)
+    }
+}
+
+fn load_source_cache(path: &str) -> Option<SourceCache> {
+    static CACHE: OnceLock<Mutex<HashMap<PathBuf, SourceCache>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    let path_buf = Path::new(path).to_path_buf();
+    if let Some(existing) = cache.lock().unwrap().get(&path_buf).cloned() {
+        return Some(existing);
+    }
+    let text = std::fs::read_to_string(&path_buf).ok()?;
+    let mut line_starts = vec![0usize];
+    for (idx, ch) in text.char_indices() {
+        if ch == '\n' {
+            line_starts.push(idx + 1);
+        }
+    }
+    let entry = SourceCache {
+        text: Arc::<str>::from(text),
+        line_starts: Arc::from(line_starts.into_boxed_slice()),
+    };
+    cache.lock().unwrap().insert(path_buf, entry.clone());
+    Some(entry)
+}
+
+fn scan_action_call_end(text: &str, start: usize) -> Option<usize> {
+    let slice = text.get(start..)?;
+    let mut depth = 0usize;
+    let mut opened = false;
+    let mut in_string = false;
+    let mut escape = false;
+    for (offset, ch) in slice.char_indices() {
+        if in_string {
+            if escape {
+                escape = false;
+                continue;
+            }
+            match ch {
+                '\\' => escape = true,
+                '"' => in_string = false,
+                _ => {}
+            }
+            continue;
+        }
+        match ch {
+            '"' => in_string = true,
+            '(' => {
+                depth += 1;
+                opened = true;
+            }
+            ')' => {
+                if depth == 0 {
+                    return None;
+                }
+                depth -= 1;
+                if opened && depth == 0 {
+                    return Some(start + offset + ch.len_utf8());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
 impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
     pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b, 'p>, hook: RuleHookObj) -> Self {
         Self {
@@ -116,11 +365,13 @@ impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
         self.ctx.insert_func_tbl(table, key);
     }
+    #[track_caller]
     pub fn union<T0: EgglogTy, T1: EgglogTy>(
         &self,
         x: impl Insertable<T0, MetaTy = PR::MetaTy>,
         y: impl Insertable<T1, MetaTy = PR::MetaTy>,
     ) {
+        let _effect_scope = ActionEffectScope::enter(Location::caller());
         PR::on_ctx_union(
             (
                 <T0::EnumVariantMarker as EgglogEnumVariantTy>::TY_NAME,
@@ -185,10 +436,13 @@ impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.lookup_expect(table, key)
     }
+    #[track_caller]
     pub fn lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
+        let _effect_scope = ActionEffectScope::enter(Location::caller());
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).lookup(table, key) }
     }
+    #[track_caller]
     pub fn lookup_expect(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.lookup(table, key).unwrap_or_else(|| {
             panic!(
@@ -199,7 +453,9 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
             )
         })
     }
+    #[track_caller]
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
+        let _effect_scope = ActionEffectScope::enter(Location::caller());
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
     }
@@ -227,11 +483,15 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
             });
         }
     }
+    #[track_caller]
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
+        let _effect_scope = ActionEffectScope::enter(Location::caller());
         self.hook.0.as_ref().map(|hook| hook.on_subsume(table, key));
         unsafe { (*self.rule_ctx.get()).subsume(table, key) }
     }
+    #[track_caller]
     pub fn remove(&self, table: &str, key: &[egglog::Value]) {
+        let _effect_scope = ActionEffectScope::enter(Location::caller());
         self.hook.0.as_ref().map(|hook| hook.on_remove(table, key));
         unsafe { (*self.rule_ctx.get()).remove(table, key) }
     }
