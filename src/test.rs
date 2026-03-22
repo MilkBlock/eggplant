@@ -2,8 +2,9 @@
 mod tests {
     use crate::{self as eggplant, artifact::ArtifactDslFieldKind, tx_rx_vt_pr};
     use eggplant::prelude::*;
-    use eggplant::wrap::EgglogEnumVariantTy;
-    use eggplant::wrap::{ActionSampleEvent, ActionSampleRecorder};
+    use eggplant::wrap::{
+        ActionSampleEvent, ActionSampleRecorder, EgglogEnumVariantTy, SchemaFieldKind,
+    };
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -164,7 +165,7 @@ mod tests {
     }
 
     #[test]
-    fn renaming_dsl_field_is_metadata_only_change() {
+    fn changing_dsl_metadata_is_metadata_only_change() {
         let mut artifact = {
             let egraph = MyTx::sgl().egraph.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
@@ -179,6 +180,9 @@ mod tests {
             .find(|variant| variant.owner_ty == "DisplayMath" && variant.variant_name == "MDiff")
             .unwrap();
         variant.fields[0].name = "renamed_x".to_string();
+        variant.display_template = Some("{renamed_x} :: {f}".to_string());
+        variant.typst_template = Some("pair({renamed_x}, {f})".to_string());
+        variant.precedence = 99;
 
         assert_eq!(
             runtime_before,
@@ -232,6 +236,98 @@ mod tests {
     }
 
     #[test]
+    fn schema_header_captures_variant_metadata() {
+        let header = ArtifactSchemaHeader::current();
+        let mdiff = header
+            .dsl
+            .variants
+            .iter()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+
+        assert_eq!(mdiff.field_names, vec!["x".to_string(), "f".to_string()]);
+        assert_eq!(
+            mdiff.field_kinds,
+            vec![SchemaFieldKind::Complex, SchemaFieldKind::Complex]
+        );
+        assert_eq!(mdiff.display_template.as_deref(), Some("{x} + {f}"));
+        assert_eq!(mdiff.typst_template.as_deref(), Some("diff({x}, {f})"));
+        assert_eq!(mdiff.precedence, 5);
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_load_allows_metadata_only_change() {
+        let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        let mdiff = envelope
+            .schema
+            .dsl
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+        mdiff.field_names = vec!["lhs".to_string(), "rhs".to_string()];
+        mdiff.display_template = Some("{lhs} :: {rhs}".to_string());
+        mdiff.typst_template = Some("pair({lhs}, {rhs})".to_string());
+        mdiff.precedence = 99;
+        envelope.schema.refresh_fingerprints();
+
+        let json = envelope.to_json_string().unwrap();
+        let loaded = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap();
+        assert_eq!(loaded.payload, "payload");
+        assert!(loaded.compatibility_with_current().continuation_allowed);
+        assert!(!loaded.compatibility_with_current().dsl.exact_match);
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_load_rejects_runtime_mismatch() {
+        let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        let mdiff = envelope
+            .schema
+            .dsl
+            .variants
+            .iter_mut()
+            .find(|variant| variant.name == "MDiff" && variant.output_sort == "DisplayMath")
+            .expect("MDiff variant should be present in DSL schema manifest");
+        mdiff.field_kinds[0] = SchemaFieldKind::Base;
+
+        let json = envelope.to_json_string().unwrap();
+        let err = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap_err();
+        assert!(format!("{err}").contains("dsl schema diff"));
+    }
+
+    #[test]
+    fn serialized_artifact_envelope_checked_json_load_rejects_format_version_mismatch() {
+        let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
+        envelope.schema.format_version += 1;
+
+        let json = envelope.to_json_string().unwrap();
+        let err = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap_err();
+        assert!(format!("{err}").contains("format mismatch"));
+    }
+
+    #[test]
+    fn artifact_format_version_mismatch_blocks_typed_continuation() {
+        let mut artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+        artifact.format_version += 1;
+
+        let report = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            compare_artifact_to_current(&artifact, &egraph)
+        };
+
+        assert!(!report.typed_continuation_allowed);
+        assert!(
+            report
+                .issues
+                .iter()
+                .any(|issue| issue.layer == ArtifactSchemaLayer::Artifact && issue.blocking)
+        );
+    }
+
+    #[test]
     fn persisted_snapshot_v1_exports_common_path_rows() {
         let root_a = Root::<MyTx>::new(&Const::new(7));
         let root_b = Root::<MyTx>::new(&Const::new(9));
@@ -247,7 +343,10 @@ mod tests {
             snapshot.format,
             EGGPLANT_PERSISTED_SNAPSHOT_FORMAT.to_string()
         );
-        assert_eq!(snapshot.snapshot_version, EGGPLANT_PERSISTED_SNAPSHOT_VERSION);
+        assert_eq!(
+            snapshot.snapshot_version,
+            EGGPLANT_PERSISTED_SNAPSHOT_VERSION
+        );
         assert_eq!(
             snapshot.profile,
             EGGPLANT_PERSISTED_SNAPSHOT_PROFILE.to_string()
@@ -320,6 +419,16 @@ mod tests {
     enum SampleRoot {
         TraceRoot { node: SampleExpr },
     }
+    inventory::submit! {
+        eggplant::wrap::Decl::EgglogFuncTy {
+            name: "manual-hidden-let-binding-func",
+            input: &["FuncS"],
+            output: "FuncE",
+            merge: None,
+            hidden: true,
+            let_binding: true,
+        }
+    }
     #[eggplant::func(output=FuncE)]
     struct MAccumQ {
         s: FuncS,
@@ -334,6 +443,23 @@ mod tests {
         let expr = SampleExpr::query_leaf();
         let _root = TraceRoot::query(&expr);
         SamplePatternVars::new(expr)
+    }
+
+    #[test]
+    fn serialized_artifact_captures_function_flags() {
+        let artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+        let func = artifact
+            .engine_schema
+            .functions
+            .iter()
+            .find(|func| func.name == "manual-hidden-let-binding-func")
+            .expect("manual-hidden-let-binding-func should be present in engine schema manifest");
+
+        assert!(func.hidden);
+        assert!(func.let_binding);
     }
 
     #[test]

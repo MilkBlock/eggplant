@@ -396,6 +396,8 @@ pub fn func(
                             input: &[ #(stringify!(#input_types)),*],
                             output: &(stringify!(#output)),
                             merge: #merge_decl,
+                            hidden: false,
+                            let_binding: false,
                         }
                     }
                 };
@@ -450,13 +452,43 @@ pub fn dsl(
             let constructors = data_enum
                 .variants
                 .iter()
-                .map(|variant| {
+                .map(|variant| -> syn::Result<TokenStream> {
                     let tys = variant2tys(&variant);
                     let (_variant_marker, variant_name) = variant2marker_name(variant);
                     let new_from_term_dyn_fn_name = format_ident!(
                         "new_{}_from_term_dyn",
                         variant_name.to_string().to_snake_case()
                     );
+                    let field_names = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            field
+                                .ident
+                                .as_ref()
+                                .expect("dsl variants require named fields")
+                        })
+                        .collect::<Vec<_>>();
+                    let field_kinds = variant
+                        .fields
+                        .iter()
+                        .map(
+                            |field| match BasicOrComplex::from(&field.ty.to_token_stream()) {
+                                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                                    quote!(#W::SchemaFieldKind::Base)
+                                }
+                                BasicOrComplex::UserDefinedContainerType => {
+                                    quote!(#W::SchemaFieldKind::Container)
+                                }
+                                BasicOrComplex::ComplexType => {
+                                    quote!(#W::SchemaFieldKind::Complex)
+                                }
+                            },
+                        )
+                        .collect::<Vec<_>>();
+                    let display_template = variant_display_template_tokens(variant)?;
+                    let typst_template = variant_typst_template_tokens(variant)?;
+                    let precedence = variant_precedence_tokens(variant)?;
                     // Parse cost attribute
                     let cost_value = variant
                         .attrs
@@ -471,16 +503,25 @@ pub fn dsl(
                         .map(|v| quote! { Some(#v) })
                         .unwrap_or(quote! { None });
 
-                    quote! {  #W::TyConstructor {
+                    Ok(quote! {  #W::TyConstructor {
                         cons_name: stringify!(#variant_name),
                         input:&[ #(stringify!(#tys)),* ] ,
+                        input_field_names: &[ #(stringify!(#field_names)),* ],
+                        input_field_kinds: &[ #(#field_kinds),* ],
                         output:stringify!(#name),
                         cost :#cost_value,
+                        display_template: #display_template,
+                        typst_template: #typst_template,
+                        precedence: #precedence,
                         term_to_node: #name::<(),()>::#new_from_term_dyn_fn_name,
                         unextractable :false,
-                    } }
+                    } })
                 })
-                .collect::<Vec<_>>();
+                .collect::<syn::Result<Vec<_>>>();
+            let constructors = match constructors {
+                Ok(v) => v,
+                Err(err) => return err.to_compile_error().into(),
+            };
             let expanded = quote! {
                 impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
                     const TY_NAME:&'static str = stringify!(#name);

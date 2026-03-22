@@ -2,6 +2,7 @@ pub mod artifact;
 mod butler_portugal;
 pub mod instances;
 pub mod prelude;
+pub mod schema;
 mod test;
 pub mod wrap;
 
