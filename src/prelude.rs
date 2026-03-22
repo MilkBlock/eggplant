@@ -1,3 +1,19 @@
+pub use crate::artifact::{
+    ArtifactChangeKind, ArtifactCompatibilityIssue, ArtifactCompatibilityReport,
+    ArtifactSchemaLayer, DslSchemaManifest, EGGPLANT_ARTIFACT_FORMAT_VERSION,
+    EGGPLANT_DSL_MACRO_REV, EGGPLANT_PERSISTED_SNAPSHOT_FORMAT,
+    EGGPLANT_PERSISTED_SNAPSHOT_PROFILE, EGGPLANT_PERSISTED_SNAPSHOT_VERSION,
+    EngineSchemaManifest, PersistedSnapshot, PersistedSnapshotDiagnostic,
+    PersistedSnapshotDictionary, PersistedSnapshotFact, PersistedSnapshotFunctionDecl,
+    PersistedSnapshotFunctionRow, PersistedSnapshotLiteralValue, PersistedSnapshotProducer,
+    PersistedSnapshotRestoreMapping, PersistedSnapshotRulesetDecl, PersistedSnapshotRun,
+    PersistedSnapshotSchema, PersistedSnapshotSortDecl, PersistedSnapshotSortKind,
+    PersistedSnapshotState, PersistedSnapshotUnion, PersistedSnapshotValue,
+    PersistedSnapshotValueId, SerializedEggplantArtifact, build_persisted_snapshot_v1,
+    build_serialized_eggplant_artifact, compare_artifact_to_current,
+    current_dsl_schema_manifest, current_engine_schema_manifest, dsl_metadata_fingerprint,
+    dsl_runtime_fingerprint, engine_schema_fingerprint,
+};
 pub use crate::instances::pat_rec::*;
 pub use crate::instances::tx::*;
 pub use crate::instances::tx_minimal::*;

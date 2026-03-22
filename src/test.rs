@@ -231,6 +231,78 @@ mod tests {
         );
     }
 
+    #[test]
+    fn persisted_snapshot_v1_exports_common_path_rows() {
+        let root_a = Root::<MyTx>::new(&Const::new(7));
+        let root_b = Root::<MyTx>::new(&Const::new(9));
+        root_a.commit();
+        root_b.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        assert_eq!(
+            snapshot.format,
+            EGGPLANT_PERSISTED_SNAPSHOT_FORMAT.to_string()
+        );
+        assert_eq!(snapshot.snapshot_version, EGGPLANT_PERSISTED_SNAPSHOT_VERSION);
+        assert_eq!(
+            snapshot.profile,
+            EGGPLANT_PERSISTED_SNAPSHOT_PROFILE.to_string()
+        );
+        assert!(!snapshot.schema.sort_decls.is_empty());
+        assert!(!snapshot.schema.constructor_decls.is_empty());
+        assert!(!snapshot.state.function_rows.is_empty());
+        assert!(!snapshot.restore_mapping.value_ids.is_empty());
+        assert!(
+            snapshot
+                .diagnostics
+                .iter()
+                .any(|diag| diag.path.as_deref() == Some("state.unions"))
+        );
+        assert!(
+            snapshot
+                .diagnostics
+                .iter()
+                .any(|diag| diag.path.as_deref() == Some("state.runs"))
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_keeps_base_literals_and_logical_refs_separate() {
+        let root = Root::<MyTx>::new(&Const::new(11));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        let const_decl = snapshot
+            .schema
+            .constructor_decls
+            .iter()
+            .find(|decl| decl.name == "Const")
+            .unwrap();
+        let const_row = snapshot
+            .state
+            .function_rows
+            .iter()
+            .find(|row| row.op_id == const_decl.op_id)
+            .unwrap();
+
+        assert!(matches!(
+            const_row.inputs.first().unwrap(),
+            PersistedSnapshotValue::Lit { .. }
+        ));
+        assert!(matches!(
+            const_row.output,
+            PersistedSnapshotValue::Ref { .. }
+        ));
+    }
+
     #[eggplant::dsl]
     enum FuncS {
         SConst { n: i64 },

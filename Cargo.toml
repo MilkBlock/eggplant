@@ -42,6 +42,7 @@ serde_json.workspace = true
 itertools.workspace = true
 crossbeam.workspace = true
 indexmap.workspace = true
+sha2 = "0.10"
 
 [dev-dependencies]
 divan = { package = "codspeed-divan-compat", version = "4.4.1" }
