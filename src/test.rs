@@ -2,7 +2,9 @@
 mod tests {
     use crate::{self as eggplant, schema::ArtifactSchemaHeader, tx_rx_vt_pr};
     use eggplant::prelude::*;
-    use eggplant::wrap::{EgglogEnumVariantTy, SchemaFieldKind};
+    use eggplant::wrap::{
+        ActionSampleEvent, ActionSampleRecorder, EgglogEnumVariantTy, SchemaFieldKind,
+    };
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -349,9 +351,29 @@ mod tests {
             let_binding: true,
         }
     }
+    #[eggplant::dsl]
+    enum SampleExpr {
+        TraceConst { n: i64 },
+        TraceAdd { lhs: SampleExpr, rhs: SampleExpr },
+    }
+    #[eggplant::dsl]
+    enum SampleRoot {
+        TraceRoot { node: SampleExpr },
+    }
     #[eggplant::func(output=FuncE)]
     struct MAccumQ {
         s: FuncS,
+    }
+    tx_rx_vt_pr!(SampleTx, SamplePatRec);
+
+    #[eggplant::pat_vars]
+    struct SamplePatternVars<PR: PatRecSgl> {
+        expr: SampleExpr<PR>,
+    }
+    fn sample_pat<PR: PatRecSgl>() -> SamplePatternVars<PR> {
+        let expr = SampleExpr::query_leaf();
+        let _root = TraceRoot::query(&expr);
+        SamplePatternVars::new(expr)
     }
 
     #[test]
