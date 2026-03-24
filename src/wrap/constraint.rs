@@ -17,8 +17,8 @@ pub trait IntoConstraintFact: 'static + std::fmt::Debug {
 /// predicate), so they appear in egglog `check` as a bare call, not an equality to `true`.
 #[derive(derive_more::Debug, Clone)]
 pub struct FactCallConstraint {
-    op: &'static str,
-    operands: Vec<HandleTy>,
+    pub op: &'static str,
+    pub operands: Vec<HandleTy>,
 }
 
 impl IntoConstraintFact for FactCallConstraint {
@@ -438,12 +438,6 @@ pub fn prim_call<Out: EgglogTy>(
     }
 }
 
-/// Build a primitive fact-call constraint to be used in patterns.
-#[track_caller]
-pub fn prim_fact(op: &'static str, operands: Vec<HandleTy>) -> FactCallConstraint {
-    FactCallConstraint { op, operands }
-}
-
 #[track_caller]
 pub fn vec_empty<VecTy>() -> HandleToConstrain<VecTy>
 where
@@ -569,13 +563,13 @@ where
         &self,
         elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
     ) -> FactCallConstraint {
-        prim_fact(
-            "vec-contains",
-            vec![
+        FactCallConstraint {
+            op: "vec-contains",
+            operands: vec![
                 self.as_handle().into_handle_ty(),
                 elem.as_handle().into_handle_ty(),
             ],
-        )
+        }
     }
 
     #[track_caller]
@@ -583,13 +577,13 @@ where
         &self,
         elem: impl AsHandle<Target = <Self::Target as EgglogContainerTy>::EleTy>,
     ) -> FactCallConstraint {
-        prim_fact(
-            "vec-not-contains",
-            vec![
+        FactCallConstraint {
+            op: "vec-not-contains",
+            operands: vec![
                 self.as_handle().into_handle_ty(),
                 elem.as_handle().into_handle_ty(),
             ],
-        )
+        }
     }
 }
 

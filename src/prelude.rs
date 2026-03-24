@@ -28,8 +28,8 @@ pub use crate::schema::{
 #[cfg(feature = "viewer")]
 pub use crate::wrap::EGraphViewSgl;
 pub use crate::wrap::constraint::{
-    Compare, IntoHandleTy, SetExprExt, VecExprExt, prim_call, prim_fact, set_empty, set_of,
-    vec_empty, vec_of,
+    Compare, IntoHandleTy, SetExprExt, VecExprExt, prim_call, set_empty, set_of, vec_empty,
+    vec_of,
 };
 pub use crate::wrap::sorts::set::SetContainer;
 pub use crate::wrap::sorts::vec::VecContainer;
