@@ -68,6 +68,25 @@ mod tests {
         MyPatternVars::new(expr_var)
     }
 
+    #[eggplant::relation]
+    struct RelEdge {
+        src: i64,
+        dst: i64,
+    }
+
+    #[eggplant::relation]
+    struct RelPath {
+        src: i64,
+        dst: i64,
+    }
+
+    #[allow(non_camel_case_types)]
+    #[eggplant::func(output = bool, no_merge)]
+    struct rel_path_mark {
+        src: i64,
+        dst: i64,
+    }
+
     #[test]
     fn pattern_test() {
         env_logger::init();
@@ -84,6 +103,175 @@ mod tests {
         });
         MyTx::run_ruleset(ruleset, RunConfig::Once);
         assert_eq!(*executed.lock().unwrap(), true);
+    }
+
+    #[test]
+    fn typed_relation_api_supports_seed_query_and_action_insert() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        tx_rx_vt_pr!(RelTx, RelPatRec);
+
+        RelEdge::<RelTx>::insert(1, 2);
+        RelEdge::<RelTx>::insert(2, 3);
+
+        let ruleset = RelTx::new_ruleset("typed_relation_path");
+        RelTx::add_rule(
+            "seed_path",
+            ruleset,
+            || {
+                let edge = RelEdge::query();
+                #[eggplant::pat_vars_catch]
+                struct Pat {
+                    edge: RelEdge,
+                }
+            },
+            |ctx, pat| {
+                let src = ctx.devalue(pat.edge.src);
+                let dst = ctx.devalue(pat.edge.dst);
+                ctx.insert_rel_path(src, dst);
+                ctx.set_rel_path_mark(src, dst, true);
+            },
+        );
+        RelTx::add_rule(
+            "extend_path",
+            ruleset,
+            || {
+                let path = RelPath::query();
+                let edge = RelEdge::query();
+                let join = path.handle_dst().eq(&edge.handle_src());
+                #[eggplant::pat_vars]
+                struct Pat {
+                    path: RelPath,
+                    edge: RelEdge,
+                }
+                Pat::new(path, edge).assert(join)
+            },
+            |ctx, pat| {
+                let src = ctx.devalue(pat.path.src);
+                let dst = ctx.devalue(pat.edge.dst);
+                ctx.insert_rel_path(src, dst);
+                ctx.set_rel_path_mark(src, dst, true);
+            },
+        );
+
+        let report = RelTx::run_ruleset(ruleset, RunConfig::Sat);
+
+        assert!(
+            report
+                .num_matches_per_rule
+                .get("@seed_path")
+                .copied()
+                .unwrap_or(0)
+                > 0
+        );
+        assert!(
+            report
+                .num_matches_per_rule
+                .get("@extend_path")
+                .copied()
+                .unwrap_or(0)
+                > 0
+        );
+        assert_eq!(rel_path_mark::<RelTx>::get((&1, &2)), true);
+        assert_eq!(rel_path_mark::<RelTx>::get((&1, &3)), true);
+    }
+
+    #[allow(non_camel_case_types)]
+    #[eggplant::func(output = bool, no_merge)]
+    struct rel_query_fields_mark {
+        src: i64,
+        dst: i64,
+    }
+
+    #[allow(non_camel_case_types)]
+    #[eggplant::func(output = bool, no_merge)]
+    struct rel_handle_sugar_mark {
+        src: i64,
+        dst: i64,
+    }
+
+    #[test]
+    fn typed_relation_query_fields_preserves_lower_level_tuple_binding() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        tx_rx_vt_pr!(RelQueryFieldsTx, RelQueryFieldsPatRec);
+
+        RelEdge::<RelQueryFieldsTx>::insert(5, 7);
+
+        let ruleset = RelQueryFieldsTx::new_ruleset("typed_relation_query_fields");
+        RelQueryFieldsTx::add_rule(
+            "mark_edge",
+            ruleset,
+            || {
+                let src = RelEdge::src().named("src");
+                let dst = RelEdge::dst().named("dst");
+                let edge = RelEdge::query_fields(&src, &dst);
+                #[eggplant::pat_vars_catch]
+                struct Pat {
+                    edge: RelEdge,
+                }
+            },
+            |ctx, pat| {
+                let src = ctx.devalue(pat.edge.src);
+                let dst = ctx.devalue(pat.edge.dst);
+                ctx.set_rel_query_fields_mark(src, dst, true);
+            },
+        );
+
+        let report = RelQueryFieldsTx::run_ruleset(ruleset, RunConfig::Sat);
+        assert_eq!(
+            report
+                .num_matches_per_rule
+                .get("@mark_edge")
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+        assert_eq!(
+            rel_query_fields_mark::<RelQueryFieldsTx>::get((&5, &7)),
+            true
+        );
+    }
+
+    #[test]
+    fn typed_relation_query_exposes_handle_field_sugar() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        tx_rx_vt_pr!(RelHandleTx, RelHandlePatRec);
+
+        RelEdge::<RelHandleTx>::insert(11, 13);
+        RelEdge::<RelHandleTx>::insert(17, 5);
+
+        let ruleset = RelHandleTx::new_ruleset("typed_relation_handle_sugar");
+        RelHandleTx::add_rule(
+            "mark_increasing_edge",
+            ruleset,
+            || {
+                let edge = RelEdge::query();
+                let increasing = edge.handle_src().lt(&edge.handle_dst());
+                #[eggplant::pat_vars]
+                struct Pat {
+                    edge: RelEdge,
+                }
+                Pat::new(edge).assert(increasing)
+            },
+            |ctx, pat| {
+                let src = ctx.devalue(pat.edge.src);
+                let dst = ctx.devalue(pat.edge.dst);
+                ctx.set_rel_handle_sugar_mark(src, dst, true);
+            },
+        );
+
+        let report = RelHandleTx::run_ruleset(ruleset, RunConfig::Sat);
+        assert_eq!(
+            report
+                .num_matches_per_rule
+                .get("@mark_increasing_edge")
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+        assert_eq!(rel_handle_sugar_mark::<RelHandleTx>::get((&11, &13)), true);
     }
 
     #[test]

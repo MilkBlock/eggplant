@@ -18,11 +18,19 @@ static BASE_VAR_COUNTER: AtomicU32 = AtomicU32::new(0);
 /// - constraints via [`BaseVar::handle`]
 ///
 /// The matched value is extracted as [`Value<T>`] in rule callbacks.
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct BaseVar<T: EgglogTy, PR = ()> {
     sym: Sym<T>,
     _p: PhantomData<PR>,
 }
+
+impl<T: EgglogTy, PR> Clone for BaseVar<T, PR> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<T: EgglogTy, PR> Copy for BaseVar<T, PR> {}
 
 impl<T: EgglogTy, PR> BaseVar<T, PR> {
     #[track_caller]

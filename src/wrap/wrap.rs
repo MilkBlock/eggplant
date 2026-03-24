@@ -2,8 +2,8 @@ use crate::prelude::slotted::{_FuncValueMeta, FuncName, FuncValueMeta};
 use crate::prelude::{SlotMeta, TxRxVT};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
-    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
-    SortName, SymLit, TableName, VarName,
+    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncInputsRef, EgglogFuncOutput, EgglogRelation,
+    EgglogTy, FactsBuilder, FromBase, SortName, SymLit, TableName, VarName,
 };
 use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl};
 use dashmap::DashMap;
@@ -70,6 +70,23 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     );
     #[track_caller]
+    fn on_relation_insert<'a, R: EgglogRelation>(
+        &self,
+        input: <R::Input as EgglogFuncInputs>::Ref<'a>,
+    ) {
+        let input_exprs = input
+            .as_evalues()
+            .iter()
+            .map(|value| (*value).get_egglog_expr())
+            .collect::<Vec<_>>();
+        self.send(TxCommand::NativeCommand {
+            command: Command::Action(GenericAction::Expr(
+                span!(),
+                GenericExpr::Call(span!(), R::REL_NAME.to_string(), input_exprs),
+            )),
+        });
+    }
+    #[track_caller]
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value;
 }
@@ -135,6 +152,8 @@ pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     );
+    #[track_caller]
+    fn on_relation_insert<'a, R: EgglogRelation>(input: <R::Input as EgglogFuncInputs>::Ref<'a>);
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(node1: &(impl EgglogNode + 'static)) -> egglog::Value;
 }
@@ -187,6 +206,10 @@ where
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
         Self::sgl().on_func_set::<F>(input, output);
+    }
+
+    fn on_relation_insert<'a, R: EgglogRelation>(input: <R::Input as EgglogFuncInputs>::Ref<'a>) {
+        Self::sgl().on_relation_insert::<R>(input);
     }
 
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
@@ -278,6 +301,10 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
         let _ = (query_table, vars);
     }
+    #[track_caller]
+    fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        let _ = (query_table, vars);
+    }
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
@@ -308,6 +335,8 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_new_constraint(constraint: impl IntoConstraintFact);
     #[track_caller]
     fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>);
+    #[track_caller]
+    fn on_new_relation_fact(query_table: TableName, vars: Vec<(VarName, SortName)>);
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
@@ -331,6 +360,9 @@ where
     }
     fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>) {
         Self::sgl().on_new_table_fact(query_table, vars);
+    }
+    fn on_new_relation_fact(query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        Self::sgl().on_new_relation_fact(query_table, vars);
     }
     fn on_record_start() {
         Self::sgl().on_record_start();

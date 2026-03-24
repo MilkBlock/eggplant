@@ -29,6 +29,13 @@ pub struct DslField {
     pub field_type: String,
 }
 
+/// Eggplant relation type definition
+#[derive(Debug, Clone, PartialEq)]
+pub struct RelationType {
+    pub name: String,
+    pub fields: Vec<DslField>,
+}
+
 /// Eggplant pattern variable definition
 #[derive(Debug, Clone, PartialEq)]
 pub struct PatternVars {
@@ -58,6 +65,8 @@ pub struct EggplantRule {
 pub enum EggplantCommand {
     /// Define a DSL type with #[eggplant::dsl]
     DslType(DslType),
+    /// Define a relation type with #[eggplant::relation]
+    RelationType(RelationType),
     /// Define pattern variables with #[eggplant::pat_vars]
     PatternVars(PatternVars),
     /// Define a rule with add_rule
@@ -78,6 +87,8 @@ pub enum EggplantCommand {
     Assert { expr: Expr, expected: Expr },
     /// Variable assignment
     Let { var: String, expr: Expr },
+    /// Relation seed insert
+    RelationInsert { relation: String, args: Vec<Expr> },
     /// Print statement
     Print { expr: Expr },
 }
@@ -160,6 +171,9 @@ impl EggplantCodeGenerator {
                     if !self.options.omit_datatype {
                         self.generate_rust_command_with_source(cmd_with_source);
                     }
+                }
+                EggplantCommand::RelationType(_) => {
+                    self.generate_rust_command_with_source(cmd_with_source);
                 }
                 _ => {}
             }
@@ -267,6 +281,20 @@ impl EggplantCodeGenerator {
                 self.add_line("}");
                 self.add_line("");
             }
+            EggplantCommand::RelationType(relation_type) => {
+                if !self.options.omit_head_annotation {
+                    self.add_line(&format!("// Relation '{}'", relation_type.name));
+                }
+                self.add_line("#[eggplant::relation]");
+                self.add_line(&format!("struct {} {{", relation_type.name));
+                self.indent();
+                for field in &relation_type.fields {
+                    self.add_line(&format!("{}: {},", field.name, field.field_type));
+                }
+                self.dedent();
+                self.add_line("}");
+                self.add_line("");
+            }
             EggplantCommand::PatternVars(pattern_vars) => {
                 // Display original egglog statement if available
                 if !self.options.omit_head_annotation {
@@ -359,6 +387,14 @@ impl EggplantCodeGenerator {
                     expr_str
                 ));
                 self.add_line(&format!("{}.commit();", var));
+            }
+            EggplantCommand::RelationInsert { relation, args } => {
+                let arg_str = args
+                    .iter()
+                    .map(|arg| self.expr_with_reference(arg))
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                self.add_line(&format!("{relation}::<MyTx>::insert({arg_str});"));
             }
             EggplantCommand::Print { expr } => {
                 self.add_line(&format!(
@@ -457,6 +493,7 @@ pub fn convert_to_eggplant_with_source_and_program(
 ) -> Vec<EggplantCommandWithSource> {
     let mut eggplant_commands = Vec::new();
     let mut dsl_types: HashMap<String, DslType> = HashMap::new();
+    let mut relation_types: HashMap<String, RelationType> = HashMap::new();
 
     // Extract original statements if program is provided
 
@@ -474,31 +511,50 @@ pub fn convert_to_eggplant_with_source_and_program(
 
     for command in commands {
         constructor_counter += 1;
-        if let Command::Constructor { name, schema, .. } = command {
-            // Extract the datatype/sort name from the schema output
-            let datatype_name = &schema.output;
+        match command {
+            Command::Constructor { name, schema, .. } => {
+                // Extract the datatype/sort name from the schema output
+                let datatype_name = &schema.output;
 
-            let dsl_variant = DslVariant {
-                name: normalize_identifier(name),
-                fields: schema
-                    .input
-                    .iter()
-                    .enumerate()
-                    .map(|(i, field_type)| DslField {
-                        name: format!("arg{}", i),
-                        field_type: normalize_identifier(field_type),
-                    })
-                    .collect(),
-                source_file: source_file.clone(),
-                source_line: Some(constructor_counter),
-            };
+                let dsl_variant = DslVariant {
+                    name: normalize_identifier(name),
+                    fields: schema
+                        .input
+                        .iter()
+                        .enumerate()
+                        .map(|(i, field_type)| DslField {
+                            name: format!("arg{}", i),
+                            field_type: normalize_identifier(field_type),
+                        })
+                        .collect(),
+                    source_file: source_file.clone(),
+                    source_line: Some(constructor_counter),
+                };
 
-            constructor_line_numbers.insert(name.clone(), constructor_counter);
+                constructor_line_numbers.insert(name.clone(), constructor_counter);
 
-            datatype_constructors
-                .entry(normalize_identifier(datatype_name))
-                .or_insert_with(Vec::new)
-                .push(dsl_variant);
+                datatype_constructors
+                    .entry(normalize_identifier(datatype_name))
+                    .or_insert_with(Vec::new)
+                    .push(dsl_variant);
+            }
+            Command::Relation { name, inputs, .. } => {
+                relation_types.insert(
+                    name.clone(),
+                    RelationType {
+                        name: normalize_identifier(name),
+                        fields: inputs
+                            .iter()
+                            .enumerate()
+                            .map(|(i, field_type)| DslField {
+                                name: format!("arg{}", i),
+                                field_type: normalize_identifier(field_type),
+                            })
+                            .collect(),
+                    },
+                );
+            }
+            _ => {}
         }
     }
 
@@ -598,6 +654,29 @@ pub fn convert_to_eggplant_with_source_and_program(
 
                 eggplant_commands.push(EggplantCommandWithSource {
                     command: EggplantCommand::Rule(rule),
+                    source_file: source_file.clone(),
+                    source_line: Some(span.line),
+                });
+            }
+            Command::Relation { span, name, inputs } => {
+                let relation_type =
+                    relation_types
+                        .get(name)
+                        .cloned()
+                        .unwrap_or_else(|| RelationType {
+                            name: normalize_identifier(name),
+                            fields: inputs
+                                .iter()
+                                .enumerate()
+                                .map(|(i, field_type)| DslField {
+                                    name: format!("arg{}", i),
+                                    field_type: normalize_identifier(field_type),
+                                })
+                                .collect(),
+                        });
+
+                eggplant_commands.push(EggplantCommandWithSource {
+                    command: EggplantCommand::RelationType(relation_type),
                     source_file: source_file.clone(),
                     source_line: Some(span.line),
                 });
@@ -721,8 +800,8 @@ pub fn convert_to_eggplant_with_source_and_program(
                 // Constructor commands are already handled above
                 // Skip duplicate processing
             }
-            Command::Action(action) => {
-                if let Action::Let(span, var, expr) = action {
+            Command::Action(action) => match action {
+                Action::Let(span, var, expr) => {
                     eggplant_commands.push(EggplantCommandWithSource {
                         command: EggplantCommand::Let {
                             var: normalize_identifier(var),
@@ -732,7 +811,20 @@ pub fn convert_to_eggplant_with_source_and_program(
                         source_line: Some(span.line),
                     });
                 }
-            }
+                Action::Expr(span, Expr::Call(_, relation, args))
+                    if relation_types.contains_key(relation) =>
+                {
+                    eggplant_commands.push(EggplantCommandWithSource {
+                        command: EggplantCommand::RelationInsert {
+                            relation: normalize_identifier(relation),
+                            args: args.clone(),
+                        },
+                        source_file: source_file.clone(),
+                        source_line: Some(span.line),
+                    });
+                }
+                _ => {}
+            },
             Command::Push(_) => {
                 eggplant_commands.push(EggplantCommandWithSource {
                     command: EggplantCommand::Commit("current_expr".to_string()),
@@ -1721,6 +1813,40 @@ mod tests {
             }
         });
         assert!(has_dsl_type);
+    }
+
+    #[test]
+    fn test_relation_conversion_and_codegen() {
+        let program = r#"
+            (relation Edge (i64 i64))
+            (Edge 1 2)
+        "#;
+
+        let mut parser = Parser::default();
+        let commands = parser.get_program_from_string(None, program).unwrap();
+        let eggplant_commands = convert_to_eggplant(&commands);
+
+        let has_relation_type = eggplant_commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                EggplantCommand::RelationType(RelationType { name, .. }) if name == "Edge"
+            )
+        });
+        assert!(has_relation_type);
+
+        let has_relation_insert = eggplant_commands.iter().any(|cmd| {
+            matches!(
+                cmd,
+                EggplantCommand::RelationInsert { relation, .. } if relation == "Edge"
+            )
+        });
+        assert!(has_relation_insert);
+
+        let rust = EggplantCodeGenerator::new()
+            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
+        assert!(rust.contains("#[eggplant::relation]"));
+        assert!(rust.contains("struct Edge {"));
+        assert!(rust.contains("Edge::<MyTx>::insert(1, 2);"));
     }
 }
 

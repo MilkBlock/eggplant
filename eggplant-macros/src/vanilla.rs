@@ -412,6 +412,524 @@ pub fn func(
     struct_def_expanded
 }
 
+pub fn relation(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+    let name_relation = &input.ident;
+    let vis = &input.vis;
+
+    let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+    };
+    if !attr_args.is_empty() {
+        return proc_macro::TokenStream::from(
+            Error::custom("`#[eggplant::relation]` does not currently accept arguments")
+                .write_errors(),
+        );
+    }
+
+    let data_struct = match &input.data {
+        Data::Struct(data_struct) => data_struct,
+        _ => {
+            return proc_macro::TokenStream::from(
+                Error::custom("`#[eggplant::relation]` only supports structs").write_errors(),
+            );
+        }
+    };
+
+    let field_idents = data_struct
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            field
+                .ident
+                .clone()
+                .unwrap_or_else(|| format_ident!("arg{i}"))
+        })
+        .collect::<Vec<_>>();
+    let input_types = data_struct
+        .fields
+        .iter()
+        .map(|field| field.ty.to_token_stream())
+        .collect::<Vec<_>>();
+    let input_types_with_generic = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| match BasicOrComplex::from(&ty.to_token_stream()) {
+            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => ty.to_token_stream(),
+            BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+                quote!(#ty<T,()>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_arg_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!(&#W::BaseVar<#ty, T>)
+            } else {
+                quote!(&dyn AsRef<#ty<T,()>>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_field_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!(#W::BaseVar<#ty, T>)
+            } else {
+                quote!(#ty<T,()>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let pat_field_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!(#W::BaseVar<#ty, PR>)
+            } else {
+                quote!(#ty<PR,()>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let valued_field_types = pat_field_types
+        .iter()
+        .map(|ty| quote!(<#ty as #W::PatVars<PR>>::Valued))
+        .collect::<Vec<_>>();
+    let insert_param_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                ty.to_token_stream()
+            } else {
+                quote!(&dyn AsRef<#ty<T,()>>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let insert_call_args = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                let ref_ident = format_ident!("{}_ref", ident);
+                quote!(#ref_ident)
+            } else {
+                quote!(#ident)
+            }
+        })
+        .collect::<Vec<_>>();
+    let insert_ref_bindings = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .filter_map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                let ref_ident = format_ident!("{}_ref", ident);
+                Some(quote!(let #ref_ident = &#ident;))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_field_inits = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!((*#ident).clone())
+            } else {
+                quote!(#ident.as_ref().clone())
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_default_field_inits = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .map(
+            |(ident, ty)| match BasicOrComplex::from(&ty.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    quote!(#W::BaseVar::<#ty, T>::query_named(stringify!(#ident)))
+                }
+                BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+                    quote!(<#ty<T,()>>::query_leaf())
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+    let input_var_sort_pairs = field_idents
+        .iter()
+        .zip(
+            data_struct
+                .fields
+                .iter()
+                .map(|field| &field.ty)
+                .zip(input_types_with_generic.iter()),
+        )
+        .map(|(ident, (ty_plain, ty_with_generic))| {
+            match BasicOrComplex::from(&ty_plain.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    quote! {
+                        (
+                            #ident.name(),
+                            <#ty_plain as #W::EgglogTy>::TY_NAME.to_string()
+                        )
+                    }
+                }
+                _ => quote! {
+                    (
+                        #ident.as_ref().cur_sym().to_string(),
+                        <#ty_with_generic as #W::EgglogTy>::TY_NAME.to_string()
+                    )
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_row_var_sort_pairs = field_idents
+        .iter()
+        .zip(
+            data_struct
+                .fields
+                .iter()
+                .map(|field| &field.ty)
+                .zip(input_types_with_generic.iter()),
+        )
+        .map(|(ident, (ty_plain, ty_with_generic))| {
+            match BasicOrComplex::from(&ty_plain.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    quote! {
+                        (
+                            row.#ident.name(),
+                            <#ty_plain as #W::EgglogTy>::TY_NAME.to_string()
+                        )
+                    }
+                }
+                _ => quote! {
+                    (
+                        row.#ident.as_ref().cur_sym().to_string(),
+                        <#ty_with_generic as #W::EgglogTy>::TY_NAME.to_string()
+                    )
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    let field_visibilities = data_struct
+        .fields
+        .iter()
+        .map(|field| field.vis.clone())
+        .collect::<Vec<_>>();
+    let valued_relation_ident = format_ident!("Valued{}", name_relation);
+    let field_query_helpers = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .filter_map(|(ident, ty)| {
+            Some(match BasicOrComplex::from(&ty.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    quote! {
+                        #[track_caller]
+                        pub fn #ident() -> #W::BaseVar<#ty, T> {
+                            #W::BaseVar::<#ty, T>::query_named(stringify!(#ident))
+                        }
+                    }
+                }
+                BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+                    quote! {
+                        #[track_caller]
+                        pub fn #ident() -> #ty<T,()> {
+                            <#ty<T,()>>::query_leaf()
+                        }
+                    }
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+    let field_handle_helpers = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .filter_map(
+            |(ident, ty)| match BasicOrComplex::from(&ty.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    let handle_fn_name = format_ident!("handle_{}", ident);
+                    Some(quote! {
+                        #[track_caller]
+                        pub fn #handle_fn_name(&self) -> #W::HandleToConstrain<#ty> {
+                            self.#ident.handle()
+                        }
+                    })
+                }
+                BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => None,
+            },
+        )
+        .collect::<Vec<_>>();
+
+    let mut relation_variant: syn::Variant = parse_quote! {
+        #name_relation {
+            #(#field_idents: #input_types),*
+        }
+    };
+    relation_variant.fields = data_struct.fields.clone();
+    let valued_ref_node_list = variant2valued_ref_node_list(&relation_variant);
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        &relation_variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!(#variant: #W::EgglogEnumVariantTy)
+            })
+        },
+    );
+    let insert_fn_name = format_ident!("insert_{}", name_relation.to_string().to_snake_case());
+    let ctx_trait_name = format_ident!("{}RuleCtx", name_relation);
+    let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_relation);
+    let ctx_trait_and_impl = quote! {
+        pub trait #ctx_trait_name {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*);
+        }
+        impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_,'_> {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*) {
+                use #W::{EgglogRelation, Insertable};
+                let key = [#(#field_idents.to_value(self).erase()),*];
+                self.insert_func_tbl(#name_relation::<()>::REL_NAME, &key);
+            }
+        }
+        pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*);
+        }
+        impl<PR: #W::PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,'_,PR> {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*) {
+                self.ctx.#insert_fn_name(#(#field_idents),*);
+            }
+        }
+    };
+
+    let decode_plan_defs = pat_field_types
+        .iter()
+        .map(|ty| quote!(<<#ty as #W::PatVars<PR>>::Valued as #W::DecodeWithPlanMetas<PR>>::DecodePlan))
+        .collect::<Vec<_>>();
+    let build_plan_calls = pat_field_types
+        .iter()
+        .map(|ty| {
+            quote!(
+                <<#ty as #W::PatVars<PR>>::Valued as #W::DecodeWithPlanMetas<PR>>::build_decode_plan(
+                    binding_slots,
+                    value_idx,
+                )
+            )
+        })
+        .collect::<Vec<_>>();
+    let decode_plan_indices = (0..field_idents.len())
+        .map(syn::Index::from)
+        .collect::<Vec<_>>();
+    let decode_field_calls = pat_field_types
+        .iter()
+        .zip(decode_plan_indices.iter())
+        .map(|(ty, idx)| {
+            quote!(
+                <<#ty as #W::PatVars<PR>>::Valued as #W::DecodeWithPlanMetas<PR>>::decode_with_plan(
+                    values,
+                    metas,
+                    meta_idx,
+                    &plan.#idx,
+                )
+            )
+        })
+        .collect::<Vec<_>>();
+    let from_plain_field_calls = pat_field_types
+        .iter()
+        .map(|ty| {
+            quote!(
+                <<#ty as #W::PatVars<PR>>::Valued as #W::FromPlainValues>::from_plain_values(values)
+            )
+        })
+        .collect::<Vec<_>>();
+    let from_indexed_field_calls = pat_field_types
+        .iter()
+        .map(|ty| {
+            quote!(
+                <<#ty as #W::PatVars<PR>>::Valued as #W::FromIndexedValues>::from_indexed_values(
+                    values,
+                    value_idx,
+                )
+            )
+        })
+        .collect::<Vec<_>>();
+
+    let expanded = quote! {
+        #[derive(Debug, Clone)]
+        #vis struct #name_relation<T: #W::NodeDropperSgl = ()> {
+            #(
+                #field_visibilities #field_idents: #query_field_types,
+            )*
+            #[doc(hidden)]
+            _p: std::marker::PhantomData<T>,
+        }
+
+        #[derive(Debug)]
+        #vis struct #valued_relation_ident<PR: #W::PatRecSgl> {
+            #(
+                #field_visibilities #field_idents: #valued_field_types,
+            )*
+            #[doc(hidden)]
+            _p: std::marker::PhantomData<PR>,
+        }
+
+        impl<T: #W::NodeDropperSgl> #name_relation<T> {
+            fn new(#(#field_idents: #query_field_types),*) -> Self {
+                Self {
+                    #(#field_idents,)*
+                    _p: std::marker::PhantomData,
+                }
+            }
+        }
+
+        impl<T: #W::NodeDropperSgl> #W::VarsCollector for #name_relation<T> {
+            fn collect_vars(&self, vars: &mut Vec<(#W::VarName, #W::SortName)>) {
+                #(self.#field_idents.collect_vars(vars);)*
+            }
+        }
+
+        impl<T: #W::NodeDropperSgl> #W::BindingNames for #name_relation<T> {
+            fn collect_binding_names(&self, names: &mut Vec<#W::VarName>) {
+                #(self.#field_idents.collect_binding_names(names);)*
+            }
+        }
+
+        impl<T: #W::NodeDropperSgl> #W::ToStrArcSort for #name_relation<T> {
+            fn to_str_arcsort(&self, egraph: &#E::EGraph) -> Vec<(#W::VarName, #E::ArcSort)> {
+                let mut v = Vec::new();
+                #(v.extend(self.#field_idents.to_str_arcsort(egraph));)*
+                v
+            }
+        }
+
+        impl<PR: #W::PatRecSgl> #W::PatVars<PR> for #name_relation<PR> {
+            type Valued = #valued_relation_ident<PR>;
+
+            fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
+                use #W::PatVars;
+                std::iter::empty::<PR::MetaTy>()
+                    #(.chain(self.#field_idents.metas_iter()))*
+            }
+        }
+
+        impl<PR: #W::PatRecSgl> #W::FromPlainValues for #valued_relation_ident<PR> {
+            fn from_plain_values(values: &mut impl Iterator<Item = #E::Value>) -> Self {
+                Self {
+                    #(#field_idents: #from_plain_field_calls,)*
+                    _p: std::marker::PhantomData,
+                }
+            }
+        }
+
+        impl<PR: #W::PatRecSgl> #W::FromIndexedValues for #valued_relation_ident<PR> {
+            fn from_indexed_values(values: &[#E::Value], value_idx: &mut usize) -> Self {
+                Self {
+                    #(#field_idents: #from_indexed_field_calls,)*
+                    _p: std::marker::PhantomData,
+                }
+            }
+        }
+
+        impl<PR: #W::PatRecSgl> #W::DecodeWithPlanMetas<PR> for #valued_relation_ident<PR> {
+            type DecodePlan = (
+                #(#decode_plan_defs,)*
+            );
+
+            fn build_decode_plan(
+                binding_slots: &[usize],
+                value_idx: &mut usize,
+            ) -> Self::DecodePlan {
+                (
+                    #(#build_plan_calls,)*
+                )
+            }
+
+            fn decode_with_plan(
+                values: &[#E::Value],
+                metas: &[PR::MetaTy],
+                meta_idx: &mut usize,
+                plan: &Self::DecodePlan,
+            ) -> Self {
+                Self {
+                    #(#field_idents: #decode_field_calls,)*
+                    _p: std::marker::PhantomData,
+                }
+            }
+        }
+
+        const _: () = {
+            use #INVE;
+
+            impl<T: #W::NodeDropperSgl> #W::EgglogRelation for #name_relation<T> {
+                type Input = (#(#input_types_with_generic),*);
+                const REL_NAME: &'static str = stringify!(#name_relation);
+            }
+
+            impl<T: #W::TxSgl> #name_relation<T> {
+                #[track_caller]
+                pub fn insert(#(#field_idents: #insert_param_types),*) {
+                    #(#insert_ref_bindings)*
+                    T::on_relation_insert::<#name_relation<T>>((#(#insert_call_args),*));
+                }
+            }
+
+            impl<T: #W::TxSgl + #W::PatRecSgl> #name_relation<T> {
+                #(#field_query_helpers)*
+                #(#field_handle_helpers)*
+
+                #[track_caller]
+                pub fn query() -> Self {
+                    use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                    let row = Self::new(#(#query_default_field_inits),*);
+                    let vars = vec![#(#query_row_var_sort_pairs),*];
+                    T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
+                    row
+                }
+
+                #[track_caller]
+                pub fn query_fields(#(#field_idents: #query_arg_types),*) -> Self {
+                    use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                    let row = Self::new(#(#query_field_inits),*);
+                    let vars = vec![#(#input_var_sort_pairs),*];
+                    T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
+                    row
+                }
+            }
+
+            #INVE::submit! {
+                #W::Decl::EgglogRelationTy {
+                    name: stringify!(#name_relation),
+                    input: &[#(stringify!(#input_types)),*],
+                }
+            }
+        };
+
+        #ctx_trait_and_impl
+    };
+
+    expanded.into()
+}
+
 pub fn dsl(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,

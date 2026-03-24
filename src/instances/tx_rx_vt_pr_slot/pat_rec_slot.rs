@@ -29,7 +29,7 @@ pub struct SlottedPatRecorder {
     #[debug(skip)]
     pub constraint_table: DashMap<PatId, Vec<Box<dyn IntoConstraintFact>>>,
     #[debug(skip)]
-    pub table_fact_table: DashMap<PatId, Vec<(TableName, Vec<(VarName, SortName)>)>>,
+    pub table_fact_table: DashMap<PatId, Vec<TableFactSpec>>,
     _registry: EgglogTypeRegistry,
     /// next_pat_id increment when on_record_end is called
     next_pat_id: AtomicU32,
@@ -332,7 +332,21 @@ impl PatRec for SlottedPatRecorder {
         self.table_fact_table
             .entry(self.current_pat_id())
             .or_default()
-            .push((query_table, vars));
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Function,
+            });
+    }
+    fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Relation,
+            });
     }
 
     fn on_record_start(&self) {
@@ -379,8 +393,15 @@ impl PatRec for SlottedPatRecorder {
         log::debug!("topo:{:?}", topo_syms);
 
         if let Some(table_facts) = self.table_fact_table.remove(&pat_id) {
-            for (table, vars) in table_facts.1 {
-                facts_builder.add_table_fact(table, vars);
+            for table_fact in table_facts.1 {
+                match table_fact.kind {
+                    TableFactKind::Function => {
+                        facts_builder.add_table_fact(table_fact.table, table_fact.vars);
+                    }
+                    TableFactKind::Relation => {
+                        facts_builder.add_relation_fact(table_fact.table, table_fact.vars);
+                    }
+                }
             }
         }
 

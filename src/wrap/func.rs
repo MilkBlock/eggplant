@@ -70,6 +70,11 @@ pub trait EgglogFunc {
     type Output: EgglogFuncOutput;
     const FUNC_NAME: &'static str;
 }
+
+pub trait EgglogRelation {
+    type Input: EgglogFuncInputs;
+    const REL_NAME: &'static str;
+}
 impl<T> EgglogFuncInput for T
 where
     T: EgglogNode + 'static,

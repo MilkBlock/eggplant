@@ -583,12 +583,25 @@ pub enum RunConfig {
 }
 
 pub struct FactsBuilder {
-    table_facts: Vec<(TableName, Vec<(VarName, SortName)>)>,
+    table_facts: Vec<TableFactSpec>,
     constraint_facts: Vec<Box<dyn IntoConstraintFact>>,
 }
 pub type TableName = String;
 pub type SortName = String;
 pub type VarName = String;
+#[derive(Clone, Debug)]
+pub enum TableFactKind {
+    Function,
+    Relation,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableFactSpec {
+    pub table: TableName,
+    pub vars: Vec<(VarName, SortName)>,
+    pub kind: TableFactKind,
+}
+
 impl FactsBuilder {
     pub fn new() -> Self {
         Self {
@@ -618,14 +631,26 @@ impl FactsBuilder {
     }
     /// procedural macro call this function to add atom
     pub fn add_table_fact(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
-        self.table_facts.push((query_table, vars));
+        self.table_facts.push(TableFactSpec {
+            table: query_table,
+            vars,
+            kind: TableFactKind::Function,
+        });
+    }
+
+    pub fn add_relation_fact(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_facts.push(TableFactSpec {
+            table: query_table,
+            vars,
+            kind: TableFactKind::Relation,
+        });
     }
 
     pub fn vars_with_sorts(&self) -> Vec<(VarName, SortName)> {
         let mut out = Vec::new();
         let mut seen: HashSet<&str> = HashSet::new();
-        for (_table, vars) in self.table_facts.iter() {
-            for (var, sort) in vars.iter() {
+        for fact in self.table_facts.iter() {
+            for (var, sort) in fact.vars.iter() {
                 if seen.insert(var.as_str()) {
                     out.push((var.clone(), sort.clone()));
                 }
@@ -635,7 +660,7 @@ impl FactsBuilder {
     }
 
     /// Build comparison constraint atom
-    fn build_table_fact(
+    fn build_function_fact(
         _egraph: &egglog::EGraph,
         table: TableName,
         vars: Vec<(VarName, SortName)>,
@@ -651,10 +676,32 @@ impl FactsBuilder {
         )
         .eq_var(output.0.clone())
     }
+
+    fn build_relation_fact(
+        _egraph: &egglog::EGraph,
+        table: TableName,
+        vars: Vec<(VarName, SortName)>,
+    ) -> Fact {
+        Fact::Fact(Expr::Call(
+            span!(),
+            table,
+            vars.into_iter()
+                .map(|(var_name, _sort_name)| Expr::Var(span!(), var_name))
+                .collect(),
+        ))
+    }
+
     pub fn build(self, egraph: &egglog::EGraph) -> Vec<Fact> {
         let mut v = Vec::new();
         for table_fact in self.table_facts {
-            v.push(Self::build_table_fact(egraph, table_fact.0, table_fact.1));
+            v.push(match table_fact.kind {
+                TableFactKind::Function => {
+                    Self::build_function_fact(egraph, table_fact.table, table_fact.vars)
+                }
+                TableFactKind::Relation => {
+                    Self::build_relation_fact(egraph, table_fact.table, table_fact.vars)
+                }
+            });
         }
         // Add constraints to the query
         for constraint_fact in self.constraint_facts {

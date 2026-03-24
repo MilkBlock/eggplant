@@ -674,10 +674,7 @@ pub struct PersistedSnapshot {
     pub diagnostics: Vec<PersistedSnapshotDiagnostic>,
 }
 
-pub fn build_persisted_snapshot_v1(
-    egraph: &EGraph,
-    config: SerializeConfig,
-) -> PersistedSnapshot {
+pub fn build_persisted_snapshot_v1(egraph: &EGraph, config: SerializeConfig) -> PersistedSnapshot {
     let engine_schema = current_engine_schema_manifest(egraph);
     let raw_rows = egraph.serialize_raw(config);
     let mut dictionary = PersistedSnapshotDictionary::default();
@@ -778,7 +775,8 @@ pub fn build_persisted_snapshot_v1(
 
     diagnostics.push(PersistedSnapshotDiagnostic {
         code: "unsupported-feature".to_string(),
-        message: "v1 exporter does not yet persist union history; state.unions is empty".to_string(),
+        message: "v1 exporter does not yet persist union history; state.unions is empty"
+            .to_string(),
         path: Some("state.unions".to_string()),
     });
     diagnostics.push(PersistedSnapshotDiagnostic {
