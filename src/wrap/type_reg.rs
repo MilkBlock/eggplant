@@ -153,6 +153,10 @@ pub enum Decl {
         hidden: bool,
         let_binding: bool,
     },
+    EgglogRelationTy {
+        name: &'static str,
+        input: &'static [&'static str],
+    },
     EgglogRule {
         name: &'static str,
         input: &'static [&'static str],
@@ -296,6 +300,13 @@ impl EgglogTypeRegistry {
                         }),
                         hidden: *hidden,
                         let_binding: *let_binding,
+                    });
+                }
+                Decl::EgglogRelationTy { name, input } => {
+                    commands.push(Command::Relation {
+                        span: span!(),
+                        name: name.to_string(),
+                        inputs: input.iter().map(|ty| Self::normalize_ty_name(ty)).collect(),
                     });
                 }
                 _ => {}

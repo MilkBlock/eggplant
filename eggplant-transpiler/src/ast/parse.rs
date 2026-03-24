@@ -267,6 +267,7 @@ impl Parser {
             "datatype" => self.parse_datatype()?,
             "datatype*" => self.parse_datatype_star()?,
             "constructor" => self.parse_constructor()?,
+            "relation" => self.parse_relation()?,
             "let" => self.parse_let()?,
             "birewrite" => self.parse_birewrite()?,
             "rewrite" => self.parse_rewrite()?,
@@ -277,8 +278,11 @@ impl Parser {
             "sort" => self.parse_sort()?,
             "ruleset" => self.parse_ruleset()?,
             _ => {
-                // For unsupported commands, create a simple action
-                let expr = self.parse_expr()?;
+                let mut args = Vec::new();
+                while self.peek_token() != Some(&Token::RParen(span())) {
+                    args.push(self.parse_expr()?);
+                }
+                let expr = Expr::Call(sp.clone(), command_name, args);
                 Command::Action(Action::Expr(sp, expr))
             }
         };
@@ -383,6 +387,29 @@ impl Parser {
                 .get(&":cost".to_string())
                 .cloned()
                 .map(|(s, _)| s.parse().unwrap()),
+        })
+    }
+
+    fn parse_relation(&mut self) -> Result<Command, ParseError> {
+        let (name, sp) = self.parse_symbol()?;
+        let mut inputs = Vec::new();
+
+        if self.peek_token() == Some(&Token::LParen(span())) {
+            self.expect_token(Token::LParen(span()))?;
+            while self.peek_token() != Some(&Token::RParen(span())) {
+                inputs.push(self.parse_symbol()?.0);
+            }
+            self.expect_token(Token::RParen(span()))?;
+        } else {
+            while self.peek_token() != Some(&Token::RParen(span())) {
+                inputs.push(self.parse_symbol()?.0);
+            }
+        }
+
+        Ok(Command::Relation {
+            span: sp,
+            name,
+            inputs,
         })
     }
 

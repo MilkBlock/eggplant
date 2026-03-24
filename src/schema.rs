@@ -385,6 +385,7 @@ pub fn current_engine_schema_manifest() -> EngineSchemaManifest {
                     let_binding,
                 });
             }
+            Decl::EgglogRelationTy { .. } => {}
             Decl::EgglogRule { .. } => {}
         }
     }
