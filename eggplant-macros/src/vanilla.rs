@@ -467,18 +467,6 @@ pub fn relation(
             }
         })
         .collect::<Vec<_>>();
-    let query_arg_types = data_struct
-        .fields
-        .iter()
-        .map(|field| &field.ty)
-        .map(|ty| {
-            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
-                quote!(&#W::BaseVar<#ty, T>)
-            } else {
-                quote!(&dyn AsRef<#ty<T,()>>)
-            }
-        })
-        .collect::<Vec<_>>();
     let query_field_types = data_struct
         .fields
         .iter()
@@ -543,17 +531,6 @@ pub fn relation(
             }
         })
         .collect::<Vec<_>>();
-    let query_field_inits = field_idents
-        .iter()
-        .zip(data_struct.fields.iter().map(|field| &field.ty))
-        .map(|(ident, ty)| {
-            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
-                quote!((*#ident).clone())
-            } else {
-                quote!(#ident.as_ref().clone())
-            }
-        })
-        .collect::<Vec<_>>();
     let query_default_field_inits = field_idents
         .iter()
         .zip(data_struct.fields.iter().map(|field| &field.ty))
@@ -568,31 +545,41 @@ pub fn relation(
             },
         )
         .collect::<Vec<_>>();
-    let input_var_sort_pairs = field_idents
+    let relation_has_complex_fields = data_struct
+        .fields
         .iter()
-        .zip(
-            data_struct
-                .fields
-                .iter()
-                .map(|field| &field.ty)
-                .zip(input_types_with_generic.iter()),
-        )
-        .map(|(ident, (ty_plain, ty_with_generic))| {
-            match BasicOrComplex::from(&ty_plain.to_token_stream()) {
-                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
-                    quote! {
-                        (
-                            #ident.name(),
-                            <#ty_plain as #W::EgglogTy>::TY_NAME.to_string()
-                        )
-                    }
-                }
-                _ => quote! {
-                    (
-                        #ident.as_ref().cur_sym().to_string(),
-                        <#ty_with_generic as #W::EgglogTy>::TY_NAME.to_string()
-                    )
-                },
+        .any(|field| !BasicOrComplex::from(&field.ty.to_token_stream()).is_basic());
+    let explicit_query_param_idents = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .filter_map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                None
+            } else {
+                Some(ident.clone())
+            }
+        })
+        .collect::<Vec<_>>();
+    let explicit_query_param_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .filter_map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                None
+            } else {
+                Some(quote!(&dyn AsRef<#ty<T,()>>))
+            }
+        })
+        .collect::<Vec<_>>();
+    let explicit_query_field_inits = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!(#W::BaseVar::<#ty, T>::query_named(stringify!(#ident)))
+            } else {
+                quote!(#ident.as_ref().clone())
             }
         })
         .collect::<Vec<_>>();
@@ -630,30 +617,6 @@ pub fn relation(
         .map(|field| field.vis.clone())
         .collect::<Vec<_>>();
     let valued_relation_ident = format_ident!("Valued{}", name_relation);
-    let field_query_helpers = field_idents
-        .iter()
-        .zip(data_struct.fields.iter().map(|field| &field.ty))
-        .filter_map(|(ident, ty)| {
-            Some(match BasicOrComplex::from(&ty.to_token_stream()) {
-                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
-                    quote! {
-                        #[track_caller]
-                        pub fn #ident() -> #W::BaseVar<#ty, T> {
-                            #W::BaseVar::<#ty, T>::query_named(stringify!(#ident))
-                        }
-                    }
-                }
-                BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
-                    quote! {
-                        #[track_caller]
-                        pub fn #ident() -> #ty<T,()> {
-                            <#ty<T,()>>::query_leaf()
-                        }
-                    }
-                }
-            })
-        })
-        .collect::<Vec<_>>();
     let field_handle_helpers = field_idents
         .iter()
         .zip(data_struct.fields.iter().map(|field| &field.ty))
@@ -773,6 +736,34 @@ pub fn relation(
             )
         })
         .collect::<Vec<_>>();
+    let metas_iter_chains = field_idents
+        .iter()
+        .zip(pat_field_types.iter())
+        .map(|(ident, ty)| quote!(.chain(<#ty as #W::PatVars<PR>>::metas_iter(&self.#ident))))
+        .collect::<Vec<_>>();
+    let relation_query_fn = if relation_has_complex_fields {
+        quote! {
+            #[track_caller]
+            pub fn query(#(#explicit_query_param_idents: #explicit_query_param_types),*) -> Self {
+                use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                let row = Self::new(#(#explicit_query_field_inits),*);
+                let vars = vec![#(#query_row_var_sort_pairs),*];
+                T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
+                row
+            }
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            pub fn query() -> Self {
+                use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                let row = Self::new(#(#query_default_field_inits),*);
+                let vars = vec![#(#query_row_var_sort_pairs),*];
+                T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
+                row
+            }
+        }
+    };
 
     let expanded = quote! {
         #[derive(Debug, Clone)]
@@ -826,9 +817,8 @@ pub fn relation(
             type Valued = #valued_relation_ident<PR>;
 
             fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
-                use #W::PatVars;
                 std::iter::empty::<PR::MetaTy>()
-                    #(.chain(self.#field_idents.metas_iter()))*
+                    #(#metas_iter_chains)*
             }
         }
 
@@ -894,26 +884,8 @@ pub fn relation(
             }
 
             impl<T: #W::TxSgl + #W::PatRecSgl> #name_relation<T> {
-                #(#field_query_helpers)*
                 #(#field_handle_helpers)*
-
-                #[track_caller]
-                pub fn query() -> Self {
-                    use #W::{EgglogNode, EgglogTy, PatRecSgl};
-                    let row = Self::new(#(#query_default_field_inits),*);
-                    let vars = vec![#(#query_row_var_sort_pairs),*];
-                    T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
-                    row
-                }
-
-                #[track_caller]
-                pub fn query_fields(#(#field_idents: #query_arg_types),*) -> Self {
-                    use #W::{EgglogNode, EgglogTy, PatRecSgl};
-                    let row = Self::new(#(#query_field_inits),*);
-                    let vars = vec![#(#input_var_sort_pairs),*];
-                    T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
-                    row
-                }
+                #relation_query_fn
             }
 
             #INVE::submit! {
