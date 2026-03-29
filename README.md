@@ -250,6 +250,16 @@ The project includes several example files demonstrating different features of e
 
 - **`examples/base_ty_def.rs`**: Demonstrates the use of base types in DSL definitions. Shows how to define an operation type enum and use it in binary expressions with pattern matching.
 
+### Action Trace Example
+
+- **`examples/action_sample_trace_json.rs`**: Demonstrates how to attach `ActionSampleRecorder`, collect runtime action events, and write `ActionSampleTrace` to JSON.
+
+Run it with:
+
+```bash
+cargo run --example action_sample_trace_json -- /tmp/eggplant_action_sample_trace.json
+```
+
 ## Documentation
 
 To view documentation, run `cargo doc --open`.
@@ -257,6 +267,5 @@ To view documentation, run `cargo doc --open`.
 ## Contributing
 
 Welcome to submit issues! Hope you have fun!
-
 
 
