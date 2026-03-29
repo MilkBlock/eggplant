@@ -73,6 +73,14 @@ impl Clone for RuleHookObj {
     }
 }
 
+impl<'a, 'b, 'c, 'p, PR: PatRecSgl> Deref for PRRuleCtx<'a, 'b, 'c, 'p, PR> {
+    type Target = RuleCtx<'a, 'b, 'c, 'p>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.ctx
+    }
+}
+
 pub trait RuleCtxHook {
     fn on_insert(&self, table: &str, key: &[egglog::Value]);
     fn on_union(&self, x: egglog::Value, y: egglog::Value);
@@ -338,31 +346,31 @@ impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
     ) -> B::Output<'d> {
         self.ctx.devalue(val)
     }
-    pub fn intern_base<T: EgglogTy, B: BoxedBase>(&self, base: B) -> wrap::Value<T> {
+    fn _intern_base<T: EgglogTy, B: BoxedBase>(&self, base: B) -> wrap::Value<T> {
         self.ctx.intern_base(base)
     }
-    pub fn intern_container<T: EgglogContainerTy, C: BoxedContainer>(
+    fn _intern_container<T: EgglogContainerTy, C: BoxedContainer>(
         &self,
         container: C,
     ) -> wrap::Value<T> {
         self.ctx.intern_container(container)
     }
-    pub fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
+    fn _intern_base_raw_value<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
         self.ctx._intern_base::<T, B>(base)
     }
-    pub fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
+    fn _intern_container_raw_value<C: ContainerValue>(&self, container: C) -> egglog::Value {
         self.ctx._intern_container(container)
     }
-    pub fn insert(&self, table: &'static str, key: &[egglog::Value]) -> egglog::Value {
+    fn _insert(&self, table: &'static str, key: &[egglog::Value]) -> egglog::Value {
         self.ctx.insert(table, key)
     }
-    pub fn lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
+    fn _lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
         self.ctx.lookup(table, key)
     }
-    pub fn lookup_expect(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+    fn _lookup_expect(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.ctx.lookup_expect(table, key)
     }
-    pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
+    fn _insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
         self.ctx.insert_func_tbl(table, key);
     }
     #[track_caller]
@@ -427,10 +435,10 @@ impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
         let boxed_container = BoxedContainer::box_it(container, &self);
         wrap::Value::new(self._intern_container::<C::Boxed>(boxed_container))
     }
-    pub fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
+    fn _intern_base<T: EgglogTy, B: BaseValue>(&self, base: B) -> egglog::Value {
         unsafe { (*self.rule_ctx.get()).base_to_value(base) }
     }
-    pub fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
+    fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {

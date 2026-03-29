@@ -507,6 +507,13 @@ pub fn relation(
         .iter()
         .map(|ty| quote!(<#ty as #W::PatVars<PR>>::Valued))
         .collect::<Vec<_>>();
+    let metas_iter_chains = field_idents
+        .iter()
+        .zip(pat_field_types.iter())
+        .map(|(ident, ty)| {
+            quote!(.chain(<#ty as #W::PatVars<PR>>::metas_iter(&self.#ident)))
+        })
+        .collect::<Vec<_>>();
     let insert_param_types = data_struct
         .fields
         .iter()
@@ -826,9 +833,8 @@ pub fn relation(
             type Valued = #valued_relation_ident<PR>;
 
             fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
-                use #W::PatVars;
                 std::iter::empty::<PR::MetaTy>()
-                    #(.chain(self.#field_idents.metas_iter()))*
+                    #(#metas_iter_chains)*
             }
         }
 

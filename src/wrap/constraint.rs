@@ -17,8 +17,8 @@ pub trait IntoConstraintFact: 'static + std::fmt::Debug {
 /// predicate), so they appear in egglog `check` as a bare call, not an equality to `true`.
 #[derive(derive_more::Debug, Clone)]
 pub struct FactCallConstraint {
-    op: &'static str,
-    operands: Vec<HandleTy>,
+    pub op: &'static str,
+    pub operands: Vec<HandleTy>,
 }
 
 impl IntoConstraintFact for FactCallConstraint {

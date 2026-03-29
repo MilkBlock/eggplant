@@ -252,12 +252,12 @@ The project includes several example files demonstrating different features of e
 
 ### Action Trace Example
 
-- **`examples/action_sample_trace_json.rs`**: Demonstrates how to attach `ActionSampleRecorder`, collect runtime action events, and write `ActionSampleTrace` to JSON.
+- **`examples/action_sample_recorder.rs`**: Demonstrates how to attach `ActionSampleRecorder`, inspect captured runtime action events, and print the raw `ActionSampleTrace` JSON.
 
 Run it with:
 
 ```bash
-cargo run --example action_sample_trace_json -- /tmp/eggplant_action_sample_trace.json
+cargo run --example action_sample_recorder
 ```
 
 ## Documentation
@@ -267,5 +267,4 @@ To view documentation, run `cargo doc --open`.
 ## Contributing
 
 Welcome to submit issues! Hope you have fun!
-
 

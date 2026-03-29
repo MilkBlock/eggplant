@@ -3,6 +3,7 @@ mod butler_portugal;
 pub mod instances;
 pub mod prelude;
 pub mod schema;
+#[cfg(test)]
 mod test;
 pub mod wrap;
 
