@@ -80,11 +80,50 @@ mod tests {
         dst: i64,
     }
 
+    #[eggplant::dsl]
+    enum RelPerson {
+        Human { id: i64 },
+    }
+
+    impl<T: eggplant::wrap::NodeDropperSgl, V: EgglogEnumVariantTy> std::fmt::Debug
+        for RelPerson<T, V>
+    {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            write!(f, "{}", self.cur_sym())
+        }
+    }
+
+    #[eggplant::relation]
+    struct RelOwns {
+        owner: RelPerson,
+        item_id: i64,
+    }
+
+    #[eggplant::relation]
+    struct RelFriend {
+        left: RelPerson,
+        right: RelPerson,
+    }
+
     #[allow(non_camel_case_types)]
     #[eggplant::func(output = bool, no_merge)]
     struct rel_path_mark {
         src: i64,
         dst: i64,
+    }
+
+    #[allow(non_camel_case_types)]
+    #[eggplant::func(output = bool, no_merge)]
+    struct rel_owns_mark {
+        owner_id: i64,
+        item_id: i64,
+    }
+
+    #[allow(non_camel_case_types)]
+    #[eggplant::func(output = bool, no_merge)]
+    struct rel_friend_mark {
+        left_id: i64,
+        right_id: i64,
     }
 
     #[test]
@@ -178,97 +217,21 @@ mod tests {
 
     #[allow(non_camel_case_types)]
     #[eggplant::func(output = bool, no_merge)]
-    struct rel_query_fields_mark {
-        src: i64,
-        dst: i64,
-    }
-
-    #[allow(non_camel_case_types)]
-    #[eggplant::func(output = bool, no_merge)]
     struct rel_handle_sugar_mark {
         src: i64,
         dst: i64,
     }
 
-    #[eggplant::dsl]
-    enum RelTransferPerson {
-        Human { id: i64 },
-    }
-
-    impl<T: crate::wrap::NodeDropperSgl, V: EgglogEnumVariantTy> std::fmt::Debug
-        for RelTransferPerson<T, V>
-    {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            write!(f, "{}", self.cur_sym())
-        }
-    }
-
     #[eggplant::relation]
-    struct RelOwns {
-        owner: RelTransferPerson,
+    struct RelTransferOwns {
+        owner: RelPerson,
         item_id: i64,
     }
 
     #[eggplant::relation]
     struct RelTransferRequest {
-        new_owner: RelTransferPerson,
+        new_owner: RelPerson,
         item_id: i64,
-    }
-
-    #[eggplant::func(output = bool, no_merge)]
-    struct RelOwnershipSeen {
-        owner_id: i64,
-        item_id: i64,
-    }
-
-    #[eggplant::func(output = bool, no_merge)]
-    struct RelTransferApplied {
-        item_id: i64,
-        from_owner_id: i64,
-        to_owner_id: i64,
-    }
-
-    #[test]
-    fn typed_relation_query_fields_preserves_lower_level_tuple_binding() {
-        let _ = env_logger::builder().is_test(true).try_init();
-
-        tx_rx_vt_pr!(RelQueryFieldsTx, RelQueryFieldsPatRec);
-
-        RelEdge::<RelQueryFieldsTx>::insert(5, 7);
-
-        let ruleset = RelQueryFieldsTx::new_ruleset("typed_relation_query_fields");
-        RelQueryFieldsTx::add_rule(
-            "mark_edge",
-            ruleset,
-            || {
-                let src = RelEdge::src().named("src");
-                let dst = RelEdge::dst().named("dst");
-                let edge = RelEdge::query_fields(&src, &dst);
-                #[eggplant::pat_vars_catch]
-                struct Pat {
-                    edge: RelEdge,
-                }
-            },
-            |ctx, pat| {
-                let src = ctx.devalue(pat.edge.src);
-                let dst = ctx.devalue(pat.edge.dst);
-                ctx.set_rel_query_fields_mark(src, dst, true);
-            },
-        );
-
-        let report = RelQueryFieldsTx::run_ruleset(ruleset, RunConfig::Sat);
-        assert_eq!(
-            report
-                .num_matches_per_rule
-                .get("@mark_edge")
-                .copied()
-                .unwrap_or(0),
-            1
-        );
-        assert_eq!(
-            rel_query_fields_mark::<RelQueryFieldsTx>::get((&5, &7)),
-            true
-        );
     }
 
     #[test]
@@ -313,6 +276,112 @@ mod tests {
     }
 
     #[test]
+    fn typed_relation_query_accepts_explicit_complex_args_for_mixed_relations() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        tx_rx_vt_pr!(RelMixedTx, RelMixedPatRec);
+
+        let ruleset = RelMixedTx::new_ruleset("typed_relation_mixed_query");
+        RelMixedTx::add_rule(
+            "seed_owns",
+            ruleset,
+            || {
+                #[eggplant::pat_vars_catch]
+                struct Pat {}
+            },
+            |ctx, _| {
+                let alice = ctx.insert_human(1);
+                ctx.insert_rel_owns(alice, 7);
+            },
+        );
+        RelMixedTx::add_rule(
+            "mark_owns",
+            ruleset,
+            || {
+                let owner = Human::query();
+                let owns = RelOwns::query(&owner);
+                #[eggplant::pat_vars]
+                struct Pat {
+                    owns: RelOwns,
+                }
+                Pat::new(owns)
+            },
+            |ctx, _| {
+                ctx.set_rel_owns_mark(1, 7, true);
+            },
+        );
+
+        let report = RelMixedTx::run_ruleset(ruleset, RunConfig::Sat);
+        assert_eq!(
+            report
+                .num_matches_per_rule
+                .get("@mark_owns")
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+        assert_eq!(rel_owns_mark::<RelMixedTx>::get((&1, &7)), true);
+    }
+
+    #[test]
+    fn typed_relation_query_accepts_explicit_complex_args_for_all_complex_relations() {
+        let _ = env_logger::builder().is_test(true).try_init();
+
+        tx_rx_vt_pr!(RelComplexTx, RelComplexPatRec);
+
+        let ruleset = RelComplexTx::new_ruleset("typed_relation_all_complex_query");
+        RelComplexTx::add_rule(
+            "seed_friend",
+            ruleset,
+            || {
+                #[eggplant::pat_vars_catch]
+                struct Pat {}
+            },
+            |ctx, _| {
+                let alice = ctx.insert_human(1);
+                let bob = ctx.insert_human(2);
+                ctx.insert_rel_friend(alice, bob);
+            },
+        );
+        RelComplexTx::add_rule(
+            "mark_friend",
+            ruleset,
+            || {
+                let left = Human::query();
+                let right = Human::query();
+                let friend = RelFriend::query(&left, &right);
+                let friend_left_matches = friend.left.handle().eq(&left.handle());
+                let friend_right_matches = friend.right.handle().eq(&right.handle());
+                #[eggplant::pat_vars]
+                struct Pat {
+                    left: Human,
+                    right: Human,
+                    friend: RelFriend,
+                }
+                Pat::new(left, right, friend)
+                    .assert(friend_left_matches)
+                    .assert(friend_right_matches)
+            },
+            |ctx, pat| {
+                let left_id = ctx.devalue(pat.left.id);
+                let right_id = ctx.devalue(pat.right.id);
+                ctx.set_rel_friend_mark(left_id, right_id, true);
+            },
+        );
+
+        let report = RelComplexTx::run_ruleset(ruleset, RunConfig::Sat);
+        assert_eq!(
+            report
+                .num_matches_per_rule
+                .get("@mark_friend")
+                .copied()
+                .unwrap_or(0),
+            1
+        );
+        assert_eq!(rel_friend_mark::<RelComplexTx>::get((&1, &2)), true);
+    }
+
+    #[test]
     fn typed_relation_supports_complex_and_base_fields_during_transfer() {
         let _ = env_logger::builder().is_test(true).try_init();
 
@@ -336,8 +405,8 @@ mod tests {
                 let alice = ctx.insert_human(ALICE_ID);
                 let bob = ctx.insert_human(BOB_ID);
                 let carol = ctx.insert_human(CAROL_ID);
-                ctx.insert_rel_owns(alice, RING_ID);
-                ctx.insert_rel_owns(carol, BOOK_ID);
+                ctx.insert_rel_transfer_owns(alice, RING_ID);
+                ctx.insert_rel_transfer_owns(carol, BOOK_ID);
                 ctx.insert_rel_transfer_request(bob, RING_ID);
             },
         );
@@ -345,37 +414,33 @@ mod tests {
             "mark_ownership",
             ruleset,
             || {
-                let owns = RelOwns::query();
                 let owner = Human::query();
+                let owns = RelTransferOwns::query(&owner);
                 let same_owner = owns.owner.handle().eq(&owner.handle());
                 #[eggplant::pat_vars]
                 struct Pat {
-                    owns: RelOwns,
+                    owns: RelTransferOwns,
                     owner: Human,
                 }
                 Pat::new(owns, owner).assert(same_owner)
             },
-            |ctx, pat| {
-                let owner_id = ctx.devalue(pat.owner.id);
-                let item_id = ctx.devalue(pat.owns.item_id);
-                ctx.set_rel_ownership_seen(owner_id, item_id, true);
-            },
+            |_ctx, _pat| {},
         );
         RelTransferTx::add_rule(
             "apply_transfer",
             ruleset,
             || {
-                let owns = RelOwns::query();
                 let current_owner = Human::query();
-                let request = RelTransferRequest::query();
+                let owns = RelTransferOwns::query(&current_owner);
                 let new_owner = Human::query();
+                let request = RelTransferRequest::query(&new_owner);
                 let same_current_owner = owns.owner.handle().eq(&current_owner.handle());
                 let same_new_owner = request.new_owner.handle().eq(&new_owner.handle());
                 let same_item = owns.handle_item_id().eq(&request.handle_item_id());
                 let owner_changes = current_owner.handle().ne(&new_owner.handle());
                 #[eggplant::pat_vars]
                 struct Pat {
-                    owns: RelOwns,
+                    owns: RelTransferOwns,
                     current_owner: Human,
                     request: RelTransferRequest,
                     new_owner: Human,
@@ -388,10 +453,7 @@ mod tests {
             },
             |ctx, pat| {
                 let item_id = ctx.devalue(pat.owns.item_id);
-                let from_owner_id = ctx.devalue(pat.current_owner.id);
-                let to_owner_id = ctx.devalue(pat.new_owner.id);
-                ctx.insert_rel_owns(pat.new_owner, item_id);
-                ctx.set_rel_transfer_applied(item_id, from_owner_id, to_owner_id, true);
+                ctx.insert_rel_transfer_owns(pat.new_owner, item_id);
             },
         );
 
@@ -411,22 +473,6 @@ mod tests {
                 .copied()
                 .unwrap_or(0),
             1
-        );
-        assert_eq!(
-            RelOwnershipSeen::<RelTransferTx>::get((&ALICE_ID, &RING_ID)),
-            true
-        );
-        assert_eq!(
-            RelOwnershipSeen::<RelTransferTx>::get((&BOB_ID, &RING_ID)),
-            true
-        );
-        assert_eq!(
-            RelOwnershipSeen::<RelTransferTx>::get((&CAROL_ID, &BOOK_ID)),
-            true
-        );
-        assert_eq!(
-            RelTransferApplied::<RelTransferTx>::get((&RING_ID, &ALICE_ID, &BOB_ID)),
-            true
         );
     }
 

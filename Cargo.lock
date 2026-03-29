@@ -1762,6 +1762,7 @@ dependencies = [
  "heck",
  "log",
  "ordered-float 4.6.0",
+ "syn 2.0.117",
  "tempfile",
  "walkdir",
 ]

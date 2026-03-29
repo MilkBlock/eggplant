@@ -113,6 +113,7 @@ pub enum GenericAction<Head, Leaf> {
         GenericExpr<Head, Leaf>,
     ),
     Union(Span, GenericExpr<Head, Leaf>, GenericExpr<Head, Leaf>),
+    Delete(Span, GenericExpr<Head, Leaf>),
     Expr(Span, GenericExpr<Head, Leaf>),
 }
 
@@ -124,7 +125,20 @@ impl<Head: Display, Leaf: Display> Display for GenericAction<Head, Leaf> {
                 write!(f, "(set ({} {}) {})", lhs, ListDisplay(args, " "), rhs)
             }
             GenericAction::Union(_ann, lhs, rhs) => write!(f, "(union {} {})", lhs, rhs),
+            GenericAction::Delete(_ann, expr) => write!(f, "(delete {})", expr),
             GenericAction::Expr(_ann, e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl<Head, Leaf> GenericAction<Head, Leaf> {
+    pub fn span(&self) -> &Span {
+        match self {
+            GenericAction::Let(span, _, _)
+            | GenericAction::Set(span, _, _, _)
+            | GenericAction::Union(span, _, _)
+            | GenericAction::Delete(span, _)
+            | GenericAction::Expr(span, _) => span,
         }
     }
 }
@@ -181,6 +195,51 @@ where
             "".into()
         };
         write!(f, ")\n{} {} {})", indent, ruleset, name)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum GenericSchedule<Head, Leaf> {
+    Run {
+        ruleset: Option<String>,
+        limit: Option<usize>,
+        until: Option<GenericFact<Head, Leaf>>,
+    },
+    Named(String),
+    Seq(Vec<Self>),
+    Saturate(Vec<Self>),
+    Repeat(usize, Box<Self>),
+}
+
+impl<Head: Display, Leaf: Display> Display for GenericSchedule<Head, Leaf> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GenericSchedule::Run {
+                ruleset,
+                limit,
+                until,
+            } => {
+                write!(f, "(run")?;
+                if let Some(ruleset) = ruleset {
+                    write!(f, " {ruleset}")?;
+                }
+                if let Some(limit) = limit {
+                    write!(f, " {limit}")?;
+                }
+                if let Some(until) = until {
+                    write!(f, " :until {until}")?;
+                }
+                write!(f, ")")
+            }
+            GenericSchedule::Named(name) => write!(f, "{name}"),
+            GenericSchedule::Seq(items) => write!(f, "(seq {})", ListDisplay(items, " ")),
+            GenericSchedule::Saturate(items) => {
+                write!(f, "(saturate {})", ListDisplay(items, " "))
+            }
+            GenericSchedule::Repeat(count, schedule) => {
+                write!(f, "(repeat {count} {schedule})")
+            }
+        }
     }
 }
 
@@ -252,9 +311,24 @@ pub enum GenericCommand<Head, Leaf> {
     BiRewrite(String, GenericRewrite<Head, Leaf>),
     Action(GenericAction<Head, Leaf>),
     Check(Span, Vec<GenericFact<Head, Leaf>>),
+    Run {
+        span: Span,
+        ruleset: Option<String>,
+        limit: Option<usize>,
+        until: Option<GenericFact<Head, Leaf>>,
+    },
+    RunSchedule {
+        span: Span,
+        schedules: Vec<GenericSchedule<Head, Leaf>>,
+    },
+    Extract {
+        span: Span,
+        expr: GenericExpr<Head, Leaf>,
+        variants: Option<usize>,
+    },
     Push(usize),
     Pop(Span, usize),
-    PrintFunction(Span, String, Option<usize>, Option<String>),
+    PrintFunction(Span, String, Option<usize>, Option<String>, Option<String>),
     Input {
         span: Span,
         name: String,
@@ -333,6 +407,38 @@ where
             GenericCommand::Check(_ann, facts) => {
                 write!(f, "(check {})", ListDisplay(facts, "\n"))
             }
+            GenericCommand::Run {
+                span: _,
+                ruleset,
+                limit,
+                until,
+            } => {
+                write!(f, "(run")?;
+                if let Some(ruleset) = ruleset {
+                    write!(f, " {ruleset}")?;
+                }
+                if let Some(limit) = limit {
+                    write!(f, " {limit}")?;
+                }
+                if let Some(until) = until {
+                    write!(f, " :until {until}")?;
+                }
+                write!(f, ")")
+            }
+            GenericCommand::RunSchedule { span: _, schedules } => {
+                write!(f, "(run-schedule {})", ListDisplay(schedules, " "))
+            }
+            GenericCommand::Extract {
+                span: _,
+                expr,
+                variants,
+            } => {
+                write!(f, "(extract {expr}")?;
+                if let Some(variants) = variants {
+                    write!(f, " {variants}")?;
+                }
+                write!(f, ")")
+            }
             GenericCommand::Push(n) => write!(f, "(push {n})"),
             GenericCommand::Pop(_span, n) => write!(f, "(pop {n})"),
             GenericCommand::Input {
@@ -347,7 +453,19 @@ where
             } => write!(f, "(output {file:?} {})", ListDisplay(exprs, " ")),
             GenericCommand::Fail(_span, cmd) => write!(f, "(fail {cmd})"),
             GenericCommand::Include(_span, file) => write!(f, "(include {file:?})"),
-            GenericCommand::PrintFunction(_span, _, _, _) => todo!(),
+            GenericCommand::PrintFunction(_span, name, size, file, mode) => {
+                write!(f, "(print-function {name}")?;
+                if let Some(size) = size {
+                    write!(f, " {size}")?;
+                }
+                if let Some(file) = file {
+                    write!(f, " :file {file:?}")?;
+                }
+                if let Some(mode) = mode {
+                    write!(f, " :mode {mode}")?;
+                }
+                write!(f, ")")
+            }
         }
     }
 }
@@ -364,6 +482,7 @@ pub type Expr = GenericExpr<String, String>;
 pub type Fact = GenericFact<String, String>;
 pub type Action = GenericAction<String, String>;
 pub type Rule = GenericRule<String, String>;
+pub type Schedule = GenericSchedule<String, String>;
 pub type Command = GenericCommand<String, String>;
 pub type Rewrite = GenericRewrite<String, String>;
 
