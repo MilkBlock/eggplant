@@ -22,6 +22,10 @@ pub fn func(
         /// Merge function name (e.g. `"new"` / `"old"`). Ignored if `no_merge=true`.
         #[darling(default)]
         merge: Option<syn::LitStr>,
+        #[darling(default)]
+        typst: Option<syn::LitStr>,
+        #[darling(default)]
+        precedence: Option<u16>,
         // sg: Ident,
     }
 
@@ -38,6 +42,12 @@ pub fn func(
     };
 
     let output = args.output.to_token_stream();
+    let typst_template = args
+        .typst
+        .as_ref()
+        .map(|value| quote!(Some(#value)))
+        .unwrap_or_else(|| quote!(None));
+    let precedence = args.precedence.unwrap_or(u16::MAX);
     let merge_decl = if args.no_merge {
         quote!(None)
     } else if let Some(merge) = args.merge.as_ref() {
@@ -390,17 +400,19 @@ pub fn func(
                         }
                     }
                     #query_impl
-                    #INVE::submit!{
-                        #W::Decl::EgglogFuncTy{
-                            name: stringify!(#name_func),
-                            input: &[ #(stringify!(#input_types)),*],
-                            output: &(stringify!(#output)),
-                            merge: #merge_decl,
-                            hidden: false,
-                            let_binding: false,
+                        #INVE::submit!{
+                            #W::Decl::EgglogFuncTy{
+                                name: stringify!(#name_func),
+                                input: &[ #(stringify!(#input_types)),*],
+                                output: &(stringify!(#output)),
+                                merge: #merge_decl,
+                                hidden: false,
+                                let_binding: false,
+                                typst_template: #typst_template,
+                                precedence: #precedence,
+                            }
                         }
-                    }
-                };
+                    };
                 #rule_ctx_trait_and_impl
             }
             .into()
@@ -420,16 +432,27 @@ pub fn relation(
     let name_relation = &input.ident;
     let vis = &input.vis;
 
+    #[derive(Debug, FromMeta)]
+    struct RelationMeta {
+        #[darling(default)]
+        typst: Option<syn::LitStr>,
+        #[darling(default)]
+        precedence: Option<u16>,
+    }
     let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
         Ok(v) => v,
         Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
     };
-    if !attr_args.is_empty() {
-        return proc_macro::TokenStream::from(
-            Error::custom("`#[eggplant::relation]` does not currently accept arguments")
-                .write_errors(),
-        );
-    }
+    let args = match RelationMeta::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(e.write_errors()),
+    };
+    let typst_template = args
+        .typst
+        .as_ref()
+        .map(|value| quote!(Some(#value)))
+        .unwrap_or_else(|| quote!(None));
+    let precedence = args.precedence.unwrap_or(u16::MAX);
 
     let data_struct = match &input.data {
         Data::Struct(data_struct) => data_struct,
@@ -897,6 +920,8 @@ pub fn relation(
                 #W::Decl::EgglogRelationTy {
                     name: stringify!(#name_relation),
                     input: &[#(stringify!(#input_types)),*],
+                    typst_template: #typst_template,
+                    precedence: #precedence,
                 }
             }
         };
@@ -2414,6 +2439,19 @@ pub fn dsl(
                             _p: std::marker::PhantomData::<Self>
                         }
                     }
+
+                    #[track_caller]
+                    pub fn timestamp(&self) -> #W::TimestampRangeConstraint<Self> {
+                        self.handle().timestamp()
+                    }
+                }
+
+                impl<T: #W::NodeDropperSgl + #W::PatRecSgl, V: #W::EgglogEnumVariantTy> #W::TimestampConstrainTarget for #name_node<T,V> {
+                    type TimestampTarget = Self;
+
+                    fn timestamp_constraint(&self) -> #W::TimestampRangeConstraint<Self::TimestampTarget> {
+                        self.timestamp()
+                    }
                 }
                 #rule_ctx_trait_and_impl
             };
@@ -2586,6 +2624,22 @@ pub fn pat_vars(
                     mutability: syn::FieldMutability::None,
                 });
             }
+            let timestamp_constraint_arg_types = field_types
+                .iter()
+                .map(|field_ty| {
+                    quote!(#W::TimestampRangeConstraint<<#field_ty as #W::TimestampConstrainTarget>::TimestampTarget>)
+                })
+                .collect::<Vec<_>>();
+            let timestamp_constraint_calls = field_idents
+                .iter()
+                .map(|field_ident| {
+                    quote!(#W::TimestampConstrainTarget::timestamp_constraint(&self.#field_ident))
+                })
+                .collect::<Vec<_>>();
+            let timestamp_constraint_where_bounds = field_types
+                .iter()
+                .map(|field_ty| quote!(#field_ty: #W::TimestampConstrainTarget))
+                .collect::<Vec<_>>();
             quote! {
                 #[derive(Debug)]
                 #valued_input_struct
@@ -2683,6 +2737,22 @@ pub fn pat_vars(
                         PR::on_new_constraint(constraint);
                         self
                     }
+
+                    fn timestamp<C>(
+                        self,
+                        constraint: impl FnOnce(
+                            #(#timestamp_constraint_arg_types),*
+                        ) -> C,
+                    ) -> Self
+                    where
+                        C: #W::IntoConstraintFact,
+                        #(#timestamp_constraint_where_bounds,)*
+                    {
+                        PR::on_new_constraint(
+                            constraint(#(#timestamp_constraint_calls),*)
+                        );
+                        self
+                    }
                 }
             }
         }
@@ -2721,7 +2791,11 @@ pub fn base_ty(
     let sort = format_ident!("{}Sort", ident);
     quote!(
         #input
-        #INVE::submit! { #W::UserBaseSort{ name: stringify!(#ident), sort_insert_fn: |e| egglog::prelude::add_base_sort(e, #sort, #E::span!()).unwrap() }}
+        #INVE::submit! { #W::UserBaseSort{
+            name: stringify!(#ident),
+            sort_insert_fn: |e| egglog::prelude::add_base_sort(e, #sort, #E::span!()).unwrap(),
+            persisted_snapshot_restore_hook: None,
+        }}
         impl #i_g std::fmt::Display for #ident #t_g #w_c{
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}", serde_json::to_string(&self).unwrap())

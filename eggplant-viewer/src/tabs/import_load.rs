@@ -210,8 +210,21 @@ impl EGraphApp {
         // (Web debug section removed)
     }
 
-    pub fn load_graph_from_str(&mut self, _name: &str, _data: &str) {
-        todo!()
+    pub fn load_graph_from_str(&mut self, name: &str, data: &str) {
+        match crate::artifact_import::load_artifact_graph_from_str(
+            data,
+            self.event_handler.dyn_clone(),
+        ) {
+            Ok(graph) => {
+                self.g = graph;
+                self.pending_layout = None;
+                self.status
+                    .push_success(format!("Loaded eggplant artifact graph from {name}"));
+            }
+            Err(err) => self.status.push_error(format!(
+                "Import currently expects eggplant serialized artifact JSON: {err}"
+            )),
+        }
     }
 }
 

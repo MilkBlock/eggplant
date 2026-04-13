@@ -774,11 +774,13 @@ pub fn ctx_insert_fn_ts_with_pr(
             fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 use #W::Value;
                 use #W::Insertable;
+                static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
                 let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
-                #W::Value::new(self.insert(
+                #W::Value::new(self.insert_cached(
                     <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,
+                    &FUNC_ID,
                     &key
                 ))
             }
@@ -795,17 +797,21 @@ pub fn ctx_insert_fn_ts_with_pr(
             #[allow(non_camel_case_types)]
             fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
                 use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
-                #(
-                    let #func_value_meta_field_idents =
-                        (#complex_generic_idents::TY_NAME,
-                            #complex_field_idents.to_value(&self.ctx).val,
-                            #complex_field_idents.meta());
-                )*
                 let __val = self.ctx.#insert_fn_name(#(#field_idents),*);
-                let __merged = PR::on_ctx_insert(
-                    vec![#(#func_value_meta_field_idents),*],
-                    (<#variant_marker as EgglogEnumVariantTy>::TY_NAME, __val.val )
-                );
+                let __merged = if std::mem::size_of::<PR::MetaTy>() == 0 {
+                    <PR::MetaTy as Default>::default()
+                } else {
+                    #(
+                        let #func_value_meta_field_idents =
+                            (#complex_generic_idents::TY_NAME,
+                                #complex_field_idents.to_value(&self.ctx).val,
+                                #complex_field_idents.meta());
+                    )*
+                    PR::on_ctx_insert(
+                        vec![#(#func_value_meta_field_idents),*],
+                        (<#variant_marker as EgglogEnumVariantTy>::TY_NAME, __val.val )
+                    )
+                };
                 (__val,__merged)
             }
         },
@@ -851,22 +857,20 @@ pub fn ctx_set_fn_ts(
     };
 
     (
-        quote! {
-            #[track_caller]
-            #[allow(non_camel_case_types)]
-            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty) {
-                use #W::EgglogFunc;
-                use #W::Value;
-                use #W::Insertable;
-                let key = [
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty) {
+                    use #W::EgglogFunc;
+                    use #W::Value;
+                    use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    let key = [
                         #(#field_idents.to_value(self).erase(),)* output.to_value(self).erase()
                     ];
-                self.insert_func_tbl(
-                    #func_name::<()>::FUNC_NAME,
-                    &key
-                );
-            }
-        },
+                    self.insert_func_tbl_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key);
+                }
+            },
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
@@ -926,10 +930,11 @@ pub fn ctx_read_fn_ts(
                 fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #output {
                     use #W::EgglogFunc;
                     use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
-                    let out = self.lookup_expect(#func_name::<()>::FUNC_NAME, &key);
+                    let out = self.lookup_expect_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key);
                     <#output as #W::BoxedValue>::devalue(self, out)
                 }
             },
@@ -944,10 +949,11 @@ pub fn ctx_read_fn_ts(
                 fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output> {
                     use #W::EgglogFunc;
                     use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
-                    let out = self.lookup(#func_name::<()>::FUNC_NAME, &key)?;
+                    let out = self.lookup_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key)?;
                     Some(<#output as #W::BoxedValue>::devalue(self, out))
                 }
             },
@@ -966,10 +972,11 @@ pub fn ctx_read_fn_ts(
                     use #W::EgglogFunc;
                     use #W::Value;
                     use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
-                    #W::Value::new(self.lookup_expect(#func_name::<()>::FUNC_NAME, &key))
+                    #W::Value::new(self.lookup_expect_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key))
                 }
             },
             quote! {
@@ -984,10 +991,11 @@ pub fn ctx_read_fn_ts(
                     use #W::EgglogFunc;
                     use #W::Value;
                     use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
-                    self.lookup(#func_name::<()>::FUNC_NAME, &key).map(#W::Value::new)
+                    self.lookup_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key).map(#W::Value::new)
                 }
             },
             quote! {
@@ -1005,10 +1013,11 @@ pub fn ctx_read_fn_ts(
             use #W::EgglogFunc;
             use #W::Value;
             use #W::Insertable;
+            static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
             let key = [
                 #(#field_idents.to_value(self).erase()),*
             ];
-            #W::Value::new(self.lookup_expect(#func_name::<()>::FUNC_NAME, &key))
+            #W::Value::new(self.lookup_expect_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key))
         }
     };
     let try_read_value_fn = quote! {
@@ -1018,10 +1027,11 @@ pub fn ctx_read_fn_ts(
             use #W::EgglogFunc;
             use #W::Value;
             use #W::Insertable;
+            static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
             let key = [
                 #(#field_idents.to_value(self).erase()),*
             ];
-            self.lookup(#func_name::<()>::FUNC_NAME, &key).map(#W::Value::new)
+            self.lookup_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key).map(#W::Value::new)
         }
     };
     let read_value_decl = quote! {

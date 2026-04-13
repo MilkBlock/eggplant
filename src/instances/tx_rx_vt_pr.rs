@@ -15,7 +15,7 @@ use egglog::{
 };
 use egglog::{
     ast::{RustSpan, Span},
-    prelude::rust_rule,
+    prelude::{rust_rule, rust_rule_with_metadata},
 };
 use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
@@ -923,6 +923,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
         let facts_builder = PR::pat2fact_builder(pat_id);
+        let timestamp_constraints = facts_builder.resolve_timestamp_constraints(&egraph);
         let extra_var_sorts = facts_builder.vars_with_sorts();
         let facts = facts_builder.build(&egraph);
         let mut vars = pat_vars.to_str_arcsort(&egraph);
@@ -1004,7 +1005,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
             Arc::from(Vec::<PremiseProofSpec>::new().into_boxed_slice())
         };
         let hook = RuleHookObj(ctx_hook);
-        let rst = rust_rule(
+        let rst = rust_rule_with_metadata(
             &mut egraph,
             rust_rule_name.as_ref(),
             rule_set.0,
@@ -1039,7 +1040,17 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                 Some(())
             },
         );
-        let _ = rst.expect("add_rule err");
+        let rule_handle = rst.expect("add_rule err");
+        for ts_constraint in timestamp_constraints {
+            egraph
+                .constrain_rule_atom_timestamp_range(
+                    rule_handle.rule_id,
+                    ts_constraint.atom_index,
+                    ts_constraint.min_inclusive,
+                    ts_constraint.max_exclusive,
+                )
+                .expect("failed to attach timestamp constraint to rule");
+        }
     }
 
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId {

@@ -1,0 +1,404 @@
+{
+  "snapshot_version": 1,
+  "format": "eggplant.persisted-snapshot",
+  "profile": "eggplant-common-path-v1",
+  "producer": {
+    "crate": "<crate>",
+    "version": "<version>"
+  },
+  "source_schema": {
+    "engine_fingerprint": "<engine_fingerprint>",
+    "dsl_runtime_fingerprint": "<dsl_runtime_fingerprint>",
+    "dsl_metadata_fingerprint": "<dsl_metadata_fingerprint>",
+    "macro_rev": "<macro_rev>"
+  },
+  "dictionary": {
+    "strings": [],
+    "symbols": [],
+    "sorts": [
+      "@FixtureEdgeSort",
+      "BigInt",
+      "BigRat",
+      "FixtureExpr",
+      "FixtureRoot",
+      "HookedFixtureBase",
+      "StaticStr",
+      "String",
+      "Unit",
+      "bool",
+      "f64",
+      "i64"
+    ],
+    "ops": [
+      "Const",
+      "FixtureEdge",
+      "Root",
+      "FixtureEdge"
+    ],
+    "rulesets": [
+      "ruleset_0",
+      "ruleset_1"
+    ]
+  },
+  "schema": {
+    "sort_decls": [
+      {
+        "sort_id": 0,
+        "name": "@FixtureEdgeSort",
+        "kind": "eqsort",
+        "metadata": null
+      },
+      {
+        "sort_id": 1,
+        "name": "BigInt",
+        "kind": "primitive",
+        "metadata": null
+      },
+      {
+        "sort_id": 2,
+        "name": "BigRat",
+        "kind": "primitive",
+        "metadata": null
+      },
+      {
+        "sort_id": 3,
+        "name": "FixtureExpr",
+        "kind": "eqsort",
+        "metadata": null
+      },
+      {
+        "sort_id": 4,
+        "name": "FixtureRoot",
+        "kind": "eqsort",
+        "metadata": null
+      },
+      {
+        "sort_id": 5,
+        "name": "HookedFixtureBase",
+        "kind": "primitive",
+        "metadata": {
+          "persisted_snapshot_restore": {
+            "support": "registered_with_hook",
+            "capability_label": "fixture-hooked-json-object"
+          }
+        }
+      },
+      {
+        "sort_id": 6,
+        "name": "StaticStr",
+        "kind": "primitive",
+        "metadata": null
+      },
+      {
+        "sort_id": 7,
+        "name": "String",
+        "kind": "primitive",
+        "metadata": null
+      },
+      {
+        "sort_id": 8,
+        "name": "Unit",
+        "kind": "primitive",
+        "metadata": null
+      },
+      {
+        "sort_id": 9,
+        "name": "bool",
+        "kind": "primitive",
+        "metadata": null
+      },
+      {
+        "sort_id": 10,
+        "name": "f64",
+        "kind": "primitive",
+        "metadata": null
+      },
+      {
+        "sort_id": 11,
+        "name": "i64",
+        "kind": "primitive",
+        "metadata": null
+      }
+    ],
+    "function_decls": [
+      {
+        "op_id": 3,
+        "name": "FixtureEdge",
+        "input_sort_ids": [
+          11,
+          11
+        ],
+        "output_sort_id": 8,
+        "is_relation": true,
+        "merge": null,
+        "cost": null,
+        "metadata": {
+          "typst_template": null,
+          "precedence": 65535
+        }
+      }
+    ],
+    "constructor_decls": [
+      {
+        "op_id": 0,
+        "name": "Const",
+        "input_sort_ids": [
+          11
+        ],
+        "output_sort_id": 3,
+        "is_relation": false,
+        "merge": null,
+        "cost": null,
+        "metadata": {
+          "typst_template": null,
+          "precedence": 65535
+        }
+      },
+      {
+        "op_id": 1,
+        "name": "FixtureEdge",
+        "input_sort_ids": [
+          11,
+          11
+        ],
+        "output_sort_id": 0,
+        "is_relation": true,
+        "merge": null,
+        "cost": null,
+        "metadata": {
+          "typst_template": null,
+          "precedence": 65535
+        }
+      },
+      {
+        "op_id": 2,
+        "name": "Root",
+        "input_sort_ids": [
+          3
+        ],
+        "output_sort_id": 4,
+        "is_relation": false,
+        "merge": null,
+        "cost": null,
+        "metadata": {
+          "typst_template": null,
+          "precedence": 65535
+        }
+      }
+    ],
+    "ruleset_decls": [
+      {
+        "ruleset_id": 0,
+        "name": "ruleset_0"
+      },
+      {
+        "ruleset_id": 1,
+        "name": "ruleset_1"
+      }
+    ]
+  },
+  "state": {
+    "facts": [
+      {
+        "op_id": 1,
+        "inputs": [
+          {
+            "kind": "lit",
+            "sort_id": 11,
+            "value": {
+              "tag": "i64",
+              "value": "1",
+              "machine_value": 1
+            }
+          },
+          {
+            "kind": "lit",
+            "sort_id": 11,
+            "value": {
+              "tag": "i64",
+              "value": "2",
+              "machine_value": 2
+            }
+          }
+        ]
+      },
+      {
+        "op_id": 3,
+        "inputs": [
+          {
+            "kind": "lit",
+            "sort_id": 11,
+            "value": {
+              "tag": "i64",
+              "value": "1",
+              "machine_value": 1
+            }
+          },
+          {
+            "kind": "lit",
+            "sort_id": 11,
+            "value": {
+              "tag": "i64",
+              "value": "2",
+              "machine_value": 2
+            }
+          }
+        ]
+      }
+    ],
+    "function_rows": [
+      {
+        "op_id": 0,
+        "inputs": [
+          {
+            "kind": "lit",
+            "sort_id": 11,
+            "value": {
+              "tag": "i64",
+              "value": "9",
+              "machine_value": 9
+            }
+          }
+        ],
+        "output": {
+          "kind": "ref",
+          "sort_id": 3,
+          "logical_id": "v0"
+        }
+      },
+      {
+        "op_id": 0,
+        "inputs": [
+          {
+            "kind": "lit",
+            "sort_id": 11,
+            "value": {
+              "tag": "i64",
+              "value": "7",
+              "machine_value": 7
+            }
+          }
+        ],
+        "output": {
+          "kind": "ref",
+          "sort_id": 3,
+          "logical_id": "v1"
+        }
+      },
+      {
+        "op_id": 2,
+        "inputs": [
+          {
+            "kind": "ref",
+            "sort_id": 3,
+            "logical_id": "v1"
+          }
+        ],
+        "output": {
+          "kind": "ref",
+          "sort_id": 4,
+          "logical_id": "v2"
+        }
+      },
+      {
+        "op_id": 2,
+        "inputs": [
+          {
+            "kind": "ref",
+            "sort_id": 3,
+            "logical_id": "v0"
+          }
+        ],
+        "output": {
+          "kind": "ref",
+          "sort_id": 4,
+          "logical_id": "v3"
+        }
+      }
+    ],
+    "unions": [],
+    "runs": [],
+    "fresh_id_cursor": null
+  },
+  "restore_mapping": {
+    "value_ids": [
+      {
+        "logical_id": "v0",
+        "sort_id": 3,
+        "debug_value": "(Const 9)"
+      },
+      {
+        "logical_id": "v1",
+        "sort_id": 3,
+        "debug_value": "(Const 7)"
+      },
+      {
+        "logical_id": "v2",
+        "sort_id": 4,
+        "debug_value": "(Root (Const 7))"
+      },
+      {
+        "logical_id": "v3",
+        "sort_id": 4,
+        "debug_value": "(Root (Const 9))"
+      }
+    ],
+    "notes": [
+      "logical_id values are snapshot-local and must be remapped during import",
+      "runtime ids, hashes, and class ids are intentionally excluded from persisted semantic state"
+    ]
+  },
+  "capability_summary": {
+    "required_preconditions": [
+      "restore target must be fresh with respect to semantic state",
+      "source_schema alignment proof is required for v1 restore"
+    ],
+    "guaranteed_restorable": [
+      {
+        "key": "state.function_rows",
+        "detail": "common-path semantic rows are part of the supported v1 restore contract"
+      },
+      {
+        "key": "state.facts.eggplant_native_relations",
+        "detail": "eggplant-native relation facts are part of the supported v1 restore contract"
+      },
+      {
+        "key": "state.literal_sorts.i64",
+        "detail": "built-in/common-path literal sort is restorable with machine payloads"
+      }
+    ],
+    "non_goals": [],
+    "missing_hooks": [],
+    "other_limitations": [
+      {
+        "key": "state.unions",
+        "detail": "v1 exporter does not yet persist union history; state.unions is empty"
+      },
+      {
+        "key": "state.runs",
+        "detail": "v1 exporter does not yet persist run scheduling history; state.runs is empty"
+      },
+      {
+        "key": "schema.ruleset_decls",
+        "detail": "persisted ruleset declarations are provenance-only metadata in v1; restore ignores them and they do not imply rule body/run replay semantics"
+      }
+    ]
+  },
+  "diagnostics": [
+    {
+      "code": "unsupported-feature",
+      "message": "v1 exporter does not yet persist union history; state.unions is empty",
+      "path": "state.unions"
+    },
+    {
+      "code": "unsupported-feature",
+      "message": "v1 exporter does not yet persist run scheduling history; state.runs is empty",
+      "path": "state.runs"
+    },
+    {
+      "code": "unsupported-feature",
+      "message": "persisted ruleset declarations are provenance-only metadata in v1; restore ignores them and they do not imply rule body/run replay semantics",
+      "path": "schema.ruleset_decls"
+    }
+  ]
+}

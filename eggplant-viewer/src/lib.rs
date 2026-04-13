@@ -18,6 +18,7 @@ use rand::Rng;
 #[cfg(all(feature = "events", target_arch = "wasm32"))]
 use std::{cell::RefCell, rc::Rc};
 
+mod artifact_import;
 mod event_filters;
 mod graph_ops;
 mod keybindings;
@@ -674,11 +675,33 @@ impl EGraphApp {
                                 ui.label("Operands:");
                                 ui.code(format!("{}", enode.operands_num));
                             });
+                            if let Some(display_label) = &enode.display_label {
+                                ui.horizontal(|ui| {
+                                    ui.label("Display:");
+                                    ui.code(display_label);
+                                });
+                            }
                             if !enode.basics.is_empty() {
                                 ui.horizontal(|ui| {
                                     ui.label("Basics:");
                                     ui.code(format!("{:?}", enode.basics));
                                 });
+                            }
+                            if let Some(metadata) = &enode.dsl_metadata {
+                                ui.horizontal(|ui| {
+                                    ui.label("Variant Key:");
+                                    ui.code(&metadata.variant_key);
+                                });
+                                ui.horizontal(|ui| {
+                                    ui.label("Precedence:");
+                                    ui.code(format!("{}", metadata.precedence));
+                                });
+                                if let Some(template) = &metadata.typst_template {
+                                    ui.horizontal(|ui| {
+                                        ui.label("Typst:");
+                                        ui.code(template);
+                                    });
+                                }
                             }
                         });
                     }

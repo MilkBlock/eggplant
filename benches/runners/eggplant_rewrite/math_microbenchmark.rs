@@ -1,6 +1,10 @@
+use egglog_reports::RunReport;
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr;
-use std::time::Instant;
+use eggplant::wrap::{PRRuleCtx, PatVars};
+use std::collections::BTreeMap;
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
 #[eggplant::dsl]
 enum Math {
@@ -49,6 +53,103 @@ enum Math {
 }
 
 tx_rx_vt_pr!(MyTxMath, MyPatRecMath);
+
+#[derive(Default, Clone, Copy)]
+struct CallbackTiming {
+    total: Duration,
+    calls: usize,
+}
+
+type SharedCallbackTimings = Arc<Mutex<BTreeMap<&'static str, CallbackTiming>>>;
+
+pub struct MathMicrobenchmarkStats {
+    pub elapsed: Duration,
+    pub total_num_tuples: usize,
+    pub table_sizes: Vec<(&'static str, usize)>,
+}
+
+const MATH_TABLES: &[&str] = &[
+    "MDiff",
+    "MIntegral",
+    "MAdd",
+    "MSub",
+    "MMul",
+    "MDiv",
+    "MPow",
+    "MLn",
+    "MSqrt",
+    "MSin",
+    "MCos",
+    "MConst",
+    "MVar",
+];
+
+fn record_callback_timing(
+    stats: &Option<SharedCallbackTimings>,
+    rule_name: &'static str,
+    elapsed: Duration,
+) {
+    let Some(stats) = stats else {
+        return;
+    };
+    let mut stats = stats.lock().unwrap();
+    let entry = stats.entry(rule_name).or_default();
+    entry.total += elapsed;
+    entry.calls += 1;
+}
+
+fn print_callback_timings(label: &str, stats: &Option<SharedCallbackTimings>, report: &RunReport) {
+    let Some(stats) = stats else {
+        return;
+    };
+    let stats = stats.lock().unwrap();
+    let mut rows = stats
+        .iter()
+        .map(|(rule, timing)| (*rule, *timing))
+        .collect::<Vec<_>>();
+    rows.sort_by_key(|(_, timing)| std::cmp::Reverse(timing.total));
+    let callback_total = rows
+        .iter()
+        .fold(Duration::ZERO, |acc, (_, t)| acc + t.total);
+    eprintln!(
+        "[bench-breakdown] {label} callback total: {:?}",
+        callback_total
+    );
+    for (rule, timing) in rows {
+        let matches = report
+            .num_matches_per_rule
+            .get(format!("@{rule}").as_str())
+            .copied()
+            .unwrap_or(0);
+        let avg = if timing.calls == 0 {
+            Duration::ZERO
+        } else {
+            Duration::from_secs_f64(timing.total.as_secs_f64() / timing.calls as f64)
+        };
+        eprintln!(
+            "[bench-breakdown] {label} callback {rule}: total={:?}, calls={}, avg={:?}, matches={}",
+            timing.total, timing.calls, avg, matches
+        );
+    }
+}
+
+fn add_rule_timed<P: PatVars<MyPatRecMath>>(
+    rule_name: &'static str,
+    rule_set: RuleSetId,
+    pat: impl Fn() -> P,
+    action: impl Fn(&PRRuleCtx<MyPatRecMath>, &P::Valued) + Send + Sync + 'static + Clone,
+    stats: Option<SharedCallbackTimings>,
+) {
+    MyTxMath::add_rule(rule_name, rule_set, pat, move |ctx, pat| {
+        if stats.is_some() {
+            let t = Instant::now();
+            action(ctx, pat);
+            record_callback_timing(&stats, rule_name, t.elapsed());
+        } else {
+            action(ctx, pat);
+        }
+    });
+}
 
 #[eggplant::pat_vars]
 struct AddCommPat<PR: PatRecSgl> {
@@ -420,9 +521,10 @@ fn int_mul_pat<PR: PatRecSgl>() -> IntMulPat<PR> {
     IntMulPat::new(a, b, x, integ)
 }
 
-pub fn bench() {
-    let breakdown = std::env::var_os("EGGPLANT_BENCH_BREAKDOWN").is_some();
+pub fn run_and_collect_stats(breakdown: bool) -> MathMicrobenchmarkStats {
     let t_total = Instant::now();
+    let seed_callback_stats = breakdown.then(|| Arc::new(Mutex::new(BTreeMap::new())));
+    let rewrite_callback_stats = breakdown.then(|| Arc::new(Mutex::new(BTreeMap::new())));
 
     let t = Instant::now();
     MyTxMath::sgl().reset_for_bench();
@@ -436,7 +538,7 @@ pub fn bench() {
     // Seed ground terms (ports `tests/math-microbenchmark.egg`).
     let t_seed_setup = Instant::now();
     let seed = MyTxMath::new_ruleset("math_microbenchmark_seed");
-    MyTxMath::add_rule(
+    add_rule_timed(
         "math_microbenchmark_seed",
         seed,
         || {
@@ -500,6 +602,7 @@ pub fn bench() {
             let denom = ctx.insert_m_sub(div_add, div_sub);
             ctx.insert_m_div(ctx.insert_m_const(1), denom);
         },
+        seed_callback_stats.clone(),
     );
     if breakdown {
         eprintln!(
@@ -509,11 +612,16 @@ pub fn bench() {
     }
 
     let t_seed_run = Instant::now();
-    MyTxMath::run_ruleset(seed, RunConfig::Once);
+    let seed_report = MyTxMath::run_ruleset(seed, RunConfig::Once);
     if breakdown {
         eprintln!(
             "[bench-breakdown] math-microbenchmark seed run_ruleset: {:?}",
             t_seed_run.elapsed()
+        );
+        print_callback_timings(
+            "math-microbenchmark seed",
+            &seed_callback_stats,
+            &seed_report,
         );
     }
 
@@ -521,131 +629,275 @@ pub fn bench() {
     let t_rules_setup = Instant::now();
     let rs = MyTxMath::new_ruleset("math_microbenchmark_rules");
 
-    MyTxMath::add_rule("add_comm", rs, add_comm_pat, |ctx, pat| {
-        let rhs = ctx.insert_m_add(pat.b, pat.a);
-        ctx.union(pat.add, rhs);
-    });
-    MyTxMath::add_rule("mul_comm", rs, mul_comm_pat, |ctx, pat| {
-        let rhs = ctx.insert_m_mul(pat.b, pat.a);
-        ctx.union(pat.mul, rhs);
-    });
-    MyTxMath::add_rule("add_assoc", rs, add_assoc_pat, |ctx, pat| {
-        let ab = ctx.insert_m_add(pat.a, pat.b);
-        let rhs = ctx.insert_m_add(ab, pat.c);
-        ctx.union(pat.add_outer, rhs);
-    });
-    MyTxMath::add_rule("mul_assoc", rs, mul_assoc_pat, |ctx, pat| {
-        let ab = ctx.insert_m_mul(pat.a, pat.b);
-        let rhs = ctx.insert_m_mul(ab, pat.c);
-        ctx.union(pat.mul_outer, rhs);
-    });
+    add_rule_timed(
+        "add_comm",
+        rs,
+        add_comm_pat,
+        |ctx, pat| {
+            let rhs = ctx.insert_m_add(pat.b, pat.a);
+            ctx.union(pat.add, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "mul_comm",
+        rs,
+        mul_comm_pat,
+        |ctx, pat| {
+            let rhs = ctx.insert_m_mul(pat.b, pat.a);
+            ctx.union(pat.mul, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "add_assoc",
+        rs,
+        add_assoc_pat,
+        |ctx, pat| {
+            let ab = ctx.insert_m_add(pat.a, pat.b);
+            let rhs = ctx.insert_m_add(ab, pat.c);
+            ctx.union(pat.add_outer, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "mul_assoc",
+        rs,
+        mul_assoc_pat,
+        |ctx, pat| {
+            let ab = ctx.insert_m_mul(pat.a, pat.b);
+            let rhs = ctx.insert_m_mul(ab, pat.c);
+            ctx.union(pat.mul_outer, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
-    MyTxMath::add_rule("sub_to_add_neg", rs, sub_to_add_neg_pat, |ctx, pat| {
-        let neg1 = ctx.insert_m_const(-1);
-        let neg_b = ctx.insert_m_mul(neg1, pat.b);
-        let rhs = ctx.insert_m_add(pat.a, neg_b);
-        ctx.union(pat.sub, rhs);
-    });
+    add_rule_timed(
+        "sub_to_add_neg",
+        rs,
+        sub_to_add_neg_pat,
+        |ctx, pat| {
+            let neg1 = ctx.insert_m_const(-1);
+            let neg_b = ctx.insert_m_mul(neg1, pat.b);
+            let rhs = ctx.insert_m_add(pat.a, neg_b);
+            ctx.union(pat.sub, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
-    MyTxMath::add_rule("add_zero", rs, add_zero_pat, |ctx, pat| {
-        ctx.union(pat.add, pat.a);
-    });
-    MyTxMath::add_rule("mul_zero", rs, mul_zero_pat, |ctx, pat| {
-        ctx.union(pat.mul, pat.z);
-    });
-    MyTxMath::add_rule("mul_one", rs, mul_one_pat, |ctx, pat| {
-        ctx.union(pat.mul, pat.a);
-    });
+    add_rule_timed(
+        "add_zero",
+        rs,
+        add_zero_pat,
+        |ctx, pat| {
+            ctx.union(pat.add, pat.a);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "mul_zero",
+        rs,
+        mul_zero_pat,
+        |ctx, pat| {
+            ctx.union(pat.mul, pat.z);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "mul_one",
+        rs,
+        mul_one_pat,
+        |ctx, pat| {
+            ctx.union(pat.mul, pat.a);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
-    MyTxMath::add_rule("sub_self_zero", rs, sub_self_zero_pat, |ctx, pat| {
-        let z = ctx.insert_m_const(0);
-        ctx.union(pat.sub, z);
-    });
+    add_rule_timed(
+        "sub_self_zero",
+        rs,
+        sub_self_zero_pat,
+        |ctx, pat| {
+            let z = ctx.insert_m_const(0);
+            ctx.union(pat.sub, z);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
-    MyTxMath::add_rule("mul_distrib", rs, mul_distrib_pat, |ctx, pat| {
-        let ab = ctx.insert_m_mul(pat.a, pat.b);
-        let ac = ctx.insert_m_mul(pat.a, pat.c);
-        let rhs = ctx.insert_m_add(ab, ac);
-        ctx.union(pat.mul, rhs);
-    });
-    MyTxMath::add_rule("add_factor", rs, add_factor_pat, |ctx, pat| {
-        let bc = ctx.insert_m_add(pat.b, pat.c);
-        let rhs = ctx.insert_m_mul(pat.a, bc);
-        ctx.union(pat.add, rhs);
-    });
+    add_rule_timed(
+        "mul_distrib",
+        rs,
+        mul_distrib_pat,
+        |ctx, pat| {
+            let ab = ctx.insert_m_mul(pat.a, pat.b);
+            let ac = ctx.insert_m_mul(pat.a, pat.c);
+            let rhs = ctx.insert_m_add(ab, ac);
+            ctx.union(pat.mul, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "add_factor",
+        rs,
+        add_factor_pat,
+        |ctx, pat| {
+            let bc = ctx.insert_m_add(pat.b, pat.c);
+            let rhs = ctx.insert_m_mul(pat.a, bc);
+            ctx.union(pat.add, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
-    MyTxMath::add_rule("mul_pow_combine", rs, mul_pow_combine_pat, |ctx, pat| {
-        let bc = ctx.insert_m_add(pat.b, pat.c);
-        let rhs = ctx.insert_m_pow(pat.a, bc);
-        ctx.union(pat.mul, rhs);
-    });
-    MyTxMath::add_rule("pow_one", rs, pow_one_pat, |ctx, pat| {
-        ctx.union(pat.pow, pat.x);
-    });
-    MyTxMath::add_rule("pow_two", rs, pow_two_pat, |ctx, pat| {
-        let rhs = ctx.insert_m_mul(pat.x, pat.x);
-        ctx.union(pat.pow, rhs);
-    });
+    add_rule_timed(
+        "mul_pow_combine",
+        rs,
+        mul_pow_combine_pat,
+        |ctx, pat| {
+            let bc = ctx.insert_m_add(pat.b, pat.c);
+            let rhs = ctx.insert_m_pow(pat.a, bc);
+            ctx.union(pat.mul, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "pow_one",
+        rs,
+        pow_one_pat,
+        |ctx, pat| {
+            ctx.union(pat.pow, pat.x);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "pow_two",
+        rs,
+        pow_two_pat,
+        |ctx, pat| {
+            let rhs = ctx.insert_m_mul(pat.x, pat.x);
+            ctx.union(pat.pow, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
-    MyTxMath::add_rule("diff_add", rs, diff_add_pat, |ctx, pat| {
-        let da = ctx.insert_m_diff(pat.x, pat.a);
-        let db = ctx.insert_m_diff(pat.x, pat.b);
-        let rhs = ctx.insert_m_add(da, db);
-        ctx.union(pat.diff, rhs);
-    });
-    MyTxMath::add_rule("diff_mul", rs, diff_mul_pat, |ctx, pat| {
-        let db = ctx.insert_m_diff(pat.x, pat.b);
-        let da = ctx.insert_m_diff(pat.x, pat.a);
-        let a_db = ctx.insert_m_mul(pat.a, db);
-        let b_da = ctx.insert_m_mul(pat.b, da);
-        let rhs = ctx.insert_m_add(a_db, b_da);
-        ctx.union(pat.diff, rhs);
-    });
-    MyTxMath::add_rule("diff_sin", rs, diff_sin_pat, |ctx, pat| {
-        let rhs = ctx.insert_m_cos(pat.x);
-        ctx.union(pat.diff, rhs);
-    });
-    MyTxMath::add_rule("diff_cos", rs, diff_cos_pat, |ctx, pat| {
-        let neg1 = ctx.insert_m_const(-1);
-        let sin = ctx.insert_m_sin(pat.x);
-        let rhs = ctx.insert_m_mul(neg1, sin);
-        ctx.union(pat.diff, rhs);
-    });
+    add_rule_timed(
+        "diff_add",
+        rs,
+        diff_add_pat,
+        |ctx, pat| {
+            let da = ctx.insert_m_diff(pat.x, pat.a);
+            let db = ctx.insert_m_diff(pat.x, pat.b);
+            let rhs = ctx.insert_m_add(da, db);
+            ctx.union(pat.diff, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "diff_mul",
+        rs,
+        diff_mul_pat,
+        |ctx, pat| {
+            let db = ctx.insert_m_diff(pat.x, pat.b);
+            let da = ctx.insert_m_diff(pat.x, pat.a);
+            let a_db = ctx.insert_m_mul(pat.a, db);
+            let b_da = ctx.insert_m_mul(pat.b, da);
+            let rhs = ctx.insert_m_add(a_db, b_da);
+            ctx.union(pat.diff, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "diff_sin",
+        rs,
+        diff_sin_pat,
+        |ctx, pat| {
+            let rhs = ctx.insert_m_cos(pat.x);
+            ctx.union(pat.diff, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "diff_cos",
+        rs,
+        diff_cos_pat,
+        |ctx, pat| {
+            let neg1 = ctx.insert_m_const(-1);
+            let sin = ctx.insert_m_sin(pat.x);
+            let rhs = ctx.insert_m_mul(neg1, sin);
+            ctx.union(pat.diff, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
-    MyTxMath::add_rule("int_one", rs, int_one_pat, |ctx, pat| {
-        ctx.union(pat.integ, pat.x);
-    });
-    MyTxMath::add_rule("int_cos", rs, int_cos_pat, |ctx, pat| {
-        let rhs = ctx.insert_m_sin(pat.x);
-        ctx.union(pat.integ, rhs);
-    });
-    MyTxMath::add_rule("int_sin", rs, int_sin_pat, |ctx, pat| {
-        let neg1 = ctx.insert_m_const(-1);
-        let cos = ctx.insert_m_cos(pat.x);
-        let rhs = ctx.insert_m_mul(neg1, cos);
-        ctx.union(pat.integ, rhs);
-    });
-    MyTxMath::add_rule("int_add", rs, int_add_pat, |ctx, pat| {
-        let i_f = ctx.insert_m_integral(pat.f, pat.x);
-        let i_g = ctx.insert_m_integral(pat.g, pat.x);
-        let rhs = ctx.insert_m_add(i_f, i_g);
-        ctx.union(pat.integ, rhs);
-    });
-    MyTxMath::add_rule("int_sub", rs, int_sub_pat, |ctx, pat| {
-        let i_f = ctx.insert_m_integral(pat.f, pat.x);
-        let i_g = ctx.insert_m_integral(pat.g, pat.x);
-        let rhs = ctx.insert_m_sub(i_f, i_g);
-        ctx.union(pat.integ, rhs);
-    });
-    MyTxMath::add_rule("int_mul", rs, int_mul_pat, |ctx, pat| {
-        let i_b = ctx.insert_m_integral(pat.b, pat.x);
-        let a_i_b = ctx.insert_m_mul(pat.a, i_b);
-        let dxa = ctx.insert_m_diff(pat.x, pat.a);
-        let mul = ctx.insert_m_mul(dxa, i_b);
-        let i2 = ctx.insert_m_integral(mul, pat.x);
-        let rhs = ctx.insert_m_sub(a_i_b, i2);
-        ctx.union(pat.integ, rhs);
-    });
+    add_rule_timed(
+        "int_one",
+        rs,
+        int_one_pat,
+        |ctx, pat| {
+            ctx.union(pat.integ, pat.x);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "int_cos",
+        rs,
+        int_cos_pat,
+        |ctx, pat| {
+            let rhs = ctx.insert_m_sin(pat.x);
+            ctx.union(pat.integ, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "int_sin",
+        rs,
+        int_sin_pat,
+        |ctx, pat| {
+            let neg1 = ctx.insert_m_const(-1);
+            let cos = ctx.insert_m_cos(pat.x);
+            let rhs = ctx.insert_m_mul(neg1, cos);
+            ctx.union(pat.integ, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "int_add",
+        rs,
+        int_add_pat,
+        |ctx, pat| {
+            let i_f = ctx.insert_m_integral(pat.f, pat.x);
+            let i_g = ctx.insert_m_integral(pat.g, pat.x);
+            let rhs = ctx.insert_m_add(i_f, i_g);
+            ctx.union(pat.integ, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "int_sub",
+        rs,
+        int_sub_pat,
+        |ctx, pat| {
+            let i_f = ctx.insert_m_integral(pat.f, pat.x);
+            let i_g = ctx.insert_m_integral(pat.g, pat.x);
+            let rhs = ctx.insert_m_sub(i_f, i_g);
+            ctx.union(pat.integ, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
+    add_rule_timed(
+        "int_mul",
+        rs,
+        int_mul_pat,
+        |ctx, pat| {
+            let i_b = ctx.insert_m_integral(pat.b, pat.x);
+            let a_i_b = ctx.insert_m_mul(pat.a, i_b);
+            let dxa = ctx.insert_m_diff(pat.x, pat.a);
+            let mul = ctx.insert_m_mul(dxa, i_b);
+            let i2 = ctx.insert_m_integral(mul, pat.x);
+            let rhs = ctx.insert_m_sub(a_i_b, i2);
+            ctx.union(pat.integ, rhs);
+        },
+        rewrite_callback_stats.clone(),
+    );
 
     if breakdown {
         eprintln!(
@@ -655,26 +907,39 @@ pub fn bench() {
     }
 
     let t_rules_run = Instant::now();
-    MyTxMath::run_ruleset(rs, RunConfig::Times(11));
+    let rewrite_report = MyTxMath::run_ruleset(rs, RunConfig::Times(11));
     if breakdown {
         eprintln!(
             "[bench-breakdown] math-microbenchmark rewrites run_ruleset: {:?}",
             t_rules_run.elapsed()
         );
+        print_callback_timings(
+            "math-microbenchmark rewrites",
+            &rewrite_callback_stats,
+            &rewrite_report,
+        );
     }
 
-    let t_serialize = Instant::now();
     let egraph = MyTxMath::egraph();
     let egraph = egraph.lock().unwrap();
-    egraph.serialize(egglog::SerializeConfig::default());
+    let stats = MathMicrobenchmarkStats {
+        elapsed: t_total.elapsed(),
+        total_num_tuples: egraph.num_tuples(),
+        table_sizes: MATH_TABLES
+            .iter()
+            .map(|table| (*table, egraph.get_size(table)))
+            .collect(),
+    };
     if breakdown {
-        eprintln!(
-            "[bench-breakdown] math-microbenchmark serialize: {:?}",
-            t_serialize.elapsed()
-        );
         eprintln!(
             "[bench-breakdown] math-microbenchmark total: {:?}",
             t_total.elapsed()
         );
     }
+    stats
+}
+
+pub fn bench() {
+    let breakdown = std::env::var_os("EGGPLANT_BENCH_BREAKDOWN").is_some();
+    let _ = run_and_collect_stats(breakdown);
 }

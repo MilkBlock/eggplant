@@ -17,7 +17,7 @@ use egglog::{
 };
 use egglog::{
     ast::{RustSpan, Span},
-    prelude::rust_rule,
+    prelude::{rust_rule, rust_rule_with_metadata},
 };
 use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
@@ -844,7 +844,9 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
         let metas = pat_vars.metas_iter().collect::<Vec<_>>();
         println!("metas got {:#?}", metas);
 
-        let facts = PR::pat2fact_builder(pat_id).build(&egraph);
+        let facts_builder = PR::pat2fact_builder(pat_id);
+        let timestamp_constraints = facts_builder.resolve_timestamp_constraints(&egraph);
+        let facts = facts_builder.build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
         log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);
@@ -857,7 +859,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
             .collect();
         let decode_plan = Arc::new(pat_vars.build_decode_plan(&binding_var_slots));
         let hook = RuleHookObj(ctx_hook);
-        let rst = rust_rule(
+        let rst = rust_rule_with_metadata(
             &mut egraph,
             rule_name,
             rule_set.0,
@@ -878,7 +880,17 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 Some(())
             },
         );
-        let _ = rst.expect("add_rule err");
+        let rule_handle = rst.expect("add_rule err");
+        for ts_constraint in timestamp_constraints {
+            egraph
+                .constrain_rule_atom_timestamp_range(
+                    rule_handle.rule_id,
+                    ts_constraint.atom_index,
+                    ts_constraint.min_inclusive,
+                    ts_constraint.max_exclusive,
+                )
+                .expect("failed to attach timestamp constraint to slotted rule");
+        }
     }
 
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId {

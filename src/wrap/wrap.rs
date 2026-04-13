@@ -9,12 +9,24 @@ use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl};
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::ast::{RustSpan, Span};
+use egglog::extract::{CostModel, DefaultCost, TreeAdditiveCostModel};
 use egglog::prelude::span;
 use egglog::{
-    ArcSort, BaseValue, ContainerValue, EGraph,
+    ArcSort, BaseValue, ContainerValue, EGraph, SchemaFunctionKind, SerializeConfig,
     ast::{Command, GenericAction, GenericExpr},
 };
 use egglog::{TermDag, TermId, ast::Literal};
+#[cfg(feature = "rustsat-extract")]
+use rustsat::{
+    algs::maxsat::SolutionImprovingSearch,
+    encodings::pb::BinaryAdder,
+    instances::{BasicVarManager, OptInstance},
+    types::{
+        Assignment as RustsatAssignment, Clause as RustsatClause, Lit as RustsatLit, TernaryVal,
+    },
+};
+#[cfg(feature = "rustsat-extract")]
+use rustsat_minisat::core::Minisat as RustsatMinisat;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::sync::Mutex;
@@ -22,7 +34,7 @@ use std::{
     any::Any,
     borrow::Borrow,
     borrow::Cow,
-    collections::HashMap,
+    collections::{BTreeSet, HashMap, HashSet, VecDeque},
     fmt,
     hash::Hash,
     marker::PhantomData,
@@ -1526,6 +1538,735 @@ impl NonPatRecSgl for () {
     fn egraph() -> Arc<Mutex<EGraph>> {
         panic!()
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct RustsatExtractConfig {}
+
+impl RustsatExtractConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ExtractBackend<CM = TreeAdditiveCostModel> {
+    CostModel(CM),
+    #[cfg(feature = "rustsat-extract")]
+    Rustsat(RustsatExtractConfig),
+}
+
+impl<CM> ExtractBackend<CM> {
+    pub fn cost_model(cost_model: CM) -> Self {
+        Self::CostModel(cost_model)
+    }
+
+    #[cfg(feature = "rustsat-extract")]
+    pub fn rustsat(config: RustsatExtractConfig) -> Self {
+        Self::Rustsat(config)
+    }
+}
+
+impl Default for ExtractBackend<TreeAdditiveCostModel> {
+    fn default() -> Self {
+        Self::CostModel(TreeAdditiveCostModel::default())
+    }
+}
+
+pub trait ExtractSgl: NonPatRecSgl {
+    fn extract_value<T: EgglogTy>(
+        value: Value<T>,
+    ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
+        Self::extract_value_with_cost_model(value, TreeAdditiveCostModel::default())
+    }
+
+    fn extract_value_with_cost_model<T: EgglogTy, CM: CostModel<DefaultCost> + 'static>(
+        value: Value<T>,
+        cost_model: CM,
+    ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
+        let egraph = Self::egraph();
+        let egraph = egraph.lock().unwrap();
+        let sort = T::get_arc_sort(&egraph);
+        egraph.extract_value_with_cost_model(&sort, value.val, cost_model)
+    }
+
+    fn extract_value_with_backend<T: EgglogTy, CM: CostModel<DefaultCost> + 'static>(
+        value: Value<T>,
+        backend: ExtractBackend<CM>,
+    ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
+        match backend {
+            ExtractBackend::CostModel(cost_model) => {
+                Self::extract_value_with_cost_model(value, cost_model)
+            }
+            #[cfg(feature = "rustsat-extract")]
+            ExtractBackend::Rustsat(config) => {
+                Self::extract_value_with_rustsat_config(value, config)
+            }
+        }
+    }
+
+    #[cfg(feature = "rustsat-extract")]
+    fn extract_value_with_rustsat_config<T: EgglogTy>(
+        value: Value<T>,
+        config: RustsatExtractConfig,
+    ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
+        let egraph = Self::egraph();
+        let egraph = egraph.lock().unwrap();
+        let sort = T::get_arc_sort(&egraph);
+        rustsat_extract_value_prototype(&egraph, &sort, value.val, config)
+    }
+
+    fn extract_value_to_string<T: EgglogTy>(
+        value: Value<T>,
+    ) -> Result<(String, DefaultCost), egglog::Error> {
+        Self::extract_value_to_string_with_cost_model(value, TreeAdditiveCostModel::default())
+    }
+
+    fn extract_value_to_string_with_cost_model<
+        T: EgglogTy,
+        CM: CostModel<DefaultCost> + 'static,
+    >(
+        value: Value<T>,
+        cost_model: CM,
+    ) -> Result<(String, DefaultCost), egglog::Error> {
+        let (termdag, term, cost) = Self::extract_value_with_cost_model(value, cost_model)?;
+        Ok((termdag.to_string(term), cost))
+    }
+
+    fn extract_value_to_string_with_backend<T: EgglogTy, CM: CostModel<DefaultCost> + 'static>(
+        value: Value<T>,
+        backend: ExtractBackend<CM>,
+    ) -> Result<(String, DefaultCost), egglog::Error> {
+        let (termdag, term, cost) = Self::extract_value_with_backend(value, backend)?;
+        Ok((termdag.to_string(term), cost))
+    }
+}
+impl<T: NonPatRecSgl> ExtractSgl for T {}
+
+pub trait ExtractNodeSgl: ExtractSgl + TxSgl {
+    fn extract_node<N>(node: &N) -> Result<(TermDag, TermId, DefaultCost), egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+    {
+        Self::extract_node_with_cost_model(node, TreeAdditiveCostModel::default())
+    }
+
+    fn extract_node_with_cost_model<N, CM>(
+        node: &N,
+        cost_model: CM,
+    ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+        CM: CostModel<DefaultCost> + 'static,
+    {
+        Self::extract_value_with_cost_model(Value::<N>::new(Self::canonical_raw(node)), cost_model)
+    }
+
+    fn extract_node_with_backend<N, CM>(
+        node: &N,
+        backend: ExtractBackend<CM>,
+    ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+        CM: CostModel<DefaultCost> + 'static,
+    {
+        Self::extract_value_with_backend(Value::<N>::new(Self::canonical_raw(node)), backend)
+    }
+
+    fn extract_node_to_string<N>(node: &N) -> Result<(String, DefaultCost), egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+    {
+        Self::extract_node_to_string_with_cost_model(node, TreeAdditiveCostModel::default())
+    }
+
+    fn extract_node_to_string_with_cost_model<N, CM>(
+        node: &N,
+        cost_model: CM,
+    ) -> Result<(String, DefaultCost), egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+        CM: CostModel<DefaultCost> + 'static,
+    {
+        Self::extract_value_to_string_with_cost_model(
+            Value::<N>::new(Self::canonical_raw(node)),
+            cost_model,
+        )
+    }
+
+    fn extract_node_to_string_with_backend<N, CM>(
+        node: &N,
+        backend: ExtractBackend<CM>,
+    ) -> Result<(String, DefaultCost), egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+        CM: CostModel<DefaultCost> + 'static,
+    {
+        Self::extract_value_to_string_with_backend(
+            Value::<N>::new(Self::canonical_raw(node)),
+            backend,
+        )
+    }
+}
+impl<T: ExtractSgl + TxSgl> ExtractNodeSgl for T {}
+
+#[cfg(feature = "rustsat-extract")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+struct RustsatEqKey {
+    sort_name: String,
+    value: egglog::Value,
+}
+
+#[cfg(feature = "rustsat-extract")]
+#[derive(Debug, Clone)]
+struct RustsatCandidateDraft {
+    term_name: String,
+    output: RustsatEqKey,
+    inputs: Vec<(ArcSort, egglog::Value)>,
+    penalty: usize,
+}
+
+#[cfg(feature = "rustsat-extract")]
+#[derive(Debug, Clone)]
+struct RustsatCandidate {
+    lit: RustsatLit,
+    term_name: String,
+    output: RustsatEqKey,
+    inputs: Vec<(ArcSort, egglog::Value)>,
+    penalty: usize,
+}
+
+#[cfg(feature = "rustsat-extract")]
+impl RustsatCandidateDraft {
+    fn sort_key(&self) -> String {
+        format!(
+            "{}|{:?}|{}|{:?}",
+            self.output.sort_name, self.output.value, self.term_name, self.inputs
+        )
+    }
+}
+
+#[cfg(feature = "rustsat-extract")]
+impl RustsatCandidate {
+    fn decode_key(&self) -> String {
+        format!(
+            "{}|{}|{:?}",
+            self.term_name,
+            self.inputs.len(),
+            self.inputs
+                .iter()
+                .map(|(sort, value)| format!("{}:{:?}", sort.name(), value))
+                .collect::<Vec<_>>()
+        )
+    }
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_extract_value_prototype(
+    egraph: &EGraph,
+    sort: &ArcSort,
+    value: egglog::Value,
+    _config: RustsatExtractConfig,
+) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
+    if !sort.is_eq_sort() {
+        return Err(egglog::Error::BackendError(
+            "rustsat extraction prototype currently only supports eq-sort roots".to_string(),
+        ));
+    }
+
+    let root_value = egraph.get_canonical_value(value, sort);
+    let root_key = RustsatEqKey {
+        sort_name: sort.name().to_string(),
+        value: root_value,
+    };
+
+    let draft_candidates = rustsat_collect_draft_candidates(egraph)?;
+    let draft_by_output = rustsat_index_draft_candidates(&draft_candidates);
+    let reachable_classes =
+        rustsat_collect_reachable_classes(&root_key, &draft_candidates, &draft_by_output)?;
+    let reachable_draft_ids =
+        rustsat_collect_reachable_candidate_ids(&reachable_classes, &draft_candidates);
+
+    let mut inst = OptInstance::<BasicVarManager>::default();
+    let mut reachable_candidates = reachable_draft_ids
+        .into_iter()
+        .map(|idx| draft_candidates[idx].clone())
+        .collect::<Vec<_>>();
+    reachable_candidates.sort_by_key(RustsatCandidateDraft::sort_key);
+
+    let mut candidates = Vec::<RustsatCandidate>::with_capacity(reachable_candidates.len());
+    for draft in reachable_candidates {
+        let lit = inst.new_lit();
+        candidates.push(RustsatCandidate {
+            lit,
+            term_name: draft.term_name,
+            output: draft.output,
+            inputs: draft.inputs,
+            penalty: draft.penalty,
+        });
+    }
+
+    let candidates_by_output = rustsat_index_candidates(&candidates);
+    rustsat_add_cycle_constraints(
+        &mut inst,
+        &reachable_classes,
+        &candidates,
+        &candidates_by_output,
+    )?;
+    let root_candidates = candidates_by_output.get(&root_key).ok_or_else(|| {
+        egglog::Error::BackendError(format!(
+            "rustsat extraction prototype found no constructor candidates for root {}",
+            root_key.sort_name
+        ))
+    })?;
+
+    let mut root_clause = RustsatClause::with_capacity(root_candidates.len());
+    for idx in root_candidates {
+        root_clause.add(candidates[*idx].lit);
+    }
+    inst.constraints_mut().add_clause(root_clause);
+
+    for candidate in &candidates {
+        for (child_sort, child_value) in &candidate.inputs {
+            if !child_sort.is_eq_sort() {
+                continue;
+            }
+            let child_key = RustsatEqKey {
+                sort_name: child_sort.name().to_string(),
+                value: *child_value,
+            };
+            let child_candidates = candidates_by_output.get(&child_key).ok_or_else(|| {
+                egglog::Error::BackendError(format!(
+                    "rustsat extraction prototype found no constructor candidates for reachable child {}",
+                    child_key.sort_name
+                ))
+            })?;
+            let mut clause = RustsatClause::with_capacity(child_candidates.len() + 1);
+            clause.add(!candidate.lit);
+            for idx in child_candidates {
+                clause.add(candidates[*idx].lit);
+            }
+            inst.constraints_mut().add_clause(clause);
+        }
+        inst.objective_mut()
+            .add_soft_lit(candidate.penalty, candidate.lit);
+    }
+
+    let (assignment, objective_cost) = inst
+        .solve_maxsat::<SolutionImprovingSearch<RustsatMinisat, BinaryAdder>>()
+        .ok_or_else(|| {
+            egglog::Error::BackendError(
+                "rustsat extraction prototype could not find a satisfying weighted-MaxSAT solution"
+                    .to_string(),
+            )
+        })?;
+
+    let mut termdag = TermDag::default();
+    let mut cache = HashMap::<RustsatEqKey, TermId>::new();
+    let mut active = HashSet::<RustsatEqKey>::new();
+    let root_term = rustsat_decode_eqclass(
+        egraph,
+        &root_key,
+        &assignment,
+        &candidates,
+        &candidates_by_output,
+        &mut cache,
+        &mut active,
+        &mut termdag,
+    )?;
+    let cost = u64::try_from(objective_cost).map_err(|_| {
+        egglog::Error::BackendError("rustsat objective overflowed DefaultCost".to_string())
+    })?;
+    Ok((termdag, root_term, cost))
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_collect_draft_candidates(
+    egraph: &EGraph,
+) -> Result<Vec<RustsatCandidateDraft>, egglog::Error> {
+    let raw_rows = egraph.serialize_raw(SerializeConfig::default());
+    let mut functions = egraph
+        .schema_manifest()
+        .functions
+        .into_iter()
+        .map(|function| (function.name.clone(), function))
+        .collect::<HashMap<_, _>>();
+    let mut out = Vec::new();
+
+    for (func_name, rows) in raw_rows {
+        let Some(function_manifest) = functions.remove(&func_name) else {
+            continue;
+        };
+        if function_manifest.kind != SchemaFunctionKind::Constructor
+            || function_manifest.hidden
+            || function_manifest.unextractable
+        {
+            continue;
+        }
+        if function_manifest.term_constructor.is_some() {
+            return Err(egglog::Error::BackendError(format!(
+                "rustsat extraction prototype does not yet support view-table / term-constructor extraction (`{func_name}`); that stays blocked on the broader core work"
+            )));
+        }
+
+        let function = egraph.get_function(&func_name).ok_or_else(|| {
+            egglog::Error::BackendError(format!(
+                "schema_manifest listed function `{func_name}` but EGraph::get_function could not find it"
+            ))
+        })?;
+        let output_sort = function.schema().output.clone();
+        if !output_sort.is_eq_sort() {
+            continue;
+        }
+
+        for row in rows.into_iter().filter(|row| !row.subsumed) {
+            if row.inputs_complex.len() != function.schema().input.len() {
+                return Err(egglog::Error::BackendError(format!(
+                    "row/schema arity mismatch while collecting rustsat candidates for `{func_name}`"
+                )));
+            }
+
+            let output_value = egraph.get_canonical_value(row.output, &output_sort);
+            let mut inputs = Vec::with_capacity(row.inputs_complex.len());
+            for (raw_value, input_sort) in row
+                .inputs_complex
+                .iter()
+                .copied()
+                .zip(function.schema().input.iter())
+            {
+                if input_sort.is_container_sort() {
+                    return Err(egglog::Error::BackendError(format!(
+                        "rustsat extraction prototype does not yet support container children (hit in `{func_name}`); keep this out of the first demo and broader prototype until the core is widened"
+                    )));
+                }
+                let canonical_value = if input_sort.is_eq_sort() {
+                    egraph.get_canonical_value(raw_value, input_sort)
+                } else {
+                    raw_value
+                };
+                inputs.push((input_sort.clone(), canonical_value));
+            }
+
+            out.push(RustsatCandidateDraft {
+                term_name: func_name.clone(),
+                output: RustsatEqKey {
+                    sort_name: output_sort.name().to_string(),
+                    value: output_value,
+                },
+                inputs,
+                penalty: usize::try_from(function_manifest.cost.unwrap_or(1)).map_err(|_| {
+                    egglog::Error::BackendError(format!(
+                        "cost for `{func_name}` does not fit into rustsat weight domain"
+                    ))
+                })?,
+            });
+        }
+    }
+
+    Ok(out)
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_index_draft_candidates(
+    candidates: &[RustsatCandidateDraft],
+) -> HashMap<RustsatEqKey, Vec<usize>> {
+    let mut by_output = HashMap::<RustsatEqKey, Vec<usize>>::new();
+    for (idx, candidate) in candidates.iter().enumerate() {
+        by_output
+            .entry(candidate.output.clone())
+            .or_default()
+            .push(idx);
+    }
+    by_output
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_index_candidates(candidates: &[RustsatCandidate]) -> HashMap<RustsatEqKey, Vec<usize>> {
+    let mut by_output = HashMap::<RustsatEqKey, Vec<usize>>::new();
+    for (idx, candidate) in candidates.iter().enumerate() {
+        by_output
+            .entry(candidate.output.clone())
+            .or_default()
+            .push(idx);
+    }
+    by_output
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_collect_reachable_classes(
+    root_key: &RustsatEqKey,
+    candidates: &[RustsatCandidateDraft],
+    by_output: &HashMap<RustsatEqKey, Vec<usize>>,
+) -> Result<HashSet<RustsatEqKey>, egglog::Error> {
+    let mut reachable = HashSet::<RustsatEqKey>::new();
+    let mut queue = VecDeque::<RustsatEqKey>::from([root_key.clone()]);
+
+    while let Some(key) = queue.pop_front() {
+        if !reachable.insert(key.clone()) {
+            continue;
+        }
+        let Some(candidate_ids) = by_output.get(&key) else {
+            return Err(egglog::Error::BackendError(format!(
+                "rustsat extraction prototype found no constructor candidates for reachable e-class `{}`",
+                key.sort_name
+            )));
+        };
+        for idx in candidate_ids {
+            for (child_sort, child_value) in &candidates[*idx].inputs {
+                if child_sort.is_eq_sort() {
+                    queue.push_back(RustsatEqKey {
+                        sort_name: child_sort.name().to_string(),
+                        value: *child_value,
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(reachable)
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_collect_reachable_candidate_ids(
+    reachable_classes: &HashSet<RustsatEqKey>,
+    candidates: &[RustsatCandidateDraft],
+) -> Vec<usize> {
+    let mut reachable = candidates
+        .iter()
+        .enumerate()
+        .filter_map(|(idx, candidate)| reachable_classes.contains(&candidate.output).then_some(idx))
+        .collect::<Vec<_>>();
+    reachable.sort_unstable();
+    reachable
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_add_cycle_constraints(
+    inst: &mut OptInstance<BasicVarManager>,
+    reachable_classes: &HashSet<RustsatEqKey>,
+    candidates: &[RustsatCandidate],
+    by_output: &HashMap<RustsatEqKey, Vec<usize>>,
+) -> Result<(), egglog::Error> {
+    let adjacency = rustsat_class_adjacency(reachable_classes, candidates);
+    let class_cycles = rustsat_enumerate_class_cycles(&adjacency);
+    for cycle in class_cycles {
+        let cycle_set = cycle.iter().cloned().collect::<HashSet<_>>();
+        let mut cycle_clause = RustsatClause::with_capacity(cycle.len());
+        for class_key in &cycle {
+            let cycle_candidate_ids = by_output
+                .get(class_key)
+                .into_iter()
+                .flatten()
+                .copied()
+                .filter(|idx| {
+                    candidates[*idx]
+                        .inputs
+                        .iter()
+                        .any(|(child_sort, child_value)| {
+                            child_sort.is_eq_sort()
+                                && cycle_set.contains(&RustsatEqKey {
+                                    sort_name: child_sort.name().to_string(),
+                                    value: *child_value,
+                                })
+                        })
+                })
+                .collect::<Vec<_>>();
+
+            if cycle_candidate_ids.is_empty() {
+                continue;
+            }
+            let disable_lit = inst.new_lit();
+            cycle_clause.add(disable_lit);
+            for idx in &cycle_candidate_ids {
+                inst.constraints_mut()
+                    .add_clause(rustsat_clause([!disable_lit, !candidates[*idx].lit]));
+            }
+            let mut iff_clause = RustsatClause::with_capacity(cycle_candidate_ids.len() + 1);
+            iff_clause.add(disable_lit);
+            for idx in &cycle_candidate_ids {
+                iff_clause.add(candidates[*idx].lit);
+            }
+            inst.constraints_mut().add_clause(iff_clause);
+        }
+        if !cycle_clause.is_empty() {
+            inst.constraints_mut().add_clause(cycle_clause);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_class_adjacency(
+    reachable_classes: &HashSet<RustsatEqKey>,
+    candidates: &[RustsatCandidate],
+) -> HashMap<RustsatEqKey, BTreeSet<RustsatEqKey>> {
+    let mut adjacency = HashMap::<RustsatEqKey, BTreeSet<RustsatEqKey>>::new();
+    for class_key in reachable_classes {
+        adjacency.entry(class_key.clone()).or_default();
+    }
+    for candidate in candidates {
+        let edges = adjacency.entry(candidate.output.clone()).or_default();
+        for (child_sort, child_value) in &candidate.inputs {
+            if child_sort.is_eq_sort() {
+                let child = RustsatEqKey {
+                    sort_name: child_sort.name().to_string(),
+                    value: *child_value,
+                };
+                if reachable_classes.contains(&child) {
+                    edges.insert(child);
+                }
+            }
+        }
+    }
+    adjacency
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_enumerate_class_cycles(
+    adjacency: &HashMap<RustsatEqKey, BTreeSet<RustsatEqKey>>,
+) -> Vec<Vec<RustsatEqKey>> {
+    let mut nodes = adjacency.keys().cloned().collect::<Vec<_>>();
+    nodes.sort();
+    let mut stack = Vec::<RustsatEqKey>::new();
+    let mut path_set = HashSet::<RustsatEqKey>::new();
+    let mut seen_cycles = BTreeSet::<Vec<RustsatEqKey>>::new();
+
+    fn dfs(
+        start: &RustsatEqKey,
+        node: &RustsatEqKey,
+        adjacency: &HashMap<RustsatEqKey, BTreeSet<RustsatEqKey>>,
+        stack: &mut Vec<RustsatEqKey>,
+        path_set: &mut HashSet<RustsatEqKey>,
+        seen_cycles: &mut BTreeSet<Vec<RustsatEqKey>>,
+    ) {
+        stack.push(node.clone());
+        path_set.insert(node.clone());
+        if let Some(children) = adjacency.get(node) {
+            for child in children {
+                if child == start {
+                    let mut cycle = stack.clone();
+                    cycle.sort();
+                    seen_cycles.insert(cycle);
+                } else if !path_set.contains(child) && child >= start {
+                    dfs(start, child, adjacency, stack, path_set, seen_cycles);
+                }
+            }
+        }
+        stack.pop();
+        path_set.remove(node);
+    }
+
+    for node in &nodes {
+        dfs(
+            node,
+            node,
+            adjacency,
+            &mut stack,
+            &mut path_set,
+            &mut seen_cycles,
+        );
+    }
+
+    seen_cycles.into_iter().collect()
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_decode_eqclass(
+    egraph: &EGraph,
+    key: &RustsatEqKey,
+    assignment: &RustsatAssignment,
+    candidates: &[RustsatCandidate],
+    by_output: &HashMap<RustsatEqKey, Vec<usize>>,
+    cache: &mut HashMap<RustsatEqKey, TermId>,
+    active: &mut HashSet<RustsatEqKey>,
+    termdag: &mut TermDag,
+) -> Result<TermId, egglog::Error> {
+    if let Some(term) = cache.get(key) {
+        return Ok(*term);
+    }
+    if !active.insert(key.clone()) {
+        return Err(egglog::Error::BackendError(format!(
+            "rustsat decode re-entered e-class `{}` while it was still active; the selected assignment is not acyclic enough to decode",
+            key.sort_name
+        )));
+    }
+    let Some(candidate_ids) = by_output.get(key) else {
+        active.remove(key);
+        return Err(egglog::Error::BackendError(format!(
+            "rustsat decode could not find any candidate rows for `{}`",
+            key.sort_name
+        )));
+    };
+
+    let mut selected = candidate_ids
+        .iter()
+        .copied()
+        .filter(|idx| assignment.lit_value(candidates[*idx].lit) == TernaryVal::True)
+        .collect::<Vec<_>>();
+    selected.sort_by_key(|idx| candidates[*idx].decode_key());
+    let Some(chosen_idx) = selected.first().copied() else {
+        active.remove(key);
+        return Err(egglog::Error::BackendError(format!(
+            "rustsat decode found no selected witness for required e-class `{}`",
+            key.sort_name
+        )));
+    };
+    let chosen = &candidates[chosen_idx];
+
+    let mut child_terms = Vec::with_capacity(chosen.inputs.len());
+    for (child_sort, child_value) in &chosen.inputs {
+        let child_term = if child_sort.is_eq_sort() {
+            rustsat_decode_eqclass(
+                egraph,
+                &RustsatEqKey {
+                    sort_name: child_sort.name().to_string(),
+                    value: *child_value,
+                },
+                assignment,
+                candidates,
+                by_output,
+                cache,
+                active,
+                termdag,
+            )?
+        } else {
+            rustsat_base_term(egraph, termdag, child_sort, *child_value)?
+        };
+        child_terms.push(child_term);
+    }
+
+    let term = termdag.app(chosen.term_name.clone(), child_terms);
+    cache.insert(key.clone(), term);
+    active.remove(key);
+    Ok(term)
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_base_term(
+    egraph: &EGraph,
+    termdag: &mut TermDag,
+    sort: &ArcSort,
+    value: egglog::Value,
+) -> Result<TermId, egglog::Error> {
+    match sort.name() {
+        "i64" => Ok(termdag.lit(Literal::Int(egraph.value_to_base::<i64>(value)))),
+        "bool" => Ok(termdag.lit(Literal::Bool(egraph.value_to_base::<bool>(value)))),
+        "String" => Ok(termdag.lit(Literal::String(
+            egraph.value_to_base::<egglog::sort::S>(value).0,
+        ))),
+        "f64" => Ok(termdag.lit(Literal::Float(
+            egraph.value_to_base::<egglog::sort::F>(value).0,
+        ))),
+        "Unit" | "()" => Ok(termdag.lit(Literal::Unit)),
+        other => Err(egglog::Error::BackendError(format!(
+            "rustsat extraction prototype does not yet support base sort `{other}` in decode"
+        ))),
+    }
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_clause(lits: impl IntoIterator<Item = RustsatLit>) -> RustsatClause {
+    lits.into_iter().collect()
 }
 
 pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl {}

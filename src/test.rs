@@ -1,10 +1,22 @@
 #[cfg(test)]
 mod tests {
-    use crate::{self as eggplant, artifact::ArtifactDslFieldKind, tx_rx_vt_pr};
+    use crate::{
+        self as eggplant,
+        artifact::{
+            ArtifactDslFieldKind, BinaryArtifactCodecError, BinaryArtifactCompatibilityPolicy,
+            BinaryArtifactIoError, BinaryArtifactPayloadCodec, BinaryArtifactPayloadKind,
+            build_persisted_snapshot_v2_eqclass, compare_persisted_snapshot_to_current,
+            current_dsl_schema_manifest, dsl_metadata_fingerprint, dsl_runtime_fingerprint,
+            engine_schema_fingerprint, persisted_snapshot_capability_summary,
+            read_binary_artifact_header, read_binary_artifact_header_from_file,
+        },
+        tx_rx_vt_pr,
+    };
     use eggplant::prelude::*;
     use eggplant::wrap::{
         ActionSampleEvent, ActionSampleRecorder, EgglogEnumVariantTy, SchemaFieldKind,
     };
+    use std::collections::BTreeMap;
     use std::sync::{
         Arc, Mutex,
         atomic::{AtomicBool, Ordering},
@@ -68,7 +80,7 @@ mod tests {
         MyPatternVars::new(expr_var)
     }
 
-    #[eggplant::relation]
+    #[eggplant::relation(typst = "edge({src}, {dst})", precedence = 40)]
     struct RelEdge {
         src: i64,
         dst: i64,
@@ -83,6 +95,29 @@ mod tests {
     #[eggplant::dsl]
     enum RelPerson {
         Human { id: i64 },
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+    #[eggplant::base_ty]
+    struct PersistedUserBase {
+        n: i64,
+    }
+
+    #[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+    #[eggplant::base_ty]
+    struct HookedPersistedUserBase {
+        n: i64,
+    }
+
+    static HOOKED_PERSISTED_USER_BASE_RESTORE_HOOK: eggplant::wrap::SerdeJsonUserBaseSortHook<
+        HookedPersistedUserBase,
+    > = eggplant::wrap::SerdeJsonUserBaseSortHook::new("test-hooked-json-object");
+
+    inventory::submit! {
+        eggplant::wrap::PersistedSnapshotUserBaseSortHookRegistration::new(
+            "HookedPersistedUserBase",
+            &HOOKED_PERSISTED_USER_BASE_RESTORE_HOOK,
+        )
     }
 
     impl<T: eggplant::wrap::NodeDropperSgl, V: EgglogEnumVariantTy> std::fmt::Debug
@@ -646,6 +681,50 @@ mod tests {
     }
 
     #[test]
+    fn serialized_artifact_exposes_variant_precedence_and_typst_templates_without_expansion() {
+        let artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+        let add = artifact
+            .dsl_schema
+            .variants
+            .iter()
+            .find(|variant| variant.owner_ty == "PrecedenceExpr" && variant.variant_name == "Add")
+            .expect("Add variant should be present in serialized DSL schema");
+
+        assert_eq!(add.precedence, 10);
+        assert_eq!(add.typst_template.as_deref(), Some("{lhs} + {rhs}"));
+        assert!(
+            add.typst_template
+                .as_deref()
+                .is_some_and(|template| template.contains("{lhs}") && template.contains("{rhs}")),
+            "serialized typst metadata should preserve placeholders rather than pre-rendering per-node strings"
+        );
+    }
+
+    #[test]
+    fn serialized_artifact_json_keeps_variant_precedence_and_typst_template_fields() {
+        let artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+        let json = serde_json::to_value(&artifact).unwrap();
+        let add = json["dsl_schema"]["variants"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|variant| {
+                variant["owner_ty"].as_str() == Some("PrecedenceExpr")
+                    && variant["variant_name"].as_str() == Some("Add")
+            })
+            .expect("Add variant should be present in artifact json");
+
+        assert_eq!(add["precedence"].as_u64(), Some(10));
+        assert_eq!(add["typst_template"].as_str(), Some("{lhs} + {rhs}"));
+    }
+
+    #[test]
     fn serialized_artifact_envelope_checked_json_load_allows_metadata_only_change() {
         let mut envelope = SerializedArtifactEnvelope::new("payload".to_string());
         let mdiff = envelope
@@ -693,6 +772,197 @@ mod tests {
         let json = envelope.to_json_string().unwrap();
         let err = SerializedArtifactEnvelope::<String>::from_json_str_checked(&json).unwrap_err();
         assert!(format!("{err}").contains("format mismatch"));
+    }
+
+    fn temp_binary_path(stem: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        std::env::temp_dir().join(format!("{stem}_{nanos}.egbin"))
+    }
+
+    #[test]
+    fn serialized_artifact_binary_round_trip_preserves_payload() {
+        let artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+
+        let bytes = artifact.to_binary_vec().unwrap();
+        let loaded = SerializedEggplantArtifact::from_binary_slice(&bytes).unwrap();
+
+        assert_eq!(loaded, artifact);
+    }
+
+    #[test]
+    fn serialized_artifact_binary_header_exposes_contract_fields() {
+        let artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+
+        let bytes = artifact.to_binary_vec().unwrap();
+        let header = read_binary_artifact_header(&bytes).unwrap();
+
+        assert_eq!(
+            header.payload_kind,
+            BinaryArtifactPayloadKind::SerializedEggplantArtifact
+        );
+        assert_eq!(
+            header.payload_codec,
+            BinaryArtifactPayloadCodec::MessagePack
+        );
+        assert_eq!(
+            header.payload_format,
+            EGGPLANT_SERIALIZED_ARTIFACT_FORMAT.to_string()
+        );
+        assert_eq!(header.payload_version, artifact.format_version);
+        assert_eq!(header.payload_profile, None);
+        assert_eq!(
+            header.compatibility_policy,
+            BinaryArtifactCompatibilityPolicy::ArtifactTypedContinuationOrViewerFallback
+        );
+    }
+
+    #[test]
+    fn serialized_artifact_binary_file_io_round_trip_preserves_payload() {
+        let artifact = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
+        };
+        let path = temp_binary_path("serialized_artifact_round_trip");
+
+        artifact.write_binary_file(&path).unwrap();
+        let header = read_binary_artifact_header_from_file(&path).unwrap();
+        let loaded = SerializedEggplantArtifact::read_binary_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(
+            header.payload_kind,
+            BinaryArtifactPayloadKind::SerializedEggplantArtifact
+        );
+        assert_eq!(loaded, artifact);
+    }
+
+    #[test]
+    fn persisted_snapshot_binary_round_trip_preserves_payload() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(17));
+        root.commit();
+        RelEdge::<MyTx>::insert(4, 5);
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
+        };
+
+        let bytes = snapshot.to_binary_vec().unwrap();
+        let loaded = PersistedSnapshot::from_binary_slice(&bytes).unwrap();
+
+        assert_eq!(loaded, snapshot);
+    }
+
+    #[test]
+    fn persisted_snapshot_binary_header_exposes_contract_fields() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(19));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
+        };
+
+        let bytes = snapshot.to_binary_vec().unwrap();
+        let header = read_binary_artifact_header(&bytes).unwrap();
+
+        assert_eq!(
+            header.payload_kind,
+            BinaryArtifactPayloadKind::PersistedSnapshot
+        );
+        assert_eq!(
+            header.payload_codec,
+            BinaryArtifactPayloadCodec::MessagePack
+        );
+        assert_eq!(header.payload_format, snapshot.format);
+        assert_eq!(header.payload_version, snapshot.snapshot_version);
+        assert_eq!(header.payload_profile, Some(snapshot.profile));
+        assert_eq!(
+            header.compatibility_policy,
+            BinaryArtifactCompatibilityPolicy::PersistedSnapshotSourceSchemaAwareRestore
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_binary_file_io_round_trip_preserves_payload() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(29));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        let path = temp_binary_path("persisted_snapshot_round_trip");
+
+        snapshot.write_binary_file(&path).unwrap();
+        let header = read_binary_artifact_header_from_file(&path).unwrap();
+        let loaded = PersistedSnapshot::read_binary_file(&path).unwrap();
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(
+            header.payload_kind,
+            BinaryArtifactPayloadKind::PersistedSnapshot
+        );
+        assert_eq!(loaded, snapshot);
+    }
+
+    #[test]
+    fn binary_codec_rejects_payload_kind_mismatch() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(23));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        let bytes = snapshot.to_binary_vec().unwrap();
+
+        let err = SerializedEggplantArtifact::from_binary_slice(&bytes).unwrap_err();
+        assert!(matches!(
+            err,
+            BinaryArtifactCodecError::PayloadKindMismatch {
+                expected: BinaryArtifactPayloadKind::SerializedEggplantArtifact,
+                actual: BinaryArtifactPayloadKind::PersistedSnapshot,
+            }
+        ));
+    }
+
+    #[test]
+    fn binary_file_io_rejects_payload_kind_mismatch() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(31));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        let path = temp_binary_path("binary_kind_mismatch");
+        snapshot.write_binary_file(&path).unwrap();
+
+        let err = SerializedEggplantArtifact::read_binary_file(&path).unwrap_err();
+        let _ = std::fs::remove_file(&path);
+
+        assert!(matches!(
+            err,
+            BinaryArtifactIoError::Codec(BinaryArtifactCodecError::PayloadKindMismatch {
+                expected: BinaryArtifactPayloadKind::SerializedEggplantArtifact,
+                actual: BinaryArtifactPayloadKind::PersistedSnapshot,
+            })
+        ));
     }
 
     #[test]
@@ -792,6 +1062,1244 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn persisted_snapshot_v1_restore_replays_constructor_rows() {
+        MyTx::sgl().reset_for_bench();
+
+        let root_a = Root::<MyTx>::new(&Const::new(7));
+        let root_b = Root::<MyTx>::new(&Const::new(9));
+        root_a.commit();
+        root_b.commit();
+
+        let before = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        MyTx::sgl().reset_for_bench();
+        let report = {
+            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            restore_persisted_snapshot_v1(&mut egraph, &before).unwrap()
+        };
+        let after = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        let row_count_by_op = |snapshot: &PersistedSnapshot| {
+            let mut counts = BTreeMap::<usize, usize>::new();
+            for row in &snapshot.state.function_rows {
+                *counts.entry(row.op_id).or_default() += 1;
+            }
+            counts
+        };
+
+        assert_eq!(report.restored_facts, 0);
+        assert_eq!(
+            report.restored_function_rows,
+            before.state.function_rows.len()
+        );
+        assert_eq!(
+            row_count_by_op(&after),
+            row_count_by_op(&before),
+            "restored constructor rows should match exported counts by op"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_restore_replays_relation_facts() {
+        tx_rx_vt_pr!(RelRestoreTx, RelRestorePatRec);
+        RelRestoreTx::sgl().reset_for_bench();
+
+        RelEdge::<RelRestoreTx>::insert(1, 2);
+        RelEdge::<RelRestoreTx>::insert(2, 3);
+
+        let before = {
+            let egraph = RelRestoreTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        RelRestoreTx::sgl().reset_for_bench();
+        let report = {
+            let mut egraph = RelRestoreTx::sgl().egraph.lock().unwrap();
+            restore_persisted_snapshot_v1(&mut egraph, &before).unwrap()
+        };
+        let after = {
+            let egraph = RelRestoreTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        let fact_payloads = |snapshot: &PersistedSnapshot| {
+            let mut rows = snapshot
+                .state
+                .facts
+                .iter()
+                .map(|fact| {
+                    let payload = fact
+                        .inputs
+                        .iter()
+                        .map(|value| match value {
+                            PersistedSnapshotValue::Lit { value, .. } => value.value.clone(),
+                            PersistedSnapshotValue::Ref { logical_id, .. } => logical_id.clone(),
+                        })
+                        .collect::<Vec<_>>();
+                    (fact.op_id, payload)
+                })
+                .collect::<Vec<_>>();
+            rows.sort();
+            rows
+        };
+
+        assert_eq!(
+            report.restored_function_rows,
+            before.state.function_rows.len()
+        );
+        assert_eq!(report.restored_facts, before.state.facts.len());
+        assert_eq!(
+            fact_payloads(&after),
+            fact_payloads(&before),
+            "restored relation facts should match exported payloads"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_classifies_eggplant_native_relations_as_facts() {
+        tx_rx_vt_pr!(RelPolicyTx, RelPolicyPatRec);
+        RelPolicyTx::sgl().reset_for_bench();
+
+        RelEdge::<RelPolicyTx>::insert(7, 8);
+
+        let snapshot = {
+            let egraph = RelPolicyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        assert!(
+            !snapshot.state.facts.is_empty(),
+            "eggplant-native relations should serialize as facts"
+        );
+        assert!(
+            snapshot.state.function_rows.is_empty(),
+            "with only relation facts inserted, the supported eggplant-native path should not need function_rows"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_does_not_claim_plain_egglog_relations_as_supported_facts() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(relation edge (i64 i64))
+(edge 1 2)
+"#,
+            )
+            .unwrap();
+
+        let snapshot = build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default());
+
+        assert!(
+            snapshot.state.facts.is_empty(),
+            "plain/non-eggplant relations should not be silently promoted into supported facts"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_reports_plain_source_relation_like_diagnostic() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(relation edge (i64 i64))
+(edge 1 2)
+"#,
+            )
+            .unwrap();
+
+        let snapshot = build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default());
+
+        assert!(snapshot.diagnostics.iter().any(|diag| {
+            diag.code == "plain-source-non-goal"
+                && diag.path.as_deref() == Some("state.plain_source_relation_like.edge")
+        }));
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_plain_source_diagnostic_does_not_fire_for_supported_rows() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype Expr (Const i64))
+(Const 3)
+(function touch (i64) Unit :no-merge)
+(set (touch 1) ())
+"#,
+            )
+            .unwrap();
+
+        let snapshot = build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default());
+
+        assert!(
+            snapshot
+                .diagnostics
+                .iter()
+                .all(|diag| diag.code != "plain-source-non-goal"),
+            "supported constructor/unit-function rows should not trigger the plain-source relation diagnostic"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_keeps_constructor_rows_out_of_facts() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype Expr (Const i64))
+(Const 3)
+"#,
+            )
+            .unwrap();
+
+        let snapshot = build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default());
+        let const_decl = snapshot
+            .schema
+            .constructor_decls
+            .iter()
+            .find(|decl| decl.name == "Const")
+            .expect("constructor decl should be exported");
+
+        assert!(
+            snapshot
+                .state
+                .function_rows
+                .iter()
+                .any(|row| row.op_id == const_decl.op_id),
+            "constructors should serialize as function_rows/common-path rows"
+        );
+        assert!(
+            snapshot
+                .state
+                .facts
+                .iter()
+                .all(|fact| fact.op_id != const_decl.op_id),
+            "constructors must not be classified as relation facts"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_keeps_unit_returning_function_rows_out_of_facts() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(function touch (i64) Unit :no-merge)
+(set (touch 1) ())
+"#,
+            )
+            .unwrap();
+
+        let snapshot =
+            build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default());
+        let touch_decl = snapshot
+            .schema
+            .function_decls
+            .iter()
+            .find(|decl| decl.name == "touch")
+            .expect("touch function decl should be exported");
+
+        assert!(
+            snapshot
+                .state
+                .function_rows
+                .iter()
+                .any(|row| row.op_id == touch_decl.op_id),
+            "unit-returning functions should stay in function_rows"
+        );
+        assert!(
+            snapshot
+                .state
+                .facts
+                .iter()
+                .all(|fact| fact.op_id != touch_decl.op_id),
+            "unit-returning functions should not be downgraded into relation facts"
+        );
+    }
+
+    inventory::submit! {
+        eggplant::wrap::Decl::EgglogRelationTy {
+            name: "PersistedMetaEdgePlain",
+            input: &["i64", "i64"],
+            typst_template: Some("edge({src}, {dst})"),
+            precedence: 40,
+        }
+    }
+
+    #[eggplant::func(output = bool, no_merge, typst = "touch({x})", precedence = 70)]
+    struct persisted_meta_touch {
+        x: i64,
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_keeps_decl_typst_and_precedence_metadata() {
+        let mut constructor_egraph = eggplant::egglog::EGraph::default();
+        constructor_egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype PrecedenceExpr
+  (Var String)
+  (Add PrecedenceExpr PrecedenceExpr)
+  (Mul PrecedenceExpr PrecedenceExpr))
+(let x (Var "x"))
+(let y (Var "y"))
+(let z (Add x y))
+"#,
+            )
+            .unwrap();
+        let constructor_snapshot =
+            build_persisted_snapshot_v1(&constructor_egraph, egglog::SerializeConfig::default());
+        let add_decl = constructor_snapshot
+            .schema
+            .constructor_decls
+            .iter()
+            .find(|decl| decl.name == "Add")
+            .expect("Add constructor should be exported");
+        let add_meta = add_decl
+            .metadata
+            .as_ref()
+            .expect("constructor metadata should be exported");
+        assert_eq!(
+            add_meta.get("precedence").and_then(|value| value.as_u64()),
+            Some(10)
+        );
+        assert_eq!(
+            add_meta
+                .get("typst_template")
+                .and_then(|value| value.as_str()),
+            Some("{lhs} + {rhs}")
+        );
+
+        tx_rx_vt_pr!(PersistedMetaTx, PersistedMetaPatRec);
+        PersistedMetaTx::sgl().reset_for_bench();
+        RelEdge::<PersistedMetaTx>::insert(1, 2);
+        let relation_snapshot = {
+            let egraph = PersistedMetaTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        let relation_decl = relation_snapshot
+            .schema
+            .function_decls
+            .iter()
+            .find(|decl| decl.name == "RelEdge")
+            .expect("relation decl should be exported");
+        let relation_meta = relation_decl
+            .metadata
+            .as_ref()
+            .expect("relation metadata should be exported");
+        assert_eq!(
+            relation_meta
+                .get("precedence")
+                .and_then(|value| value.as_u64()),
+            Some(40)
+        );
+        assert_eq!(
+            relation_meta
+                .get("typst_template")
+                .and_then(|value| value.as_str()),
+            Some("edge({src}, {dst})")
+        );
+
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(function persisted_meta_touch (i64) bool :no-merge)
+(set (persisted_meta_touch 1) false)
+"#,
+            )
+            .unwrap();
+        let snapshot = build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default());
+
+        let func_decl = snapshot
+            .schema
+            .function_decls
+            .iter()
+            .find(|decl| {
+                decl.metadata
+                    .as_ref()
+                    .and_then(|meta| meta.get("typst_template"))
+                    .and_then(|value| value.as_str())
+                    == Some("touch({x})")
+            })
+            .expect("func decl should be exported");
+        let func_meta = func_decl
+            .metadata
+            .as_ref()
+            .expect("func metadata should be exported");
+        assert_eq!(
+            func_meta.get("precedence").and_then(|value| value.as_u64()),
+            Some(70)
+        );
+        assert_eq!(
+            func_meta
+                .get("typst_template")
+                .and_then(|value| value.as_str()),
+            Some("touch({x})")
+        );
+    }
+
+    #[test]
+    fn relation_decl_attrs_capture_typst_and_precedence_metadata() {
+        let relation_decl = inventory::iter::<eggplant::wrap::Decl>
+            .into_iter()
+            .find_map(|decl| match decl {
+                eggplant::wrap::Decl::EgglogRelationTy {
+                    name,
+                    typst_template,
+                    precedence,
+                    ..
+                } if *name == "PersistedMetaEdgePlain" => Some((typst_template, precedence)),
+                _ => None,
+            })
+            .expect("relation decl should be registered in inventory");
+
+        assert_eq!(*relation_decl.0, Some("edge({src}, {dst})"));
+        assert_eq!(*relation_decl.1, 40);
+    }
+
+    #[test]
+    fn persisted_snapshot_json_keeps_decl_typst_and_precedence_metadata_fields() {
+        let mut constructor_egraph = eggplant::egglog::EGraph::default();
+        constructor_egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype PrecedenceExpr
+  (Var String)
+  (Add PrecedenceExpr PrecedenceExpr)
+  (Mul PrecedenceExpr PrecedenceExpr))
+(let x (Var "x"))
+(let y (Var "y"))
+(let z (Add x y))
+"#,
+            )
+            .unwrap();
+        let constructor_snapshot =
+            build_persisted_snapshot_v1(&constructor_egraph, egglog::SerializeConfig::default());
+        let constructor_json = serde_json::to_value(&constructor_snapshot).unwrap();
+        let add_decl = constructor_json["schema"]["constructor_decls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|decl| decl["name"].as_str() == Some("Add"))
+            .expect("Add constructor should be present in persisted snapshot json");
+        assert_eq!(add_decl["metadata"]["precedence"].as_u64(), Some(10));
+        assert_eq!(
+            add_decl["metadata"]["typst_template"].as_str(),
+            Some("{lhs} + {rhs}")
+        );
+
+        tx_rx_vt_pr!(PersistedMetaJsonTx, PersistedMetaJsonPatRec);
+        PersistedMetaJsonTx::sgl().reset_for_bench();
+        RelEdge::<PersistedMetaJsonTx>::insert(1, 2);
+        let relation_snapshot = {
+            let egraph = PersistedMetaJsonTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        let relation_json = serde_json::to_value(&relation_snapshot).unwrap();
+        let relation_decl = relation_json["schema"]["function_decls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|decl| decl["name"].as_str() == Some("RelEdge"))
+            .expect("relation decl should be present in persisted snapshot json");
+        assert_eq!(relation_decl["metadata"]["precedence"].as_u64(), Some(40));
+        assert_eq!(
+            relation_decl["metadata"]["typst_template"].as_str(),
+            Some("edge({src}, {dst})")
+        );
+
+        let mut func_egraph = eggplant::egglog::EGraph::default();
+        func_egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(function persisted_meta_touch (i64) bool :no-merge)
+(set (persisted_meta_touch 1) false)
+"#,
+            )
+            .unwrap();
+        let func_snapshot =
+            build_persisted_snapshot_v1(&func_egraph, egglog::SerializeConfig::default());
+        let func_json = serde_json::to_value(&func_snapshot).unwrap();
+        let func_decl = func_json["schema"]["function_decls"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|decl| decl["name"].as_str() == Some("persisted_meta_touch"))
+            .expect("function decl should be present in persisted snapshot json");
+        assert_eq!(func_decl["metadata"]["precedence"].as_u64(), Some(70));
+        assert_eq!(
+            func_decl["metadata"]["typst_template"].as_str(),
+            Some("touch({x})")
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_restore_supports_bigrat_literals() {
+        let mut seeded = eggplant::egglog::EGraph::default();
+        seeded
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype RatWrap (RatBox BigRat))
+(RatBox (bigrat (bigint 1) (bigint 2)))
+"#,
+            )
+            .unwrap();
+
+        let snapshot =
+            build_persisted_snapshot_v1(&seeded, eggplant::egglog::SerializeConfig::default());
+        let rat_decl = snapshot
+            .schema
+            .constructor_decls
+            .iter()
+            .find(|decl| decl.name == "RatBox")
+            .expect("RatBox constructor decl should be exported");
+        let rat_row = snapshot
+            .state
+            .function_rows
+            .iter()
+            .find(|row| row.op_id == rat_decl.op_id)
+            .expect("RatBox row should be exported");
+
+        assert!(matches!(
+            rat_row.inputs.first().unwrap(),
+            PersistedSnapshotValue::Lit { value, .. }
+                if value.machine_value.is_some()
+        ));
+
+        let mut restored = eggplant::egglog::EGraph::default();
+        restored
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype RatWrap (RatBox BigRat))
+"#,
+            )
+            .unwrap();
+
+        restore_persisted_snapshot_v1(&mut restored, &snapshot).unwrap();
+        let restored_snapshot =
+            build_persisted_snapshot_v1(&restored, eggplant::egglog::SerializeConfig::default());
+
+        let row_count_by_op = |snapshot: &PersistedSnapshot| {
+            let mut counts = BTreeMap::<usize, usize>::new();
+            for row in &snapshot.state.function_rows {
+                *counts.entry(row.op_id).or_default() += 1;
+            }
+            counts
+        };
+
+        assert_eq!(
+            row_count_by_op(&restored_snapshot),
+            row_count_by_op(&snapshot),
+            "BigRat constructor rows should round-trip through persisted snapshot restore"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_restore_rejects_non_fresh_target() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(7));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        let mut target = eggplant::egglog::EGraph::default();
+        target
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype Expr (Const i64))
+(let x (Const 1))
+"#,
+            )
+            .unwrap();
+
+        let err = restore_persisted_snapshot_v1(&mut target, &snapshot).unwrap_err();
+        assert!(
+            matches!(err, PersistedSnapshotRestoreError::TargetNotFresh(_)),
+            "restore should reject non-fresh target egraphs"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_persists_ruleset_name_provenance_only() {
+        MyTx::sgl().reset_for_bench();
+        let ruleset = MyTx::new_ruleset("persisted_snapshot_ruleset_name");
+        MyTx::add_rule(
+            "persisted_snapshot_ruleset_name_rule",
+            ruleset,
+            || {
+                let expr = Expr::query_leaf();
+                let root = Root::query(&expr);
+                #[eggplant::pat_vars_catch]
+                struct Pat {
+                    root: Root,
+                }
+            },
+            |_ctx, _pat| {},
+        );
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        assert!(
+            snapshot
+                .dictionary
+                .rulesets
+                .iter()
+                .any(|name| name == "persisted_snapshot_ruleset_name")
+        );
+        assert!(
+            snapshot
+                .schema
+                .ruleset_decls
+                .iter()
+                .any(|decl| decl.name == "persisted_snapshot_ruleset_name")
+        );
+        assert!(
+            snapshot.diagnostics.iter().any(|diag| {
+                diag.path.as_deref() == Some("schema.ruleset_decls")
+                    && diag.message.contains("provenance-only")
+            }),
+            "ruleset declarations should be explicitly documented as provenance-only metadata"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_restore_ignores_ruleset_name_provenance() {
+        MyTx::sgl().reset_for_bench();
+        let ruleset = MyTx::new_ruleset("persisted_snapshot_restore_ignores_ruleset_name");
+        MyTx::add_rule(
+            "persisted_snapshot_restore_ignores_ruleset_name_rule",
+            ruleset,
+            || {
+                let expr = Expr::query_leaf();
+                let root = Root::query(&expr);
+                #[eggplant::pat_vars_catch]
+                struct Pat {
+                    root: Root,
+                }
+            },
+            |_ctx, _pat| {},
+        );
+        let root = Root::<MyTx>::new(&Const::new(5));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+
+        MyTx::sgl().reset_for_bench();
+        let report = {
+            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap()
+        };
+
+        assert_eq!(report.restored_facts, snapshot.state.facts.len());
+        assert_eq!(
+            report.restored_function_rows,
+            snapshot.state.function_rows.len()
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_captures_source_schema_alignment_header() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(13));
+        root.commit();
+
+        let (snapshot, current_engine_fingerprint) = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            (
+                build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default()),
+                engine_schema_fingerprint(&crate::artifact::current_engine_schema_manifest(
+                    &egraph,
+                ))
+                .unwrap(),
+            )
+        };
+        let source_schema = snapshot
+            .source_schema
+            .as_ref()
+            .expect("v1 snapshots should carry source schema alignment header");
+        let current_dsl = current_dsl_schema_manifest();
+
+        assert_eq!(
+            source_schema.engine_fingerprint, current_engine_fingerprint,
+            "snapshot source schema should carry the producer engine fingerprint"
+        );
+        assert_eq!(
+            source_schema.dsl_runtime_fingerprint,
+            dsl_runtime_fingerprint(&current_dsl).unwrap()
+        );
+        assert_eq!(
+            source_schema.dsl_metadata_fingerprint,
+            dsl_metadata_fingerprint(&current_dsl).unwrap()
+        );
+        assert_eq!(source_schema.macro_rev, current_dsl.macro_rev);
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_alignment_report_allows_metadata_only_drift() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(21));
+        root.commit();
+
+        let mut snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        snapshot
+            .source_schema
+            .as_mut()
+            .unwrap()
+            .dsl_metadata_fingerprint = "metadata-mismatch".to_string();
+
+        let report = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            compare_persisted_snapshot_to_current(&snapshot, &egraph)
+        };
+
+        assert!(report.restore_schema_compatible);
+        assert!(!report.exact_source_match);
+        assert!(!report.dsl_metadata_fingerprint_matches);
+        assert!(report.issues.iter().any(|issue| {
+            issue.layer == crate::artifact::PersistedSnapshotAlignmentLayer::DslMetadata
+                && !issue.blocking
+        }));
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_restore_rejects_runtime_alignment_mismatch() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(34));
+        root.commit();
+
+        let mut snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        snapshot
+            .source_schema
+            .as_mut()
+            .unwrap()
+            .dsl_runtime_fingerprint = "runtime-mismatch".to_string();
+
+        MyTx::sgl().reset_for_bench();
+        let err = {
+            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap_err()
+        };
+
+        assert!(matches!(
+            err,
+            PersistedSnapshotRestoreError::SchemaMismatch(_)
+        ));
+        assert!(format!("{err}").contains("dsl runtime fingerprint mismatch"));
+    }
+
+    #[test]
+    fn persisted_snapshot_user_base_sort_defaults_to_registered_without_restore_hook() {
+        assert_eq!(
+            eggplant::wrap::user_base_sort_restore_support("PersistedUserBase"),
+            Some(eggplant::wrap::PersistedSnapshotUserBaseSortSupport::RegisteredWithoutHook)
+        );
+        assert!(eggplant::wrap::user_base_sort_restore_hook("PersistedUserBase").is_none());
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_user_base_sort_metadata_and_diagnostic_report_missing_hook() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        for sort in inventory::iter::<eggplant::wrap::UserBaseSort> {
+            if sort.name == "PersistedUserBase" {
+                (sort.sort_insert_fn)(&mut egraph);
+            }
+        }
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype PersistedUserBaseExpr (PersistedUserLeaf PersistedUserBase))
+"#,
+            )
+            .unwrap();
+        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+            &mut egraph,
+            "seed_persisted_user_base_snapshot",
+            &[],
+            eggplant::egglog::ast::Facts(Vec::new()),
+            |ctx, _| {
+                let base =
+                    ctx.base_to_value(eggplant::egglog::sort::Boxed::new(PersistedUserBase {
+                        n: 9,
+                    }));
+                let _ = ctx.lookup("PersistedUserLeaf", &[base]);
+                Some(())
+            },
+        )
+        .unwrap();
+
+        let snapshot = build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default());
+        let sort_decl = snapshot
+            .schema
+            .sort_decls
+            .iter()
+            .find(|decl| decl.name == "PersistedUserBase")
+            .expect("user base sort should be exported in schema");
+        let restore_meta = sort_decl
+            .metadata
+            .as_ref()
+            .and_then(|value| value.get("persisted_snapshot_restore"))
+            .expect("user base sort should carry persisted snapshot restore metadata");
+
+        assert_eq!(
+            restore_meta.get("support").and_then(|value| value.as_str()),
+            Some("registered_without_hook")
+        );
+        assert!(
+            snapshot.diagnostics.iter().any(|diag| {
+                diag.code == "user-base-restore-missing-hook"
+                    && diag.path.as_deref() == Some("state.literal_sorts.PersistedUserBase")
+            }),
+            "exporting user-base literals without a hook should produce an explicit capability diagnostic"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_capability_summary_reports_plain_source_non_goal() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(relation edge (i64 i64))
+(edge 1 2)
+"#,
+            )
+            .unwrap();
+
+        let snapshot =
+            build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default());
+        let summary = persisted_snapshot_capability_summary(&snapshot);
+
+        assert!(summary.non_goals.iter().any(|entry| {
+            entry.key == "state.plain_source_relation_like.edge"
+                && entry.detail.contains("plain/non-eggplant")
+        }));
+        assert!(
+            summary
+                .guaranteed_restorable
+                .iter()
+                .any(|entry| { entry.key == "state.function_rows" })
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_capability_summary_reports_missing_hook_and_requirements() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        for sort in inventory::iter::<eggplant::wrap::UserBaseSort> {
+            if sort.name == "PersistedUserBase" {
+                (sort.sort_insert_fn)(&mut egraph);
+            }
+        }
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype PersistedUserBaseExpr (PersistedUserLeaf PersistedUserBase))
+"#,
+            )
+            .unwrap();
+        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+            &mut egraph,
+            "seed_missing_hook_summary",
+            &[],
+            eggplant::egglog::ast::Facts(Vec::new()),
+            |ctx, _| {
+                let base =
+                    ctx.base_to_value(eggplant::egglog::sort::Boxed::new(PersistedUserBase {
+                        n: 5,
+                    }));
+                let _ = ctx.lookup("PersistedUserLeaf", &[base]);
+                Some(())
+            },
+        )
+        .unwrap();
+
+        let snapshot =
+            build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default());
+        let summary = persisted_snapshot_capability_summary(&snapshot);
+
+        assert!(
+            summary
+                .missing_hooks
+                .iter()
+                .any(|entry| { entry.key == "state.literal_sorts.PersistedUserBase" })
+        );
+        assert!(
+            summary
+                .required_preconditions
+                .iter()
+                .any(|line| { line.contains("source_schema alignment") })
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_capability_summary_reports_hooked_user_base_as_restorable() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        for sort in inventory::iter::<eggplant::wrap::UserBaseSort> {
+            if sort.name == "HookedPersistedUserBase" {
+                (sort.sort_insert_fn)(&mut egraph);
+            }
+        }
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype HookedPersistedUserBaseExpr (HookedPersistedUserLeaf HookedPersistedUserBase))
+"#,
+            )
+            .unwrap();
+        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+            &mut egraph,
+            "seed_hooked_summary",
+            &[],
+            eggplant::egglog::ast::Facts(Vec::new()),
+            |ctx, _| {
+                let base = ctx.base_to_value(eggplant::egglog::sort::Boxed::new(
+                    HookedPersistedUserBase { n: 8 },
+                ));
+                let _ = ctx.lookup("HookedPersistedUserLeaf", &[base]);
+                Some(())
+            },
+        )
+        .unwrap();
+
+        let snapshot =
+            build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default());
+        let summary = persisted_snapshot_capability_summary(&snapshot);
+
+        assert!(summary.guaranteed_restorable.iter().any(|entry| {
+            entry.key == "state.literal_sorts.HookedPersistedUserBase"
+                && entry.detail.contains("test-hooked-json-object")
+        }));
+        assert!(summary.missing_hooks.is_empty());
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_user_base_sort_hook_round_trips() {
+        let mut seeded = eggplant::egglog::EGraph::default();
+        for sort in inventory::iter::<eggplant::wrap::UserBaseSort> {
+            if sort.name == "HookedPersistedUserBase" {
+                (sort.sort_insert_fn)(&mut seeded);
+            }
+        }
+        seeded
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype HookedPersistedUserBaseExpr (HookedPersistedUserLeaf HookedPersistedUserBase))
+"#,
+            )
+            .unwrap();
+        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+            &mut seeded,
+            "seed_hooked_user_base_snapshot",
+            &[],
+            eggplant::egglog::ast::Facts(Vec::new()),
+            |ctx, _| {
+                let base = ctx.base_to_value(eggplant::egglog::sort::Boxed::new(
+                    HookedPersistedUserBase { n: 17 },
+                ));
+                let _ = ctx.lookup("HookedPersistedUserLeaf", &[base]);
+                Some(())
+            },
+        )
+        .unwrap();
+
+        let snapshot =
+            build_persisted_snapshot_v1(&seeded, eggplant::egglog::SerializeConfig::default());
+        let sort_decl = snapshot
+            .schema
+            .sort_decls
+            .iter()
+            .find(|decl| decl.name == "HookedPersistedUserBase")
+            .expect("hooked user base sort should be exported in schema");
+        let restore_meta = sort_decl
+            .metadata
+            .as_ref()
+            .and_then(|value| value.get("persisted_snapshot_restore"))
+            .expect("hooked user base sort should carry restore metadata");
+
+        assert_eq!(
+            restore_meta.get("support").and_then(|value| value.as_str()),
+            Some("registered_with_hook")
+        );
+        assert_eq!(
+            restore_meta
+                .get("capability_label")
+                .and_then(|value| value.as_str()),
+            Some("test-hooked-json-object")
+        );
+        assert!(
+            snapshot
+                .diagnostics
+                .iter()
+                .all(|diag| diag.code != "user-base-restore-missing-hook"),
+            "hooked user base sort should not report missing-hook diagnostics"
+        );
+
+        let mut restored = eggplant::egglog::EGraph::default();
+        for sort in inventory::iter::<eggplant::wrap::UserBaseSort> {
+            if sort.name == "HookedPersistedUserBase" {
+                (sort.sort_insert_fn)(&mut restored);
+            }
+        }
+        restored
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype HookedPersistedUserBaseExpr (HookedPersistedUserLeaf HookedPersistedUserBase))
+"#,
+            )
+            .unwrap();
+
+        restore_persisted_snapshot_v1(&mut restored, &snapshot).unwrap();
+        let restored_snapshot =
+            build_persisted_snapshot_v1(&restored, egglog::SerializeConfig::default());
+
+        let row_count_by_op = |snapshot: &PersistedSnapshot| {
+            let mut counts = BTreeMap::<usize, usize>::new();
+            for row in &snapshot.state.function_rows {
+                *counts.entry(row.op_id).or_default() += 1;
+            }
+            counts
+        };
+
+        assert_eq!(
+            row_count_by_op(&restored_snapshot),
+            row_count_by_op(&snapshot),
+            "hook-backed user base rows should round-trip through persisted snapshot restore"
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_user_base_sort_hook_rejects_invalid_machine_payload() {
+        let mut seeded = eggplant::egglog::EGraph::default();
+        for sort in inventory::iter::<eggplant::wrap::UserBaseSort> {
+            if sort.name == "HookedPersistedUserBase" {
+                (sort.sort_insert_fn)(&mut seeded);
+            }
+        }
+        seeded
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype HookedPersistedUserBaseExpr (HookedPersistedUserLeaf HookedPersistedUserBase))
+"#,
+            )
+            .unwrap();
+        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+            &mut seeded,
+            "seed_hooked_user_base_invalid_payload",
+            &[],
+            eggplant::egglog::ast::Facts(Vec::new()),
+            |ctx, _| {
+                let base = ctx.base_to_value(eggplant::egglog::sort::Boxed::new(
+                    HookedPersistedUserBase { n: 23 },
+                ));
+                let _ = ctx.lookup("HookedPersistedUserLeaf", &[base]);
+                Some(())
+            },
+        )
+        .unwrap();
+        let mut snapshot =
+            build_persisted_snapshot_v1(&seeded, eggplant::egglog::SerializeConfig::default());
+        let row = snapshot
+            .state
+            .function_rows
+            .iter_mut()
+            .find(|row| !row.inputs.is_empty())
+            .expect("hooked snapshot should have a constructor row");
+        let PersistedSnapshotValue::Lit { value, .. } = &mut row.inputs[0] else {
+            panic!("hooked user base input should export as a literal payload");
+        };
+        value.machine_value = Some(serde_json::json!({ "bad": true }));
+
+        let mut restored = eggplant::egglog::EGraph::default();
+        for sort in inventory::iter::<eggplant::wrap::UserBaseSort> {
+            if sort.name == "HookedPersistedUserBase" {
+                (sort.sort_insert_fn)(&mut restored);
+            }
+        }
+        restored
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype HookedPersistedUserBaseExpr (HookedPersistedUserLeaf HookedPersistedUserBase))
+"#,
+            )
+            .unwrap();
+
+        let err = restore_persisted_snapshot_v1(&mut restored, &snapshot).unwrap_err();
+        assert!(matches!(
+            err,
+            PersistedSnapshotRestoreError::UnsupportedLiteral { .. }
+        ));
+    }
+
+    #[test]
+    fn persisted_snapshot_v1_restore_rejects_missing_source_schema_header() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(55));
+        root.commit();
+
+        let mut snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
+        };
+        snapshot.source_schema = None;
+
+        MyTx::sgl().reset_for_bench();
+        let err = {
+            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap_err()
+        };
+
+        assert!(matches!(
+            err,
+            PersistedSnapshotRestoreError::SchemaMismatch(_)
+        ));
+        assert!(format!("{err}").contains("requires producer/source alignment proof"));
+    }
+
+    #[test]
+    fn persisted_snapshot_v2_eqclass_uses_distinct_profile_and_version() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(3));
+        root.commit();
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
+        };
+
+        assert_eq!(
+            snapshot.profile,
+            crate::artifact::EGGPLANT_PERSISTED_SNAPSHOT_V2_EQCLASS_PROFILE
+        );
+        assert_eq!(
+            snapshot.snapshot_version,
+            crate::artifact::EGGPLANT_PERSISTED_SNAPSHOT_V2_EQCLASS_VERSION
+        );
+        assert!(snapshot.eq_class_payload.is_some());
+    }
+
+    #[test]
+    fn persisted_snapshot_v2_eqclass_payload_is_inspect_only_and_groups_members() {
+        let mut egraph = eggplant::egglog::EGraph::default();
+        egraph
+            .parse_and_run_program(
+                None,
+                r#"
+(datatype Expr (Const i64) (Alias Expr))
+(union (Const 7) (Alias (Const 7)))
+"#,
+            )
+            .unwrap();
+
+        let snapshot = build_persisted_snapshot_v2_eqclass(
+            &egraph,
+            eggplant::egglog::SerializeConfig::default(),
+        );
+        let payload = snapshot
+            .eq_class_payload
+            .as_ref()
+            .expect("v2 eq-class snapshot should carry eq-class payload");
+
+        assert_eq!(
+            payload.semantics,
+            crate::artifact::PersistedSnapshotEqClassSemantics::InspectOnly
+        );
+        assert!(payload.classes.iter().any(|class| class.members.len() >= 2));
+    }
+
+    #[test]
+    fn persisted_snapshot_v2_restore_ignores_eqclass_payload_for_semantic_replay() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(11));
+        root.commit();
+        RelEdge::<MyTx>::insert(1, 2);
+
+        let snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
+        };
+
+        MyTx::sgl().reset_for_bench();
+        let report = {
+            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap()
+        };
+
+        assert_eq!(report.restored_facts, snapshot.state.facts.len());
+        assert_eq!(
+            report.restored_function_rows,
+            snapshot.state.function_rows.len()
+        );
+    }
+
+    #[test]
+    fn persisted_snapshot_v2_restore_rejects_missing_eqclass_payload() {
+        MyTx::sgl().reset_for_bench();
+        let root = Root::<MyTx>::new(&Const::new(12));
+        root.commit();
+
+        let mut snapshot = {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
+        };
+        snapshot.eq_class_payload = None;
+
+        MyTx::sgl().reset_for_bench();
+        let err = {
+            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap_err()
+        };
+
+        assert!(matches!(
+            err,
+            PersistedSnapshotRestoreError::UnsupportedSnapshotFeature(_)
+        ));
+        assert!(format!("{err}").contains("require eq_class_payload"));
+    }
+
     #[eggplant::dsl]
     enum FuncS {
         SConst { n: i64 },
@@ -817,6 +2325,8 @@ mod tests {
             merge: None,
             hidden: true,
             let_binding: true,
+            typst_template: None,
+            precedence: u16::MAX,
         }
     }
     #[eggplant::func(output=FuncE)]

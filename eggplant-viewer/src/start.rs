@@ -305,6 +305,8 @@ fn trans_raw_egraph_node(
         cano_value: row.output.cano_value.rep(),
         operands_num: row.inputs_complex.len(),
         basics: row.basics.clone(),
+        display_label: None,
+        dsl_metadata: None,
     }
 }
 use egglog::NumericId;

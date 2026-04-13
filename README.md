@@ -171,6 +171,11 @@ strum_macros = "0.27.2"
 1. Support slotted egraph 
 2. Proof & Viewer 
 
+## Serialization Formats
+
+For serialization format boundaries and current binary-vs-JSON guidance, see
+[`docs/binary-artifact-format.md`](docs/binary-artifact-format.md).
+
 Here's the complete code for implementing addition, subtraction, multiplication, and division constant propagation:
 
 ```rust
@@ -267,4 +272,3 @@ To view documentation, run `cargo doc --open`.
 ## Contributing
 
 Welcome to submit issues! Hope you have fun!
-

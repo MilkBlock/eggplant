@@ -1,4 +1,7 @@
 use std::collections::HashMap;
+use std::fmt::Debug;
+use std::hash::Hash;
+use std::marker::PhantomData;
 
 use derive_more::Deref;
 use egglog::{
@@ -8,7 +11,7 @@ use egglog::{
     sort::{Q, Z},
     span, var,
 };
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::wrap::{
     BindingNames, EgglogEnumVariantTy, FromIndexedValues, FromPlainValues, PatRecSgl, PatVars,
@@ -121,9 +124,114 @@ pub struct TyConstructor {
 pub struct UserBaseSort {
     pub name: &'static str,
     pub sort_insert_fn: fn(&mut EGraph),
+    pub persisted_snapshot_restore_hook: Option<&'static dyn PersistedSnapshotUserBaseSortHook>,
 }
 pub struct UserContainerSort {
     pub sort_insert_fn: fn(&mut EGraph),
+}
+
+pub trait PersistedSnapshotUserBaseSortHook: Send + Sync {
+    fn capability_label(&self) -> &'static str;
+    fn export_machine_value(
+        &self,
+        egraph: &EGraph,
+        value: egglog::Value,
+    ) -> Option<serde_json::Value>;
+    fn restore_machine_value(
+        &self,
+        ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+        machine_value: &serde_json::Value,
+    ) -> Result<egglog::Value, String>;
+}
+
+pub struct PersistedSnapshotUserBaseSortHookRegistration {
+    pub name: &'static str,
+    pub hook: &'static dyn PersistedSnapshotUserBaseSortHook,
+}
+
+impl PersistedSnapshotUserBaseSortHookRegistration {
+    pub const fn new(
+        name: &'static str,
+        hook: &'static dyn PersistedSnapshotUserBaseSortHook,
+    ) -> Self {
+        Self { name, hook }
+    }
+}
+
+pub struct SerdeJsonUserBaseSortHook<T> {
+    capability_label: &'static str,
+    _marker: PhantomData<fn() -> T>,
+}
+
+impl<T> SerdeJsonUserBaseSortHook<T> {
+    pub const fn new(capability_label: &'static str) -> Self {
+        Self {
+            capability_label,
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<T> PersistedSnapshotUserBaseSortHook for SerdeJsonUserBaseSortHook<T>
+where
+    T: Clone + Hash + Eq + Debug + Send + Sync + Serialize + DeserializeOwned + 'static,
+{
+    fn capability_label(&self) -> &'static str {
+        self.capability_label
+    }
+
+    fn export_machine_value(
+        &self,
+        egraph: &EGraph,
+        value: egglog::Value,
+    ) -> Option<serde_json::Value> {
+        let value = egraph.value_to_base::<egglog::sort::Boxed<T>>(value);
+        serde_json::to_value(&value.0).ok()
+    }
+
+    fn restore_machine_value(
+        &self,
+        ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+        machine_value: &serde_json::Value,
+    ) -> Result<egglog::Value, String> {
+        let decoded =
+            serde_json::from_value::<T>(machine_value.clone()).map_err(|err| err.to_string())?;
+        Ok(ctx.base_to_value(egglog::sort::Boxed::new(decoded)))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PersistedSnapshotUserBaseSortSupport {
+    RegisteredWithoutHook,
+    RegisteredWithHook,
+}
+
+pub fn user_base_sort_restore_support(
+    sort_name: &str,
+) -> Option<PersistedSnapshotUserBaseSortSupport> {
+    if user_base_sort_restore_hook(sort_name).is_some() {
+        return Some(PersistedSnapshotUserBaseSortSupport::RegisteredWithHook);
+    }
+    inventory::iter::<UserBaseSort>
+        .into_iter()
+        .find(|sort| sort.name == sort_name)
+        .map(|_| PersistedSnapshotUserBaseSortSupport::RegisteredWithoutHook)
+}
+
+pub fn user_base_sort_restore_hook(
+    sort_name: &str,
+) -> Option<&'static dyn PersistedSnapshotUserBaseSortHook> {
+    if let Some(hook) = inventory::iter::<PersistedSnapshotUserBaseSortHookRegistration>
+        .into_iter()
+        .find(|registration| registration.name == sort_name)
+        .map(|registration| registration.hook)
+    {
+        return Some(hook);
+    }
+    inventory::iter::<UserBaseSort>
+        .into_iter()
+        .find(|sort| sort.name == sort_name)
+        .and_then(|sort| sort.persisted_snapshot_restore_hook)
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -156,6 +264,7 @@ inventory::collect!(Decl);
 inventory::collect!(UserBaseSort);
 inventory::collect!(UserContainerSort);
 inventory::collect!(DslVariantDecl);
+inventory::collect!(PersistedSnapshotUserBaseSortHookRegistration);
 
 #[derive(Debug)]
 pub enum Decl {
@@ -178,10 +287,14 @@ pub enum Decl {
         merge: Option<&'static str>,
         hidden: bool,
         let_binding: bool,
+        typst_template: Option<&'static str>,
+        precedence: u16,
     },
     EgglogRelationTy {
         name: &'static str,
         input: &'static [&'static str],
+        typst_template: Option<&'static str>,
+        precedence: u16,
     },
     EgglogRule {
         name: &'static str,
@@ -311,6 +424,7 @@ impl EgglogTypeRegistry {
                     merge,
                     hidden,
                     let_binding,
+                    ..
                 } => {
                     commands.push(Command::Function {
                         span: span!(),
@@ -328,7 +442,7 @@ impl EgglogTypeRegistry {
                         let_binding: *let_binding,
                     });
                 }
-                Decl::EgglogRelationTy { name, input } => {
+                Decl::EgglogRelationTy { name, input, .. } => {
                     commands.push(Command::Relation {
                         span: span!(),
                         name: name.to_string(),

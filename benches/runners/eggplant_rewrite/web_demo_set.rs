@@ -29,6 +29,8 @@ inventory::submit! {
         merge: None,
         hidden: false,
         let_binding: false,
+        typst_template: None,
+        precedence: u16::MAX,
     }
 }
 
@@ -266,7 +268,7 @@ pub fn bench() {
             let mk_set = |vals: &[i64]| {
                 let mut out = SetContainer::<i64>::new();
                 for &v in vals {
-                    out.insert(Value::<i64>::new(ctx._intern_base::<i64, i64>(v)));
+                    out.insert(ctx.intern_base::<i64, _>(v));
                 }
                 out
             };
@@ -446,10 +448,10 @@ pub fn bench() {
         },
         |ctx, _pat| {
             let mut set = SetContainer::<i64>::new();
-            let v2 = Value::<i64>::new(ctx._intern_base::<i64, i64>(2));
-            let v4 = Value::<i64>::new(ctx._intern_base::<i64, i64>(4));
-            let v1 = Value::<i64>::new(ctx._intern_base::<i64, i64>(1));
-            let vm1 = Value::<i64>::new(ctx._intern_base::<i64, i64>(-1));
+            let v2 = ctx.intern_base::<i64, _>(2_i64);
+            let v4 = ctx.intern_base::<i64, _>(4_i64);
+            let v1 = ctx.intern_base::<i64, _>(1_i64);
+            let vm1 = ctx.intern_base::<i64, _>(-1_i64);
             set.insert(v2);
             set.insert(v4);
             set.insert(v1);
@@ -482,11 +484,11 @@ pub fn bench() {
         //
         // Generated `ctx.set_i_set_get` helpers are unavailable because base-container sorts
         // can't currently be used as `#[eggplant::func]` inputs.
-        let key = [pat.x.erase(), ctx._intern_base::<i64, i64>(0)];
+        let key = [pat.x.erase(), ctx.intern_base::<i64, _>(0_i64).erase()];
         if ctx.lookup("ISet-get", &key).is_none() {
             let row = [
                 pat.x.erase(),
-                ctx._intern_base::<i64, i64>(0),
+                ctx.intern_base::<i64, _>(0_i64).erase(),
                 pat.y.erase(),
             ];
             ctx.insert_func_tbl("ISet-get", &row);

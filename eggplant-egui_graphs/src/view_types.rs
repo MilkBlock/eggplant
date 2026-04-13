@@ -86,6 +86,17 @@ pub struct ENode {
     pub cano_value: u32,
     pub operands_num: usize,
     pub basics: Vec<u32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub display_label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dsl_metadata: Option<ENodeDslMetadata>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ENodeDslMetadata {
+    pub variant_key: String,
+    pub typst_template: Option<String>,
+    pub precedence: u16,
 }
 
 impl ViewNode {

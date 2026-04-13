@@ -369,6 +369,7 @@ pub fn current_engine_schema_manifest() -> EngineSchemaManifest {
                 merge,
                 hidden,
                 let_binding,
+                ..
             } => {
                 let normalized_input = input
                     .iter()

@@ -1485,6 +1485,19 @@ pub fn slotted_dsl(
                             _p: std::marker::PhantomData::<Self>
                         }
                     }
+
+                    #[track_caller]
+                    pub fn timestamp(&self) -> #W::TimestampRangeConstraint<Self> {
+                        self.handle().timestamp()
+                    }
+                }
+
+                impl<T: #W::NodeDropperSgl + #W::PatRecSgl, V: #W::EgglogEnumVariantTy> #W::TimestampConstrainTarget for #name_node<T,V> {
+                    type TimestampTarget = Self;
+
+                    fn timestamp_constraint(&self) -> #W::TimestampRangeConstraint<Self::TimestampTarget> {
+                        self.timestamp()
+                    }
                 }
                 #rule_ctx_trait_and_impl
             };
@@ -1623,6 +1636,22 @@ pub fn slotted_pat_vars(
                     mutability: syn::FieldMutability::None,
                 });
             }
+            let timestamp_constraint_arg_types = field_types
+                .iter()
+                .map(|field_ty| {
+                    quote!(#W::TimestampRangeConstraint<<#field_ty as #W::TimestampConstrainTarget>::TimestampTarget>)
+                })
+                .collect::<Vec<_>>();
+            let timestamp_constraint_calls = field_idents
+                .iter()
+                .map(|field_ident| {
+                    quote!(#W::TimestampConstrainTarget::timestamp_constraint(&self.#field_ident.0))
+                })
+                .collect::<Vec<_>>();
+            let timestamp_constraint_where_bounds = field_types
+                .iter()
+                .map(|field_ty| quote!(#field_ty: #W::TimestampConstrainTarget))
+                .collect::<Vec<_>>();
             quote! {
                 #[derive(Debug)]
                 #valued_input_struct
@@ -1738,6 +1767,22 @@ pub fn slotted_pat_vars(
                 impl #impl_generics #ident #ty_generics #where_clause{
                     fn assert(self, constraint: impl #W::IntoConstraintFact) -> Self {
                         PR::on_new_constraint(constraint);
+                        self
+                    }
+
+                    fn timestamp<C>(
+                        self,
+                        constraint: impl FnOnce(
+                            #(#timestamp_constraint_arg_types),*
+                        ) -> C,
+                    ) -> Self
+                    where
+                        C: #W::IntoConstraintFact,
+                        #(#timestamp_constraint_where_bounds,)*
+                    {
+                        PR::on_new_constraint(
+                            constraint(#(#timestamp_constraint_calls),*)
+                        );
                         self
                     }
                 }

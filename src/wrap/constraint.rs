@@ -5,10 +5,14 @@ use egglog::{
 };
 use std::marker::PhantomData;
 
-use crate::wrap::{EgglogContainerTy, EgglogTy, FromBase, Sym};
+use crate::wrap::{EgglogContainerTy, EgglogTy, FromBase, Sym, TimestampConstraintSpec};
 pub trait IntoConstraintFact: 'static + std::fmt::Debug {
     #[track_caller]
     fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact>;
+
+    fn timestamp_constraints(&self, _egraph: &EGraph) -> Vec<TimestampConstraintSpec> {
+        Vec::new()
+    }
 }
 
 /// A constraint that asserts a primitive fact call, e.g. `(vec-contains (vec-of 1 2 3) 2)`.
@@ -150,6 +154,18 @@ macro_rules! define_constraint_structs {
 
 // Use macro to generate all constraint structs
 define_constraint_structs! { LtConstraint, LeConstraint, GtConstraint, GeConstraint }
+#[derive(derive_more::Debug, Clone)]
+pub struct TimestampRangeConstraint<T: EgglogTy> {
+    target: HandleToConstrain<T>,
+    min_inclusive: Option<u32>,
+    max_exclusive: Option<u32>,
+}
+
+pub trait TimestampConstrainTarget {
+    type TimestampTarget: EgglogTy;
+
+    fn timestamp_constraint(&self) -> TimestampRangeConstraint<Self::TimestampTarget>;
+}
 impl<T1: EgglogTy, T2: EgglogTy> IntoConstraintFact for EqConstraint<T1, T2> {
     fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact> {
         vec![Fact::Eq(
@@ -413,6 +429,98 @@ impl<T: EgglogTy> HandleToConstrain<T> {
     }
     pub fn to_resolved_expr(&self, egraph: &EGraph) -> GenericExpr<String, String> {
         self.handle.to_resolved_expr(egraph)
+    }
+
+    pub fn timestamp(&self) -> TimestampRangeConstraint<T> {
+        TimestampRangeConstraint {
+            target: self.clone(),
+            min_inclusive: None,
+            max_exclusive: None,
+        }
+    }
+
+    pub fn timestamp_ge(&self, min_inclusive: u32) -> TimestampRangeConstraint<T> {
+        self.timestamp().ge(min_inclusive)
+    }
+
+    pub fn timestamp_lt(&self, max_exclusive: u32) -> TimestampRangeConstraint<T> {
+        self.timestamp().lt(max_exclusive)
+    }
+
+    pub fn timestamp_range(
+        &self,
+        min_inclusive: impl Into<Option<u32>>,
+        max_exclusive: impl Into<Option<u32>>,
+    ) -> TimestampRangeConstraint<T> {
+        self.timestamp().range(min_inclusive, max_exclusive)
+    }
+}
+
+impl<T: EgglogTy> TimestampRangeConstraint<T> {
+    pub fn ge(mut self, min_inclusive: u32) -> Self {
+        self.min_inclusive = Some(
+            self.min_inclusive
+                .map_or(min_inclusive, |cur| cur.max(min_inclusive)),
+        );
+        self
+    }
+
+    pub fn gt(self, min_exclusive: u32) -> Self {
+        if min_exclusive == u32::MAX {
+            self.range(Some(u32::MAX), Some(u32::MAX))
+        } else {
+            self.ge(min_exclusive + 1)
+        }
+    }
+
+    pub fn lt(mut self, max_exclusive: u32) -> Self {
+        self.max_exclusive = Some(
+            self.max_exclusive
+                .map_or(max_exclusive, |cur| cur.min(max_exclusive)),
+        );
+        self
+    }
+
+    pub fn le(self, max_inclusive: u32) -> Self {
+        if max_inclusive == u32::MAX {
+            self
+        } else {
+            self.lt(max_inclusive + 1)
+        }
+    }
+
+    pub fn range(
+        mut self,
+        min_inclusive: impl Into<Option<u32>>,
+        max_exclusive: impl Into<Option<u32>>,
+    ) -> Self {
+        if let Some(min_inclusive) = min_inclusive.into() {
+            self = self.ge(min_inclusive);
+        }
+        if let Some(max_exclusive) = max_exclusive.into() {
+            self = self.lt(max_exclusive);
+        }
+        self
+    }
+}
+
+impl<T: EgglogTy> IntoConstraintFact for TimestampRangeConstraint<T> {
+    fn into_constraint_fact(&self, _egraph: &EGraph) -> Vec<Fact> {
+        Vec::new()
+    }
+
+    fn timestamp_constraints(&self, _egraph: &EGraph) -> Vec<TimestampConstraintSpec> {
+        let output_var = match &self.target.handle {
+            HandleTy::Complex { sym } | HandleTy::Base { sym, .. } => sym.to_string(),
+            HandleTy::Literal { .. } | HandleTy::Expr { .. } => {
+                panic!("timestamp constraints must target a matched node handle")
+            }
+        };
+        vec![TimestampConstraintSpec {
+            output_var,
+            min_inclusive: self.min_inclusive,
+            max_exclusive: self.max_exclusive,
+        }]
     }
 }
 

@@ -3546,9 +3546,12 @@ fn extract_variables_with_types_and_context(
                             ));
                         }
                     } else {
-                        // For literals, just use the value directly
-                        basic_conditions
-                            .push(format!("pat.{} == {}", constructor_node_name, arg_node));
+                        let field_name =
+                            get_field_name_for_variable_in_constructor(func_name, index, dsl_types);
+                        basic_conditions.push(format!(
+                            "pat.{}.{} == {}",
+                            constructor_node_name, field_name, arg_node
+                        ));
                     }
                 } else {
                     // For complex types, add to argument nodes only if this is not a leaf constructor
@@ -3640,13 +3643,16 @@ fn extract_variables_with_types_and_context(
                     .iter()
                     .any(|part| part.contains(&node_name))
                 {
-                    // For leaf nodes, always generate simple query without condition queries
-                    // Conditions are handled in the assert phase using handle patterns
-                    let full_query = format!(
-                        "let {} = {}::query();",
+                    let base_query = format!(
+                        "let {} = {}::query()",
                         node_name,
                         normalize_identifier(func_name)
                     );
+                    let full_query = if !condition_queries.is_empty() {
+                        format!("{}{};", base_query, condition_queries.join(""))
+                    } else {
+                        format!("{};", base_query)
+                    };
                     pattern_query_parts.push(full_query);
                 }
             } else {
@@ -5190,6 +5196,40 @@ mod tests {
         );
         assert!(
             rust.contains("ctx.insert_resolved_int_or_infinity(pat.f);"),
+            "generated Rust:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_generic_rule_conversion_keeps_literal_guards_for_leaf_constructors() {
+        let program = r#"
+            (datatype Expr
+              (Num String)
+              (Var String)
+              (Mul Expr Expr)
+              (Div Expr Expr)
+              (Neg Expr))
+            (rule ((= lhs (Mul (Num "-1.0") a)))
+                  ((union lhs (Neg a))))
+            (rule ((= lhs (Div a (Num "1.0"))))
+                  ((union lhs a)))
+        "#;
+
+        let mut parser = Parser::default();
+        let commands = parser.get_program_from_string(None, program).unwrap();
+        let rust = EggplantCodeGenerator::new()
+            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
+
+        assert!(
+            rust.contains(
+                "num_node_1.handle_arg_String_00().eq(&(&(\"-1.0\".to_owned())).as_handle())"
+            ),
+            "generated Rust:\n{rust}"
+        );
+        assert!(
+            rust.contains(
+                "num_node_1.handle_arg_String_00().eq(&(&(\"1.0\".to_owned())).as_handle())"
+            ),
             "generated Rust:\n{rust}"
         );
     }

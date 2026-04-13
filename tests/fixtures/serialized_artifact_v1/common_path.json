@@ -1,0 +1,273 @@
+{
+  "format_version": 1,
+  "engine_schema": {
+    "sorts": [
+      {
+        "name": "@ArtifactFixtureEdgeSort",
+        "kind": "eq",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "ArtifactFixtureExpr",
+        "kind": "eq",
+        "inner_sorts": [],
+        "unionable": true
+      },
+      {
+        "name": "ArtifactFixtureRoot",
+        "kind": "eq",
+        "inner_sorts": [],
+        "unionable": true
+      },
+      {
+        "name": "BigInt",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "BigRat",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "StaticStr",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "String",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "Unit",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "bool",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "f64",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      },
+      {
+        "name": "i64",
+        "kind": "base",
+        "inner_sorts": [],
+        "unionable": false
+      }
+    ],
+    "functions": [
+      {
+        "key": "ArtifactFixtureEdge(i64,i64)->@ArtifactFixtureEdgeSort",
+        "name": "ArtifactFixtureEdge",
+        "kind": "constructor",
+        "input": [
+          "i64",
+          "i64"
+        ],
+        "output": "@ArtifactFixtureEdgeSort",
+        "merge": null,
+        "cost": null,
+        "unextractable": false,
+        "hidden": false,
+        "let_binding": false,
+        "term_constructor": null
+      },
+      {
+        "key": "Const(i64)->ArtifactFixtureExpr",
+        "name": "Const",
+        "kind": "constructor",
+        "input": [
+          "i64"
+        ],
+        "output": "ArtifactFixtureExpr",
+        "merge": null,
+        "cost": null,
+        "unextractable": false,
+        "hidden": false,
+        "let_binding": false,
+        "term_constructor": null
+      },
+      {
+        "key": "Root(ArtifactFixtureExpr)->ArtifactFixtureRoot",
+        "name": "Root",
+        "kind": "constructor",
+        "input": [
+          "ArtifactFixtureExpr"
+        ],
+        "output": "ArtifactFixtureRoot",
+        "merge": null,
+        "cost": null,
+        "unextractable": false,
+        "hidden": false,
+        "let_binding": false,
+        "term_constructor": null
+      }
+    ]
+  },
+  "dsl_schema": {
+    "macro_rev": "eggplant-dsl-schema-v1",
+    "user_base_sorts": [],
+    "variants": [
+      {
+        "key": "ArtifactFixtureExpr::Const(i64)->ArtifactFixtureExpr",
+        "owner_ty": "ArtifactFixtureExpr",
+        "variant_name": "Const",
+        "fields": [
+          {
+            "name": "num",
+            "ty": "i64",
+            "kind": "base"
+          }
+        ],
+        "display_template": null,
+        "typst_template": null,
+        "precedence": 65535
+      },
+      {
+        "key": "ArtifactFixtureRoot::Root(ArtifactFixtureExpr)->ArtifactFixtureRoot",
+        "owner_ty": "ArtifactFixtureRoot",
+        "variant_name": "Root",
+        "fields": [
+          {
+            "name": "node",
+            "ty": "ArtifactFixtureExpr",
+            "kind": "complex"
+          }
+        ],
+        "display_template": null,
+        "typst_template": null,
+        "precedence": 65535
+      }
+    ]
+  },
+  "engine_fingerprint": "b1cb44736923a13901d8beafa9ba9c41a4130a152506ec2271f3504bcb756adc",
+  "dsl_runtime_fingerprint": "757adb57e37021f0af24d9ed8ab99263a8425c83632906006f587d9be18a6ea7",
+  "dsl_metadata_fingerprint": "af5eb1ffd3f9f5b0e4964c8b82697472c0c8d1217d8f7f79a2c43a7d395999e6",
+  "typed_continuation_fingerprint": "f6a5501b1156aa28b7b1dd6b0c463491f40314e23477d6d58625ea2f973983a1",
+  "payload": {
+    "egraph": {
+      "nodes": {
+        "primitive-i64-9": {
+          "op": "9",
+          "children": [],
+          "eclass": "i64-9",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "function-0-Const": {
+          "op": "Const",
+          "children": [
+            "primitive-i64-9"
+          ],
+          "eclass": "ArtifactFixtureExpr-2",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "primitive-i64-7": {
+          "op": "7",
+          "children": [],
+          "eclass": "i64-7",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "function-1-Const": {
+          "op": "Const",
+          "children": [
+            "primitive-i64-7"
+          ],
+          "eclass": "ArtifactFixtureExpr-0",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "function-0-Root": {
+          "op": "Root",
+          "children": [
+            "function-1-Const"
+          ],
+          "eclass": "ArtifactFixtureRoot-1",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "function-1-Root": {
+          "op": "Root",
+          "children": [
+            "function-0-Const"
+          ],
+          "eclass": "ArtifactFixtureRoot-3",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "primitive-i64-1": {
+          "op": "1",
+          "children": [],
+          "eclass": "i64-1",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "primitive-i64-2": {
+          "op": "2",
+          "children": [],
+          "eclass": "i64-2",
+          "cost": 1.0,
+          "subsumed": false
+        },
+        "function-0-ArtifactFixtureEdge": {
+          "op": "ArtifactFixtureEdge",
+          "children": [
+            "primitive-i64-1",
+            "primitive-i64-2"
+          ],
+          "eclass": "@ArtifactFixtureEdgeSort-4",
+          "cost": 1.0,
+          "subsumed": false
+        }
+      },
+      "root_eclasses": [],
+      "class_data": {
+        "ArtifactFixtureExpr-2": {
+          "type": "ArtifactFixtureExpr"
+        },
+        "i64-9": {
+          "type": "i64"
+        },
+        "ArtifactFixtureExpr-0": {
+          "type": "ArtifactFixtureExpr"
+        },
+        "i64-7": {
+          "type": "i64"
+        },
+        "ArtifactFixtureRoot-1": {
+          "type": "ArtifactFixtureRoot"
+        },
+        "ArtifactFixtureRoot-3": {
+          "type": "ArtifactFixtureRoot"
+        },
+        "@ArtifactFixtureEdgeSort-4": {
+          "type": "@ArtifactFixtureEdgeSort"
+        },
+        "i64-1": {
+          "type": "i64"
+        },
+        "i64-2": {
+          "type": "i64"
+        }
+      }
+    },
+    "truncated_functions": [],
+    "discarded_functions": []
+  }
+}

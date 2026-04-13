@@ -379,19 +379,21 @@ impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
         x: impl Insertable<T0, MetaTy = PR::MetaTy>,
         y: impl Insertable<T1, MetaTy = PR::MetaTy>,
     ) {
-        let _effect_scope = ActionEffectScope::enter(Location::caller());
-        PR::on_ctx_union(
-            (
-                <T0::EnumVariantMarker as EgglogEnumVariantTy>::TY_NAME,
-                x.to_value(&self.ctx).val,
-                x.meta(),
-            ),
-            (
-                T1::EnumVariantMarker::TY_NAME,
-                y.to_value(&self.ctx).val,
-                y.meta(),
-            ),
-        );
+        if std::mem::size_of::<PR::MetaTy>() != 0 {
+            let _effect_scope = ActionEffectScope::enter(Location::caller());
+            PR::on_ctx_union(
+                (
+                    <T0::EnumVariantMarker as EgglogEnumVariantTy>::TY_NAME,
+                    x.to_value(&self.ctx).val,
+                    x.meta(),
+                ),
+                (
+                    T1::EnumVariantMarker::TY_NAME,
+                    y.to_value(&self.ctx).val,
+                    y.meta(),
+                ),
+            );
+        }
         self.ctx.union(x, y);
     }
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
@@ -441,13 +443,31 @@ impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
     fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
+    fn cached_function_id(
+        &self,
+        table: &'static str,
+        cached: &OnceLock<egglog::FunctionId>,
+    ) -> egglog::FunctionId {
+        *cached.get_or_init(|| unsafe { (*self.rule_ctx.get()).function_id(table) })
+    }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.lookup_expect(table, key)
     }
     #[track_caller]
+    pub fn insert_cached(
+        &self,
+        table: &'static str,
+        cached: &OnceLock<egglog::FunctionId>,
+        key: &[egglog::Value],
+    ) -> egglog::Value {
+        self.lookup_expect_cached(table, cached, key)
+    }
+    #[track_caller]
     pub fn lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
-        let _effect_scope = ActionEffectScope::enter(Location::caller());
-        self.hook.0.as_ref().map(|x| x.on_insert(table, key));
+        if let Some(hook) = self.hook.0.as_ref() {
+            let _effect_scope = ActionEffectScope::enter(Location::caller());
+            hook.on_insert(table, key);
+        }
         unsafe { (*self.rule_ctx.get()).lookup(table, key) }
     }
     #[track_caller]
@@ -462,10 +482,56 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
         })
     }
     #[track_caller]
+    pub fn lookup_cached(
+        &self,
+        table: &'static str,
+        cached: &OnceLock<egglog::FunctionId>,
+        key: &[egglog::Value],
+    ) -> Option<egglog::Value> {
+        if let Some(hook) = self.hook.0.as_ref() {
+            let _effect_scope = ActionEffectScope::enter(Location::caller());
+            hook.on_insert(table, key);
+        }
+        let table_id = self.cached_function_id(table, cached);
+        unsafe { (*self.rule_ctx.get()).lookup_id(table_id, key) }
+    }
+    #[track_caller]
+    pub fn lookup_expect_cached(
+        &self,
+        table: &'static str,
+        cached: &OnceLock<egglog::FunctionId>,
+        key: &[egglog::Value],
+    ) -> egglog::Value {
+        self.lookup_cached(table, cached, key).unwrap_or_else(|| {
+            panic!(
+                "ctx.lookup_expect_cached: missing row in table `{}` for key (len={}); \
+note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visible until after the rule callback completes or a later ruleset/run.",
+                table,
+                key.len()
+            )
+        })
+    }
+    #[track_caller]
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
-        let _effect_scope = ActionEffectScope::enter(Location::caller());
-        self.hook.0.as_ref().map(|x| x.on_insert(table, key));
+        if let Some(hook) = self.hook.0.as_ref() {
+            let _effect_scope = ActionEffectScope::enter(Location::caller());
+            hook.on_insert(table, key);
+        }
         unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
+    }
+    #[track_caller]
+    pub fn insert_func_tbl_cached(
+        &self,
+        table: &'static str,
+        cached: &OnceLock<egglog::FunctionId>,
+        key: &[egglog::Value],
+    ) {
+        if let Some(hook) = self.hook.0.as_ref() {
+            let _effect_scope = ActionEffectScope::enter(Location::caller());
+            hook.on_insert(table, key);
+        }
+        let table_id = self.cached_function_id(table, cached);
+        unsafe { (*self.rule_ctx.get()).insert_id(table_id, key.iter().cloned()) }
     }
     pub fn union<T0: EgglogTy, T1: EgglogTy>(
         &self,
@@ -474,7 +540,9 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
     ) {
         let x = x.to_value(&self);
         let y = y.to_value(&self);
-        self.hook.0.as_ref().map(|hook| hook.on_union(x.val, y.val));
+        if let Some(hook) = self.hook.0.as_ref() {
+            hook.on_union(x.val, y.val);
+        }
         unsafe {
             CURRENT_PREMISE_PROOFS.with(|cell| {
                 let premise_proofs_stack = cell.borrow();
@@ -493,14 +561,18 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
     }
     #[track_caller]
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
-        let _effect_scope = ActionEffectScope::enter(Location::caller());
-        self.hook.0.as_ref().map(|hook| hook.on_subsume(table, key));
+        if let Some(hook) = self.hook.0.as_ref() {
+            let _effect_scope = ActionEffectScope::enter(Location::caller());
+            hook.on_subsume(table, key);
+        }
         unsafe { (*self.rule_ctx.get()).subsume(table, key) }
     }
     #[track_caller]
     pub fn remove(&self, table: &str, key: &[egglog::Value]) {
-        let _effect_scope = ActionEffectScope::enter(Location::caller());
-        self.hook.0.as_ref().map(|hook| hook.on_remove(table, key));
+        if let Some(hook) = self.hook.0.as_ref() {
+            let _effect_scope = ActionEffectScope::enter(Location::caller());
+            hook.on_remove(table, key);
+        }
         unsafe { (*self.rule_ctx.get()).remove(table, key) }
     }
     pub fn _devalue_container<T: ContainerValue>(
@@ -594,6 +666,19 @@ pub struct FactsBuilder {
     table_facts: Vec<TableFactSpec>,
     constraint_facts: Vec<Box<dyn IntoConstraintFact>>,
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TimestampConstraintSpec {
+    pub output_var: VarName,
+    pub min_inclusive: Option<u32>,
+    pub max_exclusive: Option<u32>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ResolvedTimestampConstraint {
+    pub atom_index: usize,
+    pub min_inclusive: Option<u32>,
+    pub max_exclusive: Option<u32>,
+}
 pub type TableName = String;
 pub type SortName = String;
 pub type VarName = String;
@@ -665,6 +750,42 @@ impl FactsBuilder {
             }
         }
         out
+    }
+
+    pub fn resolve_timestamp_constraints(
+        &self,
+        egraph: &egglog::EGraph,
+    ) -> Vec<ResolvedTimestampConstraint> {
+        let mut resolved = Vec::new();
+        let timestamp_specs = self
+            .constraint_facts
+            .iter()
+            .flat_map(|constraint| constraint.timestamp_constraints(egraph))
+            .collect::<Vec<_>>();
+
+        for spec in timestamp_specs {
+            if let Some(atom_index) = self.table_facts.iter().position(|fact| match fact.kind {
+                TableFactKind::Function => fact
+                    .vars
+                    .last()
+                    .map(|(var, _)| var == &spec.output_var)
+                    .unwrap_or(false),
+                TableFactKind::Relation => false,
+            }) {
+                resolved.push(ResolvedTimestampConstraint {
+                    atom_index,
+                    min_inclusive: spec.min_inclusive,
+                    max_exclusive: spec.max_exclusive,
+                });
+            } else {
+                panic!(
+                    "timestamp constraint targets unknown function output variable `{}`",
+                    spec.output_var
+                );
+            }
+        }
+
+        resolved
     }
 
     /// Build comparison constraint atom

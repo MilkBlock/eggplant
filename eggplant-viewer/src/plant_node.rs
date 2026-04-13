@@ -68,10 +68,12 @@ impl DisplayNode<Directed> for PlantNodeShape {
             let _func_text = format!("{}", func);
             current_y += 5.;
             for enode in enodes {
-                let enode_text = format!(
-                    "{}{}{:?}",
-                    enode.func_offset.func, enode.func_offset.offset, enode.basics
-                );
+                let enode_text = enode.display_label.clone().unwrap_or_else(|| {
+                    format!(
+                        "{}{}{:?}",
+                        enode.func_offset.func, enode.func_offset.offset, enode.basics
+                    )
+                });
                 let rect = painter.text(
                     egui::pos2(center.x, current_y), // 缩进20像素
                     egui::Align2::LEFT_TOP,
