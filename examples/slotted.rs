@@ -1,34 +1,33 @@
 use eggplant::prelude::*;
 use eggplant::slotted_tx_rx_vt_pr;
 use eggplant::wrap::NodeDropperSgl;
-use eggplant::wrap::PatRec;
-use eggplant::wrap::RuleCtxHook;
+#[cfg(feature = "viewer")]
+use eggplant::egglog::NumericId;
 use indexmap::IndexSet;
 use serde::Deserialize;
 use serde::Serialize;
 use std::sync::Arc;
+#[cfg(feature = "viewer")]
+use std::sync::Mutex;
 
 #[eggplant::slotted_dsl(base = SlotMetaBase)]
 pub enum Expr {
     Var {},
     Const {
         num: i64,
-        __meta: SlotMetaBase,
     },
     Mul {
         l: Expr,
         r: Expr,
-        __meta: SlotMetaBase,
     },
     Add {
         l: Expr,
         r: Expr,
-        __meta: SlotMetaBase,
     },
 }
 #[eggplant::base_ty]
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
-enum SlotMetaBase {
+pub enum SlotMetaBase {
     Inner {
         inner: SlotMeta,
     },
@@ -91,6 +90,7 @@ fn main() {
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot");
 
+    #[cfg(feature = "viewer")]
     view();
 }
 
@@ -101,53 +101,79 @@ impl<T: TxSgl + NodeDropperSgl + SlottedPatRecSgl> QuerySlot for Var<T> {
         node
     }
 }
-#[derive(Clone)]
-struct MyHook;
-impl RuleCtxHook for MyHook {
-    fn on_insert(&self, table: &str, key: &[egglog::Value]) {
-        println!("insert {} {:?}", table, key)
-    }
-    fn on_union(&self, x: egglog::Value, y: egglog::Value) {
-        println!("union {x:?} {y:?}")
-    }
-    fn on_subsume(&self, _table: &str, _key: &[egglog::Value]) {}
-    fn on_remove(&self, _table: &str, _key: &[egglog::Value]) {}
-    fn dyn_clone(&self) -> Box<dyn RuleCtxHook> {
-        Box::new(self.clone())
+#[cfg(feature = "viewer")]
+fn render_bucket_summary(ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui, bucket: &SlottedBucket) {
+    ui.label(format!("Canonical Value ID: {}", bucket.canonical_value().rep()));
+    ui.label(format!("Slotted EClasses: {}", bucket.seclass_count()));
+    ui.label(format!("Slotted ENodes: {}", bucket.senode_count()));
+}
+
+#[cfg(feature = "viewer")]
+fn render_bucket_detail(ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui, bucket: &SlottedBucket) {
+    render_bucket_summary(ui, bucket);
+    ui.separator();
+
+    for eclass in bucket.eclasses() {
+        ui.collapsing(format!("SEClass {}", eclass.eclass_id()), |ui| {
+            ui.label(format!("Slots: {:?}", eclass.slots()));
+            ui.label(format!("SENodes: {:?}", eclass.senode_ids()));
+            ui.label(format!(
+                "Symmetry generators: {}",
+                eclass.group().generators().len()
+            ));
+            ui.label(format!(
+                "Representative shape: {:?}",
+                eclass.group().representative()
+            ));
+
+            for (shape, entry) in eclass.shapes() {
+                ui.collapsing(
+                    format!("Shape {} {:?}", shape.ty_name(), shape.de_bruijn()),
+                    |ui| {
+                        for witness in entry.witnesses() {
+                            ui.label(format!(
+                                "Witness senode={} renaming={:?}",
+                                witness.senode_id(),
+                                witness.renaming()
+                            ));
+                        }
+                    },
+                );
+            }
+        });
     }
 }
 
+#[cfg(feature = "viewer")]
 fn view() {
     use eframe::egui;
     use egglog::NumericId;
     use eggplant_viewer::*;
     let map = MyPatRec::sgl().slotted_ctx.clone();
+    let selected_cano_value = Arc::new(Mutex::new(None::<egglog::Value>));
     #[derive(Clone)]
     struct SlotEventHandler {
         map: Arc<SlottedCtx>,
+        selected_cano_value: Arc<Mutex<Option<egglog::Value>>>,
     }
     impl EventHandle for SlotEventHandler {
         fn dyn_clone(&self) -> Box<dyn EventHandle> {
             Box::new(Self {
                 map: self.map.clone(),
+                selected_cano_value: self.selected_cano_value.clone(),
             })
         }
 
-        fn on_drag(&self, cano_value: u32) {}
+        fn on_drag(&self, _cano_value: u32) {}
 
-        fn on_hover(&self, cano_value: u32) {
-            // println!("{cano_value} hovered")
-        }
+        fn on_hover(&self, _cano_value: u32) {}
 
         fn on_newly_selected(&self, cano_value: u32) {
-            match self
-                .map
-                .cano_value2seclasses
-                .get(&egglog::Value::new_const(cano_value))
-            {
-                Some(seclasses) => {
-                    let seclasses = seclasses.value();
-                    println!("{seclasses:?} selected");
+            let selected = egglog::Value::new_const(cano_value);
+            *self.selected_cano_value.lock().unwrap() = Some(selected);
+            match self.map.bucket(selected) {
+                Some(bucket) => {
+                    println!("{bucket:?} selected");
                 }
                 None => {
                     println!("seclasses not generated")
@@ -156,108 +182,54 @@ fn view() {
         }
 
         fn on_init(&self, ctx: &egui::Context) {
-            println!("SlotEventHandler::on_init called!");
-            // Create a new SidePanel for Slotted EGraph visualization
-            // This allows users to create additional graph panels for seclasses
             egui::SidePanel::left("slotted_seclasses")
                 .default_width(400.0) // Increased width for better visibility
                 .min_width(300.0)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    ui.heading("🎯 Slotted SEClasses");
+                    ui.heading("Slotted Buckets");
                     ui.separator();
 
-                    // Add some debug info
-                    ui.label("This is the Slotted SEClasses SidePanel");
-                    ui.label("Created via EventHandler::on_init");
-                    ui.separator();
-
-                    // Display information about slotted seclasses
-                    if self.map.cano_value2seclasses.is_empty() {
+                    if self.map.bucket_count() == 0 {
                         ui.label("No SEClasses data available");
                     } else {
                         ui.label(format!(
-                            "Total SEClasses entries: {}",
-                            self.map.cano_value2seclasses.len()
+                            "Total buckets: {}",
+                            self.map.bucket_count()
                         ));
 
-                        // Show basic information about seclasses
                         let mut count = 0;
-                        for entry in self.map.cano_value2seclasses.iter().take(10) {
-                            let cano_value = entry.key();
-                            let seclasses = entry.value();
-                            ui.collapsing(format!("Canonical Value: {}", cano_value.rep()), |ui| {
-                                ui.label("Slotted EGraph SEClasses data available");
-                                ui.label(format!("Canonical Value ID: {}", cano_value.rep()));
-                                ui.label(format!("SEClasses: {:?}", seclasses));
-                            });
+                        for bucket in self.map.buckets().into_iter().take(10) {
+                            ui.collapsing(
+                                format!("Canonical Value: {}", bucket.canonical_value().rep()),
+                                |ui| {
+                                    render_bucket_summary(ui, &bucket);
+                                },
+                            );
                             count += 1;
                         }
 
-                        if count < self.map.cano_value2seclasses.len() {
+                        if count < self.map.bucket_count() {
                             ui.label("... and more");
                         }
                     }
                 });
 
-            // Create another SidePanel for graph visualization using GraphView
-            egui::SidePanel::left("slotted_graph")
+            egui::SidePanel::left("slotted_selected_detail")
                 .default_width(500.0)
                 .min_width(400.0)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    ui.heading("📊 Slotted EGraph Visualization");
+                    ui.heading("Selected Slotted Detail");
                     ui.separator();
 
-                    // Display basic graph information
-                    ui.label(format!(
-                        "SEClasses count: {}",
-                        self.map.cano_value2seclasses.len()
-                    ));
-
-                    // Create a simple graph for demonstration using painter
-                    // Since GraphView is not available in this context, we'll use manual drawing
-                    let (rect, _response) =
-                        ui.allocate_exact_size(egui::vec2(400.0, 300.0), egui::Sense::hover());
-
-                    // Draw a simple graph visualization
-                    let painter = ui.painter();
-
-                    // Draw nodes as circles
-                    let node_radius = 20.0;
-                    let node_positions = [
-                        rect.center() + egui::vec2(-50.0, -50.0),
-                        rect.center() + egui::vec2(50.0, -50.0),
-                        rect.center() + egui::vec2(0.0, 50.0),
-                    ];
-
-                    for (i, pos) in node_positions.iter().enumerate() {
-                        painter.circle_filled(*pos, node_radius, egui::Color32::LIGHT_BLUE);
-                        painter.text(
-                            *pos,
-                            egui::Align2::CENTER_CENTER,
-                            format!("Node {}", i + 1),
-                            egui::TextStyle::Body.resolve(ui.style()),
-                            egui::Color32::BLACK,
-                        );
+                    let selected = *self.selected_cano_value.lock().unwrap();
+                    match selected.and_then(|cano| self.map.bucket(cano)) {
+                        Some(bucket) => render_bucket_detail(ui, &bucket),
+                        None => {
+                            ui.label("Select a node in the main graph to inspect its slotted bucket.");
+                        }
                     }
-
-                    // Draw edges as lines
-                    painter.line_segment(
-                        [node_positions[0], node_positions[1]],
-                        egui::Stroke::new(2.0, egui::Color32::GRAY),
-                    );
-                    painter.line_segment(
-                        [node_positions[1], node_positions[2]],
-                        egui::Stroke::new(2.0, egui::Color32::GRAY),
-                    );
-                    painter.line_segment(
-                        [node_positions[2], node_positions[0]],
-                        egui::Stroke::new(2.0, egui::Color32::GRAY),
-                    );
-
-                    ui.label("Simple graph visualization (manual drawing)");
-                    ui.label("Drag functionality available in main graph view");
                 });
         }
     }
@@ -271,7 +243,11 @@ fn view() {
                 cc,
                 DemoLayout::Hierarchical,
                 &egraph,
-                SlotEventHandler { map }.dyn_clone(),
+                SlotEventHandler {
+                    map,
+                    selected_cano_value,
+                }
+                .dyn_clone(),
             )))
         }),
     )
@@ -297,4 +273,137 @@ impl<T: eggplant::wrap::TxSgl + eggplant::wrap::NonPatRecSgl + eggplant::wrap::W
         );
         expr
     }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn slotted_add_union_merges_slotted_seclasses() {
+        MyPatRec::sgl().slotted_ctx.clear();
+
+        let expr_ab: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("b"));
+        let expr_aa: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("a"));
+        expr_ab.commit();
+        expr_aa.commit();
+
+        let cano_ab_before = MyTx::canonical_raw(&expr_ab);
+        let cano_aa_before = MyTx::canonical_raw(&expr_aa);
+        assert_ne!(cano_ab_before, cano_aa_before);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.senode_count(cano_ab_before), 1);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.seclass_count(cano_ab_before), 1);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.senode_count(cano_aa_before), 1);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.seclass_count(cano_aa_before), 1);
+
+        let ruleset = MyTx::new_ruleset("slotted_support_add_union");
+        MyTx::add_rule(
+            "add_union",
+            ruleset,
+            || {
+                let x = Var::query_slot("x".to_string());
+                let y = Var::query_slot("y".to_string());
+                let add_xy = Add::query(&x, &y);
+                let add_xx = Add::query(&x, &x);
+                #[eggplant::slotted_pat_vars]
+                struct AddPat {
+                    x: Var,
+                    y: Var,
+                    add_xy: Add,
+                    add_xx: Add,
+                }
+                AddPat::new(x, y, add_xy, add_xx)
+            },
+            |ctx, pat| {
+                ctx.union(&pat.add_xy, &pat.add_xx);
+            },
+        );
+
+        let report = MyTx::run_ruleset(ruleset, RunConfig::Once);
+        assert!(report.updated);
+
+        let cano_ab_after = MyTx::canonical_raw(&expr_ab);
+        let cano_aa_after = MyTx::canonical_raw(&expr_aa);
+        assert_eq!(cano_ab_after, cano_aa_after);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.senode_count(cano_ab_after), 2);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.seclass_count(cano_ab_after), 1);
+        let eclasses = MyPatRec::sgl().slotted_ctx.eclasses(cano_ab_after);
+        assert_eq!(eclasses.len(), 1);
+        assert_eq!(eclasses[0].senode_ids().len(), 2);
+        assert_eq!(eclasses[0].shapes().len(), 2);
+    }
+
+    #[test]
+    fn top_level_union_updates_slotted_seclasses() {
+        MyPatRec::sgl().slotted_ctx.clear();
+
+        let expr_ab: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("b"));
+        let expr_aa: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("a"));
+        expr_ab.commit();
+        expr_aa.commit();
+
+        let cano_ab_before = MyTx::canonical_raw(&expr_ab);
+        let cano_aa_before = MyTx::canonical_raw(&expr_aa);
+        assert_ne!(cano_ab_before, cano_aa_before);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.seclass_count(cano_ab_before), 1);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.seclass_count(cano_aa_before), 1);
+
+        MyTx::on_union(&expr_ab, &expr_aa);
+
+        let cano_ab_after = MyTx::canonical_raw(&expr_ab);
+        let cano_aa_after = MyTx::canonical_raw(&expr_aa);
+        assert_eq!(cano_ab_after, cano_aa_after);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.senode_count(cano_ab_after), 2);
+        assert_eq!(MyPatRec::sgl().slotted_ctx.seclass_count(cano_ab_after), 1);
+        let eclasses = MyPatRec::sgl().slotted_ctx.eclasses(cano_ab_after);
+        assert_eq!(eclasses.len(), 1);
+        assert_eq!(eclasses[0].senode_ids().len(), 2);
+        assert_eq!(eclasses[0].shapes().len(), 2);
+    }
+
+    #[test]
+    fn bucket_snapshot_exposes_canonical_bucket_state() {
+        MyPatRec::sgl().slotted_ctx.clear();
+
+        let expr_ab: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("b"));
+        let expr_aa: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("a"));
+        expr_ab.commit();
+        expr_aa.commit();
+        MyTx::on_union(&expr_ab, &expr_aa);
+
+        let cano = MyTx::canonical_raw(&expr_ab);
+        let bucket = MyPatRec::sgl()
+            .slotted_ctx
+            .bucket(cano)
+            .expect("expected slotted bucket for canonical value");
+
+        assert_eq!(bucket.canonical_value(), cano);
+        assert_eq!(bucket.senode_count(), 2);
+        assert_eq!(bucket.eclasses().len(), 1);
+        assert_eq!(bucket.eclasses()[0].senode_ids().len(), 2);
+    }
+
+    #[test]
+    fn union_collapses_two_buckets_into_one() {
+        MyPatRec::sgl().slotted_ctx.clear();
+
+        let expr_ab: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("b"));
+        let expr_aa: Expr<MyTx, _> = Add::new(&Var::new_slot("a"), &Var::new_slot("a"));
+        expr_ab.commit();
+        expr_aa.commit();
+
+        assert_eq!(MyPatRec::sgl().slotted_ctx.bucket_count(), 3);
+        let cano_ab_before = MyTx::canonical_raw(&expr_ab);
+        let cano_aa_before = MyTx::canonical_raw(&expr_aa);
+        assert_ne!(cano_ab_before, cano_aa_before);
+
+        MyTx::on_union(&expr_ab, &expr_aa);
+
+        assert_eq!(MyPatRec::sgl().slotted_ctx.bucket_count(), 2);
+        let cano = MyTx::canonical_raw(&expr_ab);
+        let buckets = MyPatRec::sgl().slotted_ctx.buckets();
+        assert_eq!(buckets.len(), 2);
+        assert!(buckets.iter().any(|bucket| bucket.canonical_value() == cano));
+    }
+
 }

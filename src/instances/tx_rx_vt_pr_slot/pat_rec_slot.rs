@@ -27,6 +27,8 @@ pub struct SlottedPatRecorder {
     #[debug(skip)]
     pub root_table: DashMap<PatId, Vec<Sym>>,
     #[debug(skip)]
+    pub table_fact_table: DashMap<PatId, Vec<TableFactSpec>>,
+    #[debug(skip)]
     pub constraint_table: DashMap<PatId, Vec<Box<dyn IntoConstraintFact>>>,
     _registry: EgglogTypeRegistry,
     /// next_pat_id increment when on_record_end is called
@@ -87,8 +89,9 @@ impl SlottedPatRecorder {
             patterns: Mutex::new(Default::default()),
             next_pat_id: AtomicU32::new(0),
             root_table: DashMap::default(),
+            table_fact_table: DashMap::default(),
             constraint_table: DashMap::default(),
-            slotted_ctx: Default::default(),
+            slotted_ctx: crate::prelude::shared_slotted_ctx(),
         }
     }
     // collect all ancestors of cur_sym, without cur_sym
@@ -324,6 +327,26 @@ impl PatRec for SlottedPatRecorder {
             .or_default()
             .push(Box::new(constraint));
     }
+    fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Function,
+            });
+    }
+    fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Relation,
+            });
+    }
 
     fn on_record_start(&self) {
         log::debug!("record start");
@@ -366,6 +389,16 @@ impl PatRec for SlottedPatRecorder {
             let node = &self.map.get(&sym).unwrap().work_node.egglog;
             node.add_table_fact(&mut facts_builder);
         }
+        if let Some((_, table_facts)) = self.table_fact_table.remove(&pat_id) {
+            for fact in table_facts {
+                match fact.kind {
+                    TableFactKind::Function => facts_builder.add_table_fact(fact.table, fact.vars),
+                    TableFactKind::Relation => {
+                        facts_builder.add_relation_fact(fact.table, fact.vars)
+                    }
+                }
+            }
+        }
         log::debug!("topo:{:?}", topo_syms);
 
         match self.constraint_table.remove(&pat_id) {
@@ -379,24 +412,24 @@ impl PatRec for SlottedPatRecorder {
 
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        inputs: Vec<(FuncName, egglog::Value, SlotMeta)>,
-        output: (FuncName, egglog::Value, SlotMeta),
+        inputs: Vec<(crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta)>,
+        output: (crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta),
     ) {
         // self.slotted_ctx.insert(cano_value, meta);
         let inner_inputs = inputs
             .iter()
-            .map(|(x, y, z)| (*x, y.clone(), z.clone()))
+            .map(|(sort, func, value, meta)| (*sort, *func, *value, meta.clone()))
             .collect();
         self.slotted_ctx.push_pending(SlotPendingOps::Insert {
             inputs: inner_inputs,
-            output: (output.0, output.1.clone(), output.2.clone()),
+            output: (output.0, output.1, output.2, output.3.clone()),
         });
     }
 
     fn on_ctx_union(
         &self,
-        x: (FuncName, egglog::Value, SlotMeta),
-        y: (FuncName, egglog::Value, SlotMeta),
+        x: (crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta),
+        y: (crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta),
     ) {
         self.slotted_ctx.push_pending(SlotPendingOps::Union(x, y))
     }

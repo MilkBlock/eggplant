@@ -21,6 +21,14 @@ pub fn func(
     vanilla::func(attr, item)
 }
 
+#[proc_macro_attribute]
+pub fn relation(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    vanilla::relation(attr, item)
+}
+
 /// generate `egglog` language from `rust native structure`   
 ///
 /// # Example:  

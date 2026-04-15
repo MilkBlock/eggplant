@@ -2,7 +2,7 @@
 use crate::prelude::SlottedPatRecorder;
 use crate::{
     etc::{Escape, quote, topo_sort},
-    prelude::{SlotMeta, SlotWorkAreaNode},
+    prelude::{SlotMeta, SlotPendingOps, SlotWorkAreaNode, SlottedCtx},
     wrap::*,
 };
 use core::panic;
@@ -34,6 +34,7 @@ use std::{
 /// 5. generate proof (opt.)
 pub struct SlottedTxRxVTPR {
     pub egraph: Arc<Mutex<EGraph>>,
+    pub slotted_ctx: Arc<SlottedCtx>,
     map: DashMap<Sym, SlotWorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
     staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
@@ -187,6 +188,7 @@ impl SlottedTxRxVTPR {
             // proof_store: Mutex::new(ProofStore::default()),
             commit_counter: Mutex::new(0),
             sym2meta: Default::default(),
+            slotted_ctx: crate::prelude::shared_slotted_ctx(),
         };
         let type_defs = EgglogTypeRegistry::collect_type_defs();
         for def in type_defs {
@@ -521,8 +523,59 @@ impl Tx for SlottedTxRxVTPR {
         todo!("func_set not yet implemented")
     }
 
-    fn on_union(&self, _node1: &(impl EgglogNode + 'static), _node2: &(impl EgglogNode + 'static)) {
-        todo!("top level union not implemented yet")
+    fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
+        let value1 = *self
+            .sym2value_map
+            .get(&node1.cur_sym())
+            .expect("first node should be committed before top-level union")
+            .value();
+        let value2 = *self
+            .sym2value_map
+            .get(&node2.cur_sym())
+            .expect("second node should be committed before top-level union")
+            .value();
+        let meta1 = self
+            .sym2meta
+            .get(&node1.cur_sym())
+            .expect("first node meta should be available before top-level union")
+            .clone();
+        let meta2 = self
+            .sym2meta
+            .get(&node2.cur_sym())
+            .expect("second node meta should be available before top-level union")
+            .clone();
+        let mut egraph = self.egraph.lock().unwrap();
+        let rule_name = format!(
+            "top_level_union_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        );
+        let ruleset_name = format!("{rule_name}_ruleset");
+        add_ruleset(&mut egraph, &ruleset_name).unwrap();
+        rust_rule(
+            &mut egraph,
+            &rule_name,
+            &ruleset_name,
+            &[],
+            Facts(vec![]),
+            move |ctx, _| {
+                ctx.union(value1, value2);
+                Some(())
+            },
+        )
+        .expect("failed to define top-level union rule");
+        run_ruleset(&mut egraph, &ruleset_name).expect("failed to execute top-level union rule");
+        let sort1 = node1.ty_name();
+        let sort2 = node2.ty_name();
+        let func1 = node1.variant_name().unwrap_or(sort1);
+        let func2 = node2.variant_name().unwrap_or(sort2);
+        self.slotted_ctx.push_pending(SlotPendingOps::Union(
+            (sort1, func1, value1, meta1),
+            (sort2, func2, value2, meta2),
+        ));
+        self.slotted_ctx.flush_pending(&egraph);
     }
 
     fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value {
@@ -816,7 +869,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
         let metas = pat_vars.metas_iter().collect::<Vec<_>>();
-        println!("metas got {:#?}", metas);
+        log::debug!("metas got {:#?}", metas);
 
         let facts = PR::pat2fact_builder(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);

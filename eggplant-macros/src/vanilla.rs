@@ -17,7 +17,14 @@ pub fn func(
     #[derive(Debug, FromMeta)]
     struct FuncMeta {
         output: syn::Path,
-        // sg: Ident,
+        #[darling(default)]
+        no_merge: bool,
+        #[darling(default)]
+        merge: Option<syn::LitStr>,
+        #[darling(default)]
+        typst: Option<syn::LitStr>,
+        #[darling(default)]
+        precedence: Option<u16>,
     }
 
     let input = parse_macro_input!(item as DeriveInput);
@@ -33,6 +40,18 @@ pub fn func(
     };
 
     let output = args.output.to_token_stream();
+    let attr_typst_template = args
+        .typst
+        .as_ref()
+        .map(|value| quote!(Some(#value)));
+    let precedence = args.precedence.unwrap_or(u16::MAX);
+    let merge_decl = if args.no_merge {
+        quote!(None)
+    } else if let Some(merge) = args.merge.as_ref() {
+        quote!(Some(#merge))
+    } else {
+        quote!(Some("new"))
+    };
     let output_with_generic = match BasicOrComplex::from(&output) {
         BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
             quote!( #output )
@@ -62,6 +81,20 @@ pub fn func(
 
     let struct_def_expanded = match &input.data {
         Data::Struct(data_struct) => {
+            let display_template = match struct_display_template_tokens(
+                name,
+                &input.attrs,
+                &data_struct.fields,
+            ) {
+                Ok(v) => v,
+                Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+            };
+            let typst_template =
+                match struct_typst_template_tokens(name, &input.attrs, &data_struct.fields) {
+                    Ok(v) => v,
+                    Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+                };
+            let typst_template = attr_typst_template.unwrap_or(typst_template);
             let name_func = format_ident!("{}", name);
             // let derive_more_path  = derive_more_path();
             let rule_ctx_trait_and_impl = {
@@ -93,6 +126,17 @@ pub fn func(
             };
 
             let input_types = data_struct.fields.iter().map(|x| &x.ty).collect::<Vec<_>>();
+            let input_field_names = data_struct
+                .fields
+                .iter()
+                .enumerate()
+                .map(|(i, field)| {
+                    field
+                        .ident
+                        .clone()
+                        .unwrap_or_else(|| format_ident!("arg{i}"))
+                })
+                .collect::<Vec<_>>();
             let input_types_with_generic = data_struct
                 .fields
                 .iter()
@@ -141,6 +185,7 @@ pub fn func(
                         type Output=#output_with_generic;
                         type Input=(#(#input_types_with_generic),*);
                         const FUNC_NAME:&'static str = stringify!(#name_func);
+                        const TYPST_TEMPLATE: Option<&'static str> = #typst_template;
                     }
                     impl<'a, T:#W::TxSgl> #name_func<T> {
                         pub fn set(input: (#(#input_ref_types),*), output: #output_ref){
@@ -156,7 +201,12 @@ pub fn func(
                         #W::Decl::EgglogFuncTy{
                             name: stringify!(#name_func),
                             input: &[ #(stringify!(#input_types)),*],
-                            output: &(stringify!(#output))
+                            input_field_names: &[ #(stringify!(#input_field_names)),*],
+                            output: &(stringify!(#output)),
+                            display_template: #display_template,
+                            typst_template: #typst_template,
+                            merge: #merge_decl,
+                            precedence: #precedence,
                         }
                     }
                 };
@@ -169,6 +219,421 @@ pub fn func(
         }
     };
     struct_def_expanded
+}
+
+pub fn relation(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+    let name_relation = &input.ident;
+    let vis = &input.vis;
+
+    let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+    };
+
+    let data_struct = match &input.data {
+        Data::Struct(data_struct) => data_struct,
+        _ => {
+            return proc_macro::TokenStream::from(
+                Error::custom("`#[eggplant::relation]` only supports structs").write_errors(),
+            );
+        }
+    };
+
+    #[derive(Debug, FromMeta)]
+    struct RelationMeta {
+        #[darling(default)]
+        typst: Option<syn::LitStr>,
+        #[darling(default)]
+        precedence: Option<u16>,
+    }
+    let args = match RelationMeta::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(e.write_errors()),
+    };
+    let typst_template = args
+        .typst
+        .as_ref()
+        .map(|value| quote!(Some(#value)))
+        .unwrap_or_else(|| quote!(None));
+    let precedence = args.precedence.unwrap_or(u16::MAX);
+
+    let field_idents = data_struct
+        .fields
+        .iter()
+        .enumerate()
+        .map(|(i, field)| {
+            field
+                .ident
+                .clone()
+                .unwrap_or_else(|| format_ident!("arg{i}"))
+        })
+        .collect::<Vec<_>>();
+    let input_types = data_struct
+        .fields
+        .iter()
+        .map(|field| field.ty.to_token_stream())
+        .collect::<Vec<_>>();
+    let input_types_with_generic = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| match BasicOrComplex::from(&ty.to_token_stream()) {
+            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => ty.to_token_stream(),
+            BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+                quote!(#ty<T,()>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_field_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!(#W::BaseVar<#ty, T>)
+            } else {
+                quote!(#ty<T,()>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let pat_field_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!(#W::BaseVar<#ty, PR>)
+            } else {
+                quote!(#ty<PR,()>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let valued_field_types = pat_field_types
+        .iter()
+        .map(|ty| quote!(<#ty as #W::PatVars<PR>>::Valued))
+        .collect::<Vec<_>>();
+    let insert_param_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                ty.to_token_stream()
+            } else {
+                quote!(&dyn AsRef<#ty<T,()>>)
+            }
+        })
+        .collect::<Vec<_>>();
+    let insert_call_args = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                let ref_ident = format_ident!("{}_ref", ident);
+                quote!(#ref_ident)
+            } else {
+                quote!(#ident)
+            }
+        })
+        .collect::<Vec<_>>();
+    let insert_ref_bindings = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .filter_map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                let ref_ident = format_ident!("{}_ref", ident);
+                Some(quote!(let #ref_ident = &#ident;))
+            } else {
+                None
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_default_field_inits = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .map(
+            |(ident, ty)| match BasicOrComplex::from(&ty.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    quote!(#W::BaseVar::<#ty, T>::query_named(stringify!(#ident)))
+                }
+                BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => {
+                    quote!(<#ty<T,()>>::query_leaf())
+                }
+            },
+        )
+        .collect::<Vec<_>>();
+    let relation_has_complex_fields = data_struct
+        .fields
+        .iter()
+        .any(|field| !BasicOrComplex::from(&field.ty.to_token_stream()).is_basic());
+    let explicit_query_param_idents = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .filter_map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                None
+            } else {
+                Some(ident.clone())
+            }
+        })
+        .collect::<Vec<_>>();
+    let explicit_query_param_types = data_struct
+        .fields
+        .iter()
+        .map(|field| &field.ty)
+        .filter_map(|ty| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                None
+            } else {
+                Some(quote!(&dyn AsRef<#ty<T,()>>))
+            }
+        })
+        .collect::<Vec<_>>();
+    let explicit_query_field_inits = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .map(|(ident, ty)| {
+            if BasicOrComplex::from(&ty.to_token_stream()).is_basic() {
+                quote!(#W::BaseVar::<#ty, T>::query_named(stringify!(#ident)))
+            } else {
+                quote!(#ident.as_ref().clone())
+            }
+        })
+        .collect::<Vec<_>>();
+    let query_row_var_sort_pairs = field_idents
+        .iter()
+        .zip(
+            data_struct
+                .fields
+                .iter()
+                .map(|field| &field.ty)
+                .zip(input_types_with_generic.iter()),
+        )
+        .map(|(ident, (ty_plain, ty_with_generic))| {
+            match BasicOrComplex::from(&ty_plain.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    quote! {
+                        (
+                            row.#ident.name(),
+                            <#ty_plain as #W::EgglogTy>::TY_NAME.to_string()
+                        )
+                    }
+                }
+                _ => quote! {
+                    (
+                        row.#ident.as_ref().cur_sym().to_string(),
+                        <#ty_with_generic as #W::EgglogTy>::TY_NAME.to_string()
+                    )
+                },
+            }
+        })
+        .collect::<Vec<_>>();
+    let field_visibilities = data_struct
+        .fields
+        .iter()
+        .map(|field| field.vis.clone())
+        .collect::<Vec<_>>();
+    let valued_relation_ident = format_ident!("Valued{}", name_relation);
+    let field_handle_helpers = field_idents
+        .iter()
+        .zip(data_struct.fields.iter().map(|field| &field.ty))
+        .filter_map(
+            |(ident, ty)| match BasicOrComplex::from(&ty.to_token_stream()) {
+                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                    let handle_fn_name = format_ident!("handle_{}", ident);
+                    Some(quote! {
+                        #[track_caller]
+                        pub fn #handle_fn_name(&self) -> #W::HandleToConstrain<#ty> {
+                            self.#ident.handle()
+                        }
+                    })
+                }
+                BasicOrComplex::UserDefinedContainerType | BasicOrComplex::ComplexType => None,
+            },
+        )
+        .collect::<Vec<_>>();
+
+    let mut relation_variant: syn::Variant = parse_quote! {
+        #name_relation {
+            #(#field_idents: #input_types),*
+        }
+    };
+    relation_variant.fields = data_struct.fields.clone();
+    let valued_ref_node_list = variant2valued_ref_node_list(&relation_variant);
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        &relation_variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            let variant = format_ident!("V_{}", complex);
+            Some(quote!(#variant: #W::EgglogEnumVariantTy))
+        },
+    );
+    let insert_fn_name = format_ident!("insert_{}", name_relation.to_string().to_snake_case());
+    let ctx_trait_name = format_ident!("{}RuleCtx", name_relation);
+    let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_relation);
+    let ctx_trait_and_impl = quote! {
+        pub trait #ctx_trait_name {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*);
+        }
+        impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_> {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*) {
+                use #W::{EgglogRelation, Insertable};
+                let key = [#(#field_idents.to_value(self).erase()),*];
+                if self.lookup(#name_relation::<()>::REL_NAME, &key).is_none() {
+                    self.insert_func_tbl(#name_relation::<()>::REL_NAME, &key);
+                }
+            }
+        }
+        pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*);
+        }
+        impl<PR: #W::PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,PR> {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name<#(#complex_generic_idents),*>(&self, #(#valued_ref_node_list),*) {
+                self.ctx.#insert_fn_name(#(#field_idents),*);
+            }
+        }
+    };
+
+    let from_plain_field_calls = pat_field_types
+        .iter()
+        .map(|ty| {
+            quote!(
+                <<#ty as #W::PatVars<PR>>::Valued as #W::FromPlainValues>::from_plain_values(values)
+            )
+        })
+        .collect::<Vec<_>>();
+    let relation_query_fn = if relation_has_complex_fields {
+        quote! {
+            #[track_caller]
+            pub fn query(#(#explicit_query_param_idents: #explicit_query_param_types),*) -> Self {
+                use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                let row = Self::new(#(#explicit_query_field_inits),*);
+                let vars = vec![#(#query_row_var_sort_pairs),*];
+                T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
+                row
+            }
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            pub fn query() -> Self {
+                use #W::{EgglogNode, EgglogTy, PatRecSgl};
+                let row = Self::new(#(#query_default_field_inits),*);
+                let vars = vec![#(#query_row_var_sort_pairs),*];
+                T::on_new_relation_fact(stringify!(#name_relation).to_string(), vars);
+                row
+            }
+        }
+    };
+
+    let expanded = quote! {
+        #[derive(Debug, Clone)]
+        #vis struct #name_relation<T: #W::NodeDropperSgl = ()> {
+            #(
+                #field_visibilities #field_idents: #query_field_types,
+            )*
+            #[doc(hidden)]
+            _p: std::marker::PhantomData<T>,
+        }
+
+        #[derive(Debug)]
+        #vis struct #valued_relation_ident<PR: #W::PatRecSgl> {
+            #(
+                #field_visibilities #field_idents: #valued_field_types,
+            )*
+            #[doc(hidden)]
+            _p: std::marker::PhantomData<PR>,
+        }
+
+        impl<T: #W::NodeDropperSgl> #name_relation<T> {
+            fn new(#(#field_idents: #query_field_types),*) -> Self {
+                Self {
+                    #(#field_idents,)*
+                    _p: std::marker::PhantomData,
+                }
+            }
+        }
+
+        impl<T: #W::NodeDropperSgl> #W::VarsCollector for #name_relation<T> {
+            fn collect_vars(&self, vars: &mut Vec<(#W::VarName, #W::SortName)>) {
+                #(self.#field_idents.collect_vars(vars);)*
+            }
+        }
+
+        impl<T: #W::NodeDropperSgl> #W::ToStrArcSort for #name_relation<T> {
+            fn to_str_arcsort(&self, egraph: &#E::EGraph) -> Vec<(#W::VarName, #E::ArcSort)> {
+                let mut v = Vec::new();
+                #(v.extend(self.#field_idents.to_str_arcsort(egraph));)*
+                v
+            }
+        }
+
+        impl<PR: #W::PatRecSgl> #W::PatVars<PR> for #name_relation<PR> {
+            type Valued = #valued_relation_ident<PR>;
+
+            fn metas_iter(&self) -> impl Iterator<Item = #EP::prelude::SlotMeta> {
+                use #W::PatVars;
+                std::iter::empty::<#EP::prelude::SlotMeta>()
+                    #(.chain(self.#field_idents.metas_iter()))*
+            }
+        }
+
+        impl<PR: #W::PatRecSgl> #W::FromPlainValues for #valued_relation_ident<PR> {
+            fn from_plain_values(values: &mut impl Iterator<Item = #E::Value>) -> Self {
+                Self {
+                    #(#field_idents: #from_plain_field_calls,)*
+                    _p: std::marker::PhantomData,
+                }
+            }
+        }
+
+        const _: () = {
+            use #INVE;
+
+            impl<T: #W::NodeDropperSgl> #W::EgglogRelation for #name_relation<T> {
+                type Input = (#(#input_types_with_generic),*);
+                const REL_NAME: &'static str = stringify!(#name_relation);
+            }
+
+            impl<T: #W::TxSgl> #name_relation<T> {
+                #[track_caller]
+                pub fn insert(#(#field_idents: #insert_param_types),*) {
+                    #(#insert_ref_bindings)*
+                    T::on_relation_insert::<#name_relation<T>>((#(#insert_call_args),*));
+                }
+            }
+
+            impl<T: #W::TxSgl + #W::PatRecSgl> #name_relation<T> {
+                #(#field_handle_helpers)*
+                #relation_query_fn
+            }
+
+            #INVE::submit! {
+                #W::Decl::EgglogRelationTy {
+                    name: stringify!(#name_relation),
+                    input: &[#(stringify!(#input_types)),*],
+                    typst_template: #typst_template,
+                    precedence: #precedence,
+                }
+            }
+        };
+
+        #ctx_trait_and_impl
+    };
+
+    expanded.into()
 }
 
 pub fn dsl(
@@ -224,12 +689,47 @@ pub fn dsl(
                     let cost_value = cost_value
                         .map(|v| quote! { Some(#v) })
                         .unwrap_or(quote! { None });
-
+                    let display_template = variant_display_template_tokens(variant)
+                        .unwrap_or_else(|err| panic!("{err}"));
+                    let typst_template = variant_typst_template_tokens(variant)
+                        .unwrap_or_else(|err| panic!("{err}"));
+                    let precedence = variant_precedence_tokens(variant)
+                        .unwrap_or_else(|err| panic!("{err}"));
+                    let field_names = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            field
+                                .ident
+                                .as_ref()
+                                .expect("dsl variants require named fields")
+                        })
+                        .collect::<Vec<_>>();
+                    let field_kinds = variant
+                        .fields
+                        .iter()
+                        .map(|field| match BasicOrComplex::from(&field.ty.to_token_stream()) {
+                            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                                quote!(#W::SchemaFieldKind::Base)
+                            }
+                            BasicOrComplex::UserDefinedContainerType => {
+                                quote!(#W::SchemaFieldKind::Container)
+                            }
+                            BasicOrComplex::ComplexType => {
+                                quote!(#W::SchemaFieldKind::Complex)
+                            }
+                        })
+                        .collect::<Vec<_>>();
                     quote! {  #W::TyConstructor {
                         cons_name: stringify!(#variant_name),
                         input:&[ #(stringify!(#tys)),* ] ,
+                        input_field_names: &[ #(stringify!(#field_names)),* ],
+                        input_field_kinds: &[ #(#field_kinds),* ],
                         output:stringify!(#name),
                         cost :#cost_value,
+                        display_template: #display_template,
+                        typst_template: #typst_template,
+                        precedence: #precedence,
                         term_to_node: #name::<(),()>::#new_from_term_dyn_fn_name,
                         unextractable :false,
                     } }
@@ -881,8 +1381,14 @@ pub fn dsl(
                 .iter()
                 .map(|x| query_leaf_fns_tt(x, &name_node, &name_inner, &name_counter))
                 .collect();
-            let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
+            let enum_variant_tys_def = match data_enum
+                .variants
+                .iter()
+                .map(|variant| -> syn::Result<TokenStream> {
                 let (variant_marker, variant_name) = variant2marker_name(variant);
+                let display_template = variant_display_template_tokens(variant)?;
+                let typst_template = variant_typst_template_tokens(variant)?;
+                let precedence = variant_precedence_tokens(variant)?;
 
                 let valued_variant_name = format_ident!("Valued{}", variant_name);
                 let values_with_types = variant2valued_struct_fields(variant);
@@ -911,8 +1417,32 @@ pub fn dsl(
                     |basic, _| Some(quote!(#basic: #W::Value::new(vals.next().unwrap()))),
                     |_, _| None,
                 );
+                let ordered_field_decls = variant
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, field)| {
+                        let field_name = field
+                            .ident
+                            .as_ref()
+                            .map(|ident| ident.to_string())
+                            .unwrap_or_else(|| format!("field{idx}"));
+                        let field_name =
+                            syn::LitStr::new(&field_name, proc_macro2::Span::call_site());
+                        let ty = &field.ty;
+                        let kind =
+                            dsl_field_kind_tokens(BasicOrComplex::from(&ty.to_token_stream()));
+                        quote! {
+                            #W::DslFieldDecl {
+                                name: #field_name,
+                                ty: stringify!(#ty),
+                                kind: #kind,
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>();
 
-                quote! {
+                Ok(quote! {
                     #[derive(Clone)]
                     pub struct #variant_marker;
                     #[derive(Debug,Clone,Copy)]
@@ -952,14 +1482,35 @@ pub fn dsl(
                     }
                     impl #W::EgglogEnumVariantTy for #variant_marker {
                         const TY_NAME:&'static str = stringify!(#variant_name);
+                        const DISPLAY_TEMPLATE: Option<&'static str> = #display_template;
+                        const TYPST_TEMPLATE: Option<&'static str> = #typst_template;
+                        const PRECEDENCE: u16 = #precedence;
                         const BASIC_FIELD_NAMES:&[&'static str] = &[#(stringify!(#basic_field_idents)),* ];
                         const BASIC_FIELD_TYPES:&[&'static str] = &[#(stringify!(#basic_field_types)),* ];
                         const COMPLEX_FIELD_NAMES:&[&'static str] = &[#(stringify!(#complex_field_idents)),* ];
                         const COMPLEX_FIELD_TYPES:&[&'static str] = &[#(stringify!(#complex_field_types)),* ];
                         type ValuedWithDefault<T> = #valued_variant_name;
                     }
-                }
-            });
+                    const _:() = {
+                        use #INVE;
+                        #INVE::submit! {
+                            #W::DslVariantDecl {
+                                owner_ty: stringify!(#name),
+                                variant_name: stringify!(#variant_name),
+                                fields: &[#(#ordered_field_decls),*],
+                                display_template: #display_template,
+                                typst_template: #typst_template,
+                                precedence: #precedence,
+                            }
+                        }
+                    };
+                })
+            })
+                .collect::<syn::Result<Vec<_>>>()
+            {
+                Ok(v) => v,
+                Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+            };
 
             let set_fns = data_enum
                 .variants

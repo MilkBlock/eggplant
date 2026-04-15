@@ -13,7 +13,7 @@ build = "build.rs"
 egui = { version = "0.32", default-features = false }
 eframe = "0.32"
 eggplant-egui_graphs.workspace = true
-egui_extras = { version = "0.32", default-features = false }
+egui_extras = { version = "0.32", default-features = false, features = ["svg"] }
 serde.workspace = true
 serde_json.workspace = true
 rand = "0.9"

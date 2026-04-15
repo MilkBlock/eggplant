@@ -69,6 +69,12 @@ pub trait EgglogFunc {
     type Input: EgglogFuncInputs;
     type Output: EgglogFuncOutput;
     const FUNC_NAME: &'static str;
+    const TYPST_TEMPLATE: Option<&'static str>;
+}
+
+pub trait EgglogRelation {
+    type Input: EgglogFuncInputs;
+    const REL_NAME: &'static str;
 }
 impl<T> EgglogFuncInput for T
 where
@@ -132,7 +138,6 @@ macro_rules! impl_egglog_for_primitive {
 impl_egglog_for_primitive!(i64);
 impl_egglog_for_primitive!(String);
 impl_egglog_for_primitive!(bool);
-// todo! f64
 
 macro_rules! impl_input_for_tuples {
     () => {

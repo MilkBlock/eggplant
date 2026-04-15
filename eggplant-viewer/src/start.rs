@@ -26,6 +26,7 @@ impl EGraphApp {
         egraph: &EGraph,
         event_handler: Box<dyn EventHandle>,
     ) -> Self {
+        egui_extras::install_image_loaders(&cc.egui_ctx);
         let mut g = Graph::new(StableGraph::default());
         let tables = {
             let tables = egraph.serialize_raw(SerializeConfig::default());

@@ -19,6 +19,8 @@ pub struct PatRecorder {
     #[debug(skip)]
     pub root_table: DashMap<PatId, Vec<Sym>>,
     #[debug(skip)]
+    pub table_fact_table: DashMap<PatId, Vec<TableFactSpec>>,
+    #[debug(skip)]
     pub constraint_table: DashMap<PatId, Vec<Box<dyn IntoConstraintFact>>>,
     _registry: EgglogTypeRegistry,
     /// next_pat_id increment when on_record_end is called
@@ -72,6 +74,7 @@ impl PatRecorder {
             patterns: Mutex::new(Default::default()),
             next_pat_id: AtomicU32::new(0),
             root_table: DashMap::default(),
+            table_fact_table: DashMap::default(),
             constraint_table: DashMap::default(),
         }
     }
@@ -260,6 +263,26 @@ impl PatRec for PatRecorder {
             .or_default()
             .push(Box::new(constraint));
     }
+    fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Function,
+            });
+    }
+    fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Relation,
+            });
+    }
 
     fn on_record_start(&self) {
         log::debug!("record start");
@@ -301,6 +324,16 @@ impl PatRec for PatRecorder {
         for sym in pat_nodes {
             let node = &self.map.get(&sym).unwrap().work_node.egglog;
             node.add_table_fact(&mut facts_builder);
+        }
+        if let Some((_, table_facts)) = self.table_fact_table.remove(&pat_id) {
+            for fact in table_facts {
+                match fact.kind {
+                    TableFactKind::Function => facts_builder.add_table_fact(fact.table, fact.vars),
+                    TableFactKind::Relation => {
+                        facts_builder.add_relation_fact(fact.table, fact.vars)
+                    }
+                }
+            }
         }
         log::debug!("topo:{:?}", topo_syms);
 

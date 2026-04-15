@@ -81,7 +81,42 @@ pub fn slotted_dsl(
     };
     EgglogUserDefined::set(args.container, args.base);
 
-    let input = parse_macro_input!(item as DeriveInput);
+    let mut input = parse_macro_input!(item as DeriveInput);
+    if let Data::Enum(data_enum) = &mut input.data {
+        for variant in &mut data_enum.variants {
+            let syn::Fields::Named(named_fields) = &mut variant.fields else {
+                return proc_macro::TokenStream::from(
+                    Error::custom("`#[eggplant::slotted_dsl]` only supports named-field variants")
+                        .write_errors(),
+                );
+            };
+
+            let mut meta_field = None;
+            let existing = std::mem::take(&mut named_fields.named);
+            for field in existing {
+                if field
+                    .ident
+                    .as_ref()
+                    .map(|ident| ident == "__meta")
+                    .unwrap_or(false)
+                {
+                    meta_field = Some(field);
+                } else {
+                    named_fields.named.push(field);
+                }
+            }
+
+            let meta_field = meta_field.unwrap_or_else(|| Field {
+                attrs: vec![parse_quote!(#[doc(hidden)])],
+                vis: Visibility::Inherited,
+                ident: Some(format_ident!("__meta")),
+                colon_token: None,
+                ty: parse_quote!(SlotMetaBase),
+                mutability: syn::FieldMutability::None,
+            });
+            named_fields.named.push(meta_field);
+        }
+    }
     let name = &input.ident;
 
     let name_snake_case = format_ident!("{}", name.to_string().to_snake_case());
@@ -112,12 +147,47 @@ pub fn slotted_dsl(
                     let cost_value = cost_value
                         .map(|v| quote! { Some(#v) })
                         .unwrap_or(quote! { None });
-
+                    let display_template = variant_display_template_tokens(variant)
+                        .unwrap_or_else(|err| panic!("{err}"));
+                    let typst_template = variant_typst_template_tokens(variant)
+                        .unwrap_or_else(|err| panic!("{err}"));
+                    let precedence = variant_precedence_tokens(variant)
+                        .unwrap_or_else(|err| panic!("{err}"));
+                    let field_names = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            field
+                                .ident
+                                .as_ref()
+                                .expect("dsl variants require named fields")
+                        })
+                        .collect::<Vec<_>>();
+                    let field_kinds = variant
+                        .fields
+                        .iter()
+                        .map(|field| match BasicOrComplex::from(&field.ty.to_token_stream()) {
+                            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                                quote!(#W::SchemaFieldKind::Base)
+                            }
+                            BasicOrComplex::UserDefinedContainerType => {
+                                quote!(#W::SchemaFieldKind::Container)
+                            }
+                            BasicOrComplex::ComplexType => {
+                                quote!(#W::SchemaFieldKind::Complex)
+                            }
+                        })
+                        .collect::<Vec<_>>();
                     quote! {  #W::TyConstructor {
                         cons_name: stringify!(#variant_name),
                         input:&[ #(stringify!(#tys)),* ] ,
+                        input_field_names: &[ #(stringify!(#field_names)),* ],
+                        input_field_kinds: &[ #(#field_kinds),* ],
                         output:stringify!(#name),
                         cost :#cost_value,
+                        display_template: #display_template,
+                        typst_template: #typst_template,
+                        precedence: #precedence,
                         term_to_node: #name::<(),()>::#new_from_term_dyn_fn_name,
                         unextractable :false,
                     } }
@@ -762,8 +832,14 @@ pub fn slotted_dsl(
                 .iter()
                 .map(|x| query_leaf_fns_tt(x, &name_node, &name_inner, &name_counter))
                 .collect();
-            let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
+            let enum_variant_tys_def = match data_enum
+                .variants
+                .iter()
+                .map(|variant| -> syn::Result<TokenStream> {
                 let (variant_marker, variant_name) = variant2marker_name(variant);
+                let display_template = variant_display_template_tokens(variant)?;
+                let typst_template = variant_typst_template_tokens(variant)?;
+                let precedence = variant_precedence_tokens(variant)?;
 
                 let valued_variant_name = format_ident!("Valued{}", variant_name);
                 let values_with_types = variant2valued_struct_fields(variant);
@@ -787,13 +863,37 @@ pub fn slotted_dsl(
                     |_, _| None,
                     |_, complex_type| Some(quote!(#complex_type)),
                 );
+                let ordered_field_decls = variant
+                    .fields
+                    .iter()
+                    .enumerate()
+                    .map(|(idx, field)| {
+                        let field_name = field
+                            .ident
+                            .as_ref()
+                            .map(|ident| ident.to_string())
+                            .unwrap_or_else(|| format!("field{idx}"));
+                        let field_name =
+                            syn::LitStr::new(&field_name, proc_macro2::Span::call_site());
+                        let ty = &field.ty;
+                        let kind =
+                            dsl_field_kind_tokens(BasicOrComplex::from(&ty.to_token_stream()));
+                        quote! {
+                            #W::DslFieldDecl {
+                                name: #field_name,
+                                ty: stringify!(#ty),
+                                kind: #kind,
+                            }
+                        }
+                    })
+                    .collect::<Vec<_>>();
                 let value_iter = variant2mapped_ident_type_list(
                     variant,
                     |basic, _| Some(quote!(#basic: #W::Value::new(vals.next().unwrap()))),
                     |_, _| None,
                 );
 
-                quote! {
+                Ok(quote! {
                     #[derive(Clone)]
                     pub struct #variant_marker;
                     #[derive(Debug,Clone,Copy)]
@@ -833,14 +933,35 @@ pub fn slotted_dsl(
                     }
                     impl #W::EgglogEnumVariantTy for #variant_marker {
                         const TY_NAME:&'static str = stringify!(#variant_name);
+                        const DISPLAY_TEMPLATE: Option<&'static str> = #display_template;
+                        const TYPST_TEMPLATE: Option<&'static str> = #typst_template;
+                        const PRECEDENCE: u16 = #precedence;
                         const BASIC_FIELD_NAMES:&[&'static str] = &[#(stringify!(#basic_field_idents)),* ];
                         const BASIC_FIELD_TYPES:&[&'static str] = &[#(stringify!(#basic_field_types)),* ];
                         const COMPLEX_FIELD_NAMES:&[&'static str] = &[#(stringify!(#complex_field_idents)),* ];
                         const COMPLEX_FIELD_TYPES:&[&'static str] = &[#(stringify!(#complex_field_types)),* ];
                         type ValuedWithDefault<T> = #valued_variant_name;
                     }
-                }
-            });
+                    const _:() = {
+                        use #INVE;
+                        #INVE::submit! {
+                            #W::DslVariantDecl {
+                                owner_ty: stringify!(#name),
+                                variant_name: stringify!(#variant_name),
+                                fields: &[#(#ordered_field_decls),*],
+                                display_template: #display_template,
+                                typst_template: #typst_template,
+                                precedence: #precedence,
+                            }
+                        }
+                    };
+                })
+            })
+                .collect::<syn::Result<Vec<_>>>()
+            {
+                Ok(v) => v,
+                Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+            };
 
             let set_fns = data_enum
                 .variants
@@ -947,6 +1068,13 @@ pub fn slotted_dsl(
                             };
                             let node = #name_node {node};
                             T::on_new_query_leaf(&node);
+                            node
+                        }
+                    }
+                    impl<T:#W::TxSgl + #W::NodeDropperSgl + #W::SlottedPatRecSgl> #W::QuerySlot for self::#name_node<T,()> {
+                        fn query_slot(var_id: #W::SlotVarID) -> Self {
+                            let node = Self::query_leaf();
+                            T::on_new_query_slot(&node, var_id);
                             node
                         }
                     }

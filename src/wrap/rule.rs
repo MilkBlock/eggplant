@@ -90,11 +90,13 @@ impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
     ) {
         PR::on_ctx_union(
             (
+                T0::TY_NAME,
                 <T0::EnumVariantMarker as EgglogEnumVariantTy>::TY_NAME,
                 x.to_value(&self.ctx).val,
                 x.meta(),
             ),
             (
+                T1::TY_NAME,
                 T1::EnumVariantMarker::TY_NAME,
                 y.to_value(&self.ctx).val,
                 y.meta(),
@@ -150,8 +152,20 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+        self.lookup_expect(table, key)
+    }
+    pub fn lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
-        unsafe { (*self.rule_ctx.get()).lookup(table, key).unwrap() }
+        unsafe { (*self.rule_ctx.get()).lookup(table, key) }
+    }
+    pub fn lookup_expect(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
+        self.lookup(table, key).unwrap_or_else(|| {
+            panic!(
+                "ctx.lookup_expect: missing row in table `{}` for key (len={})",
+                table,
+                key.len()
+            )
+        })
     }
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
@@ -261,12 +275,24 @@ pub enum RunConfig {
 }
 
 pub struct FactsBuilder {
-    table_facts: Vec<(TableName, Vec<(VarName, SortName)>)>,
+    table_facts: Vec<TableFactSpec>,
     constraint_facts: Vec<Box<dyn IntoConstraintFact>>,
 }
 pub type TableName = String;
 pub type SortName = String;
 pub type VarName = String;
+#[derive(Clone, Debug)]
+pub enum TableFactKind {
+    Function,
+    Relation,
+}
+
+#[derive(Clone, Debug)]
+pub struct TableFactSpec {
+    pub table: TableName,
+    pub vars: Vec<(VarName, SortName)>,
+    pub kind: TableFactKind,
+}
 impl FactsBuilder {
     pub fn new() -> Self {
         Self {
@@ -296,11 +322,23 @@ impl FactsBuilder {
     }
     /// procedural macro call this function to add atom
     pub fn add_table_fact(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
-        self.table_facts.push((query_table, vars));
+        self.table_facts.push(TableFactSpec {
+            table: query_table,
+            vars,
+            kind: TableFactKind::Function,
+        });
+    }
+
+    pub fn add_relation_fact(&mut self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_facts.push(TableFactSpec {
+            table: query_table,
+            vars,
+            kind: TableFactKind::Relation,
+        });
     }
 
     /// Build comparison constraint atom
-    fn build_table_fact(
+    fn build_function_fact(
         _egraph: &egglog::EGraph,
         table: TableName,
         vars: Vec<(VarName, SortName)>,
@@ -316,10 +354,30 @@ impl FactsBuilder {
         )
         .eq_var(output.0.clone())
     }
+    fn build_relation_fact(
+        _egraph: &egglog::EGraph,
+        table: TableName,
+        vars: Vec<(VarName, SortName)>,
+    ) -> Fact {
+        Fact::Fact(Expr::Call(
+            span!(),
+            table,
+            vars.into_iter()
+                .map(|(var_name, _sort_name)| Expr::Var(span!(), var_name))
+                .collect(),
+        ))
+    }
     pub fn build(self, egraph: &egglog::EGraph) -> Vec<Fact> {
         let mut v = Vec::new();
         for table_fact in self.table_facts {
-            v.push(Self::build_table_fact(egraph, table_fact.0, table_fact.1));
+            v.push(match table_fact.kind {
+                TableFactKind::Function => {
+                    Self::build_function_fact(egraph, table_fact.table, table_fact.vars)
+                }
+                TableFactKind::Relation => {
+                    Self::build_relation_fact(egraph, table_fact.table, table_fact.vars)
+                }
+            });
         }
         // Add constraints to the query
         for constraint_fact in self.constraint_facts {

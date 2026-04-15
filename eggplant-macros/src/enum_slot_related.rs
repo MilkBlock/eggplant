@@ -151,7 +151,7 @@ pub fn ctx_insert_fn_ts_with_pr_without_meta(
                 })
             },
         );
-    let _complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
+    let complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_basic, _basic_ty| None,
         |_complex, complex_ty| Some(quote!(#complex_ty)),
@@ -197,20 +197,28 @@ pub fn ctx_insert_fn_ts_with_pr_without_meta(
             #[allow(non_camel_case_types)]
             fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, SlotMeta){
                 use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
+                use smallvec::{smallvec, SmallVec};
                 #(
                     let #func_value_meta_field_idents =
-                        (#complex_generic_idents::TY_NAME,
+                        (<#complex_field_tys as EgglogTy>::TY_NAME,
+                            #complex_generic_idents::TY_NAME,
                             #complex_field_idents.to_value(&self.ctx).val,
                             #complex_field_idents.meta());
                 )*
-                let __merged = SlotMeta::merge(&mut vec![ #(#complex_field_idents.meta()),* ].into_iter());
+                let __metas: SmallVec<[SlotMeta; 4]> = smallvec![ #(#complex_field_idents.meta()),* ];
+                let mut __metas_iter = __metas.into_iter();
+                let __merged = SlotMeta::merge(&mut __metas_iter);
                 let __meta = SlotMetaBase::Inner{
                     inner: __merged.clone()
                 };
                 let __val = self.ctx.#insert_fn_name(#(#field_idents),*);
+                let __func_value_metas: SmallVec<[_; 4]> = smallvec![#(#func_value_meta_field_idents),*];
                 PR::on_ctx_insert(
-                    vec![#(#func_value_meta_field_idents),*],
-                    (<#variant_marker as EgglogEnumVariantTy>::TY_NAME, __val.val , __merged.clone())
+                    __func_value_metas.into_vec(),
+                    (<self::#name_node<(),#variant_marker> as EgglogTy>::TY_NAME,
+                        <#variant_marker as EgglogEnumVariantTy>::TY_NAME,
+                        __val.val,
+                        __merged.clone())
                 );
                 (__val,__merged)
             }

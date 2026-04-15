@@ -2,8 +2,8 @@ use crate::prelude::slotted::{_FuncValueMeta, FuncName, FuncValueMeta};
 use crate::prelude::{SlotMeta, SlottedTxRxVTPR};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
-    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
-    SortName, SymLit, VarName,
+    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncInputsRef, EgglogFuncOutput, EgglogRelation,
+    EgglogTy, FactsBuilder, FromBase, SortName, SymLit, TableName, VarName,
 };
 use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl};
 use dashmap::DashMap;
@@ -21,6 +21,7 @@ use std::sync::Mutex;
 use std::{
     any::Any,
     borrow::Borrow,
+    borrow::Cow,
     collections::HashMap,
     fmt,
     hash::Hash,
@@ -68,6 +69,23 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     );
+    #[track_caller]
+    fn on_relation_insert<'a, R: EgglogRelation>(
+        &self,
+        input: <R::Input as EgglogFuncInputs>::Ref<'a>,
+    ) {
+        let input_exprs = input
+            .as_evalues()
+            .iter()
+            .map(|value| (*value).get_egglog_expr())
+            .collect::<Vec<_>>();
+        self.send(TxCommand::NativeCommand {
+            command: Command::Action(GenericAction::Expr(
+                span!(),
+                GenericExpr::Call(span!(), R::REL_NAME.to_string(), input_exprs),
+            )),
+        });
+    }
     #[track_caller]
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value;
@@ -134,6 +152,8 @@ pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     );
+    #[track_caller]
+    fn on_relation_insert<'a, R: EgglogRelation>(input: <R::Input as EgglogFuncInputs>::Ref<'a>);
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(node1: &(impl EgglogNode + 'static)) -> egglog::Value;
 }
@@ -186,6 +206,10 @@ where
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
         Self::sgl().on_func_set::<F>(input, output);
+    }
+
+    fn on_relation_insert<'a, R: EgglogRelation>(input: <R::Input as EgglogFuncInputs>::Ref<'a>) {
+        Self::sgl().on_relation_insert::<R>(input);
     }
 
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
@@ -272,6 +296,14 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
     fn on_new_constraint(&self, constraint: impl IntoConstraintFact);
+    #[track_caller]
+    fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        let _ = (query_table, vars);
+    }
+    #[track_caller]
+    fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        let _ = (query_table, vars);
+    }
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
@@ -280,7 +312,7 @@ pub trait PatRec: NodeDropper + Tx {
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
         inputs: Vec<FuncValueMeta>,
-        output: (FuncName, egglog::Value, SlotMeta),
+        output: FuncValueMeta,
     ) {
     }
     #[allow(unused)]
@@ -299,6 +331,10 @@ pub trait PatRecSgl: NodeDropperSgl + TxSgl {
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static));
     #[track_caller]
     fn on_new_constraint(constraint: impl IntoConstraintFact);
+    #[track_caller]
+    fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>);
+    #[track_caller]
+    fn on_new_relation_fact(query_table: TableName, vars: Vec<(VarName, SortName)>);
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
@@ -319,6 +355,12 @@ where
     fn on_new_constraint(constraint: impl IntoConstraintFact) {
         Self::sgl().on_new_constraint(constraint);
     }
+    fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        Self::sgl().on_new_table_fact(query_table, vars);
+    }
+    fn on_new_relation_fact(query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        Self::sgl().on_new_relation_fact(query_table, vars);
+    }
     fn on_record_start() {
         Self::sgl().on_record_start();
     }
@@ -331,7 +373,9 @@ where
         Self::sgl().pat2fact_builder(pat_id)
     }
 
-    fn on_ctx_insert(inputs: Vec<_FuncValueMeta>, output: _FuncValueMeta) {}
+    fn on_ctx_insert(inputs: Vec<_FuncValueMeta>, output: _FuncValueMeta) {
+        Self::sgl().on_ctx_insert::<Self>(inputs, output)
+    }
 
     fn on_ctx_union(combo1: _FuncValueMeta, combo2: _FuncValueMeta) {
         Self::sgl().on_ctx_union(combo1, combo2)
@@ -472,11 +516,30 @@ impl<T: VarsCollector, M> VarsCollector for (T, M) {
     }
 }
 
+pub trait BindingNames {
+    fn collect_binding_names(&self, names: &mut Vec<VarName>);
+
+    fn binding_names(&self) -> Vec<VarName> {
+        let mut names = Vec::new();
+        self.collect_binding_names(&mut names);
+        names
+    }
+}
+
+impl<T: BindingNames, M> BindingNames for (T, M) {
+    fn collect_binding_names(&self, names: &mut Vec<VarName>) {
+        self.0.collect_binding_names(names);
+    }
+}
+
 pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
     const TY_NAME: &'static str;
     /// T represent the type call that call this type
     /// This is useful when we want to specify default for a type
     type ValuedWithDefault<T>: FromPlainValues;
+    const DISPLAY_TEMPLATE: Option<&'static str>;
+    const TYPST_TEMPLATE: Option<&'static str>;
+    const PRECEDENCE: u16;
     /// fields names of valued variant struct
     const BASIC_FIELD_NAMES: &[&'static str];
     const COMPLEX_FIELD_NAMES: &[&'static str];
@@ -608,10 +671,103 @@ impl<T: EgglogTy> TyCounter<T> {
 impl EgglogEnumVariantTy for () {
     const TY_NAME: &'static str = "Unknown Func";
     type ValuedWithDefault<T> = Value<T>;
+    const DISPLAY_TEMPLATE: Option<&'static str> = None;
+    const TYPST_TEMPLATE: Option<&'static str> = None;
+    const PRECEDENCE: u16 = u16::MAX;
     const BASIC_FIELD_NAMES: &[&'static str] = &[];
     const BASIC_FIELD_TYPES: &[&'static str] = &[];
     const COMPLEX_FIELD_NAMES: &[&'static str] = &[];
     const COMPLEX_FIELD_TYPES: &[&'static str] = &[];
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderedTemplateField<'a> {
+    pub text: Cow<'a, str>,
+    pub precedence: u16,
+}
+
+impl<'a> RenderedTemplateField<'a> {
+    pub fn new(text: impl Into<Cow<'a, str>>, precedence: u16) -> Self {
+        Self {
+            text: text.into(),
+            precedence,
+        }
+    }
+
+    pub fn atom(text: impl Into<Cow<'a, str>>) -> Self {
+        Self::new(text, u16::MAX)
+    }
+}
+
+pub fn render_template_with_precedence(
+    template: &str,
+    parent_precedence: u16,
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> String {
+    let chars = template.chars().collect::<Vec<_>>();
+    let mut rendered = String::new();
+    let mut idx = 0usize;
+
+    while idx < chars.len() {
+        match chars[idx] {
+            '{' => {
+                if chars.get(idx + 1) == Some(&'{') {
+                    rendered.push('{');
+                    idx += 2;
+                    continue;
+                }
+
+                let start = idx + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end] != '}' {
+                    end += 1;
+                }
+                let placeholder = chars[start..end].iter().collect::<String>();
+                let field = fields
+                    .iter()
+                    .find(|(name, _)| *name == placeholder)
+                    .unwrap_or_else(|| panic!("missing render field `{placeholder}`"));
+
+                if field.1.precedence < parent_precedence {
+                    rendered.push('(');
+                    rendered.push_str(field.1.text.as_ref());
+                    rendered.push(')');
+                } else {
+                    rendered.push_str(field.1.text.as_ref());
+                }
+                idx = end + 1;
+            }
+            '}' => {
+                if chars.get(idx + 1) == Some(&'}') {
+                    rendered.push('}');
+                    idx += 2;
+                } else {
+                    rendered.push('}');
+                    idx += 1;
+                }
+            }
+            ch => {
+                rendered.push(ch);
+                idx += 1;
+            }
+        }
+    }
+
+    rendered
+}
+
+pub fn render_variant_typst<V: EgglogEnumVariantTy>(
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> Option<String> {
+    V::TYPST_TEMPLATE
+        .map(|template| render_template_with_precedence(template, V::PRECEDENCE, fields))
+}
+
+pub fn render_variant_display<V: EgglogEnumVariantTy>(
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> Option<String> {
+    V::DISPLAY_TEMPLATE
+        .map(|template| render_template_with_precedence(template, V::PRECEDENCE, fields))
 }
 
 #[derive(DerefMut, Deref)]
@@ -1245,7 +1401,7 @@ pub trait FromMetas {
     fn from_metas(values: &mut impl Iterator<Item = SlotMeta>) -> Self;
 }
 
-// #[cfg(feature = "viewer")]
+#[cfg(feature = "viewer")]
 impl<S: SingletonGetter> EGraphViewSgl for S
 where
     S::RetTy: EGraphView,
@@ -1258,11 +1414,13 @@ where
     }
 }
 
+#[cfg(feature = "viewer")]
 pub trait EGraphViewSgl {
     fn egraph() -> Arc<Mutex<EGraph>>;
     fn view() -> Result<(), eframe::Error>;
 }
 
+#[cfg(feature = "viewer")]
 pub trait EGraphView {
     fn egraph(&self) -> Arc<Mutex<EGraph>>;
     fn view(&self) -> Result<(), eframe::Error>;

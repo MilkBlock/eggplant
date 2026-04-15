@@ -1,13 +1,14 @@
 pub use crate::instances::tx_rx_vt_pr_slot::*;
 #[cfg(feature = "viewer")]
+#[cfg(feature = "viewer")]
 pub use crate::wrap::EGraphViewSgl;
 pub use crate::wrap::constraint::Compare;
 pub use crate::wrap::sorts::set::SetContainer;
 pub use crate::wrap::sorts::vec::VecContainer;
 pub use crate::wrap::{
-    AsHandle, Commit, EgglogNode, FromBase, Insertable, LocateVersion, PEq, PatRecSgl, QuerySlot,
-    RuleRunnerSgl, RuleSetId, RunConfig, RxSgl, SingletonGetter, SlotVarID, SlottedPatRecSgl,
-    ToDot, ToDotSgl, TxCommit, TxCommitSgl, TxSgl, Value,
+    AsHandle, BaseVar, Commit, EgglogNode, FromBase, Insertable, LocateVersion, PEq, PatRecSgl,
+    QuerySlot, RuleRunnerSgl, RuleSetId, RunConfig, RxSgl, SingletonGetter, SlotVarID,
+    SlottedPatRecSgl, ToDot, ToDotSgl, TxCommit, TxCommitSgl, TxSgl, Value,
 };
 
 pub use dashmap;

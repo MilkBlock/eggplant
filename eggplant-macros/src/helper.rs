@@ -7,16 +7,17 @@ use std::{
     sync::{LazyLock, Mutex, MutexGuard},
 };
 use syn::{
-    DataEnum, Expr, Fields, GenericArgument, Path, PathArguments, Type, Variant, parse::Parse,
-    parse_str,
+    Attribute, DataEnum, Expr, Fields, GenericArgument, LitStr, Path, PathArguments, Type,
+    Variant, parse::Parse, parse_str,
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
-pub const EGGLOG_BASE_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "& 'static str"];
-pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 4] = [
+pub const EGGLOG_BASE_TY_LIST: [&'static str; 5] = ["String", "i64", "f64", "bool", "& 'static str"];
+pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 5] = [
     LazyTokenStream::new(|| "String::new()".to_owned()),
     LazyTokenStream::new(|| "0".to_owned()),
     LazyTokenStream::new(|| "0.".to_owned()),
+    LazyTokenStream::new(|| "false".to_owned()),
     LazyTokenStream::new(|| r#""""#.to_owned()),
 ];
 pub struct EgglogUserDefined {
@@ -307,6 +308,15 @@ impl From<&str> for BasicOrComplex {
         BasicOrComplex::ComplexType
     }
 }
+
+pub fn dsl_field_kind_tokens(kind: BasicOrComplex) -> TokenStream {
+    match kind {
+        BasicOrComplex::BaseType => quote!(#W::DslFieldKind::Base),
+        BasicOrComplex::UserDefinedBaseType => quote!(#W::DslFieldKind::UserBase),
+        BasicOrComplex::UserDefinedContainerType => quote!(#W::DslFieldKind::Container),
+        BasicOrComplex::ComplexType => quote!(#W::DslFieldKind::Complex),
+    }
+}
 pub fn get_first_generic(ty: &Type) -> &Type {
     if let Type::Path(type_path) = ty
         && let Some(segment) = type_path.path.segments.last()
@@ -590,4 +600,358 @@ pub fn variant2mapped_ident_type_list_view_container_as_complex(
             map_complex_ident_include_container(ident, ty)
         }
     })
+}
+
+fn is_eggplant_template_attr(attr: &Attribute, attr_name: &str) -> bool {
+    let segments = attr
+        .path()
+        .segments
+        .iter()
+        .map(|seg| seg.ident.to_string())
+        .collect::<Vec<_>>();
+    matches!(segments.as_slice(), [single] if single == attr_name)
+        || matches!(segments.as_slice(), [first, second] if first == "eggplant" && second == attr_name)
+}
+
+fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Result<Vec<String>> {
+    let raw = template.value();
+    let chars = raw.chars().collect::<Vec<_>>();
+    let mut idx = 0usize;
+    let mut placeholders = Vec::new();
+
+    while idx < chars.len() {
+        match chars[idx] {
+            '{' => {
+                if chars.get(idx + 1) == Some(&'{') {
+                    idx += 2;
+                    continue;
+                }
+
+                let start = idx + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end] != '}' {
+                    if chars[end] == '{' {
+                        return Err(syn::Error::new_spanned(
+                            template,
+                            format!(
+                                "nested `{{` inside #[eggplant::{attr_name}(\"...\")] placeholder is not supported"
+                            ),
+                        ));
+                    }
+                    end += 1;
+                }
+
+                if end >= chars.len() {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!("unclosed `{{` in #[eggplant::{attr_name}(\"...\")] template"),
+                    ));
+                }
+
+                let placeholder = chars[start..end].iter().collect::<String>();
+                if placeholder.is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!(
+                            "empty `{{}}` placeholder is not allowed in #[eggplant::{attr_name}(\"...\")]"
+                        ),
+                    ));
+                }
+                let valid_ident = placeholder
+                    .chars()
+                    .enumerate()
+                    .all(|(i, ch)| ch == '_' || ch.is_ascii_alphanumeric() && (i > 0 || !ch.is_ascii_digit()));
+                if !valid_ident {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!(
+                            "invalid placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")]; only simple field names like `x` or `lhs_1` are supported"
+                        ),
+                    ));
+                }
+                if !placeholders.contains(&placeholder) {
+                    placeholders.push(placeholder);
+                }
+                idx = end + 1;
+            }
+            '}' => {
+                if chars.get(idx + 1) == Some(&'}') {
+                    idx += 2;
+                } else {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!("unmatched `}}` in #[eggplant::{attr_name}(\"...\")] template"),
+                    ));
+                }
+            }
+            _ => idx += 1,
+        }
+    }
+
+    Ok(placeholders)
+}
+
+fn variant_template_tokens(variant: &Variant, attr_name: &str) -> syn::Result<TokenStream> {
+    let attrs = variant
+        .attrs
+        .iter()
+        .filter(|attr| is_eggplant_template_attr(attr, attr_name))
+        .collect::<Vec<_>>();
+
+    if attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            variant,
+            format!("only one #[eggplant::{attr_name}(\"...\")] attribute is allowed per variant"),
+        ));
+    }
+
+    let Some(attr) = attrs.first() else {
+        return Ok(quote!(None));
+    };
+
+    let template = attr.parse_args::<LitStr>()?;
+    let placeholders = extract_template_placeholders(&template, attr_name)?;
+
+    match &variant.fields {
+        Fields::Named(fields) => {
+            let known_fields = fields
+                .named
+                .iter()
+                .filter_map(|field| field.ident.as_ref().map(|ident| ident.to_string()))
+                .collect::<Vec<_>>();
+            for placeholder in placeholders {
+                if !known_fields.iter().any(|field| field == &placeholder) {
+                    return Err(syn::Error::new_spanned(
+                        &template,
+                        format!(
+                            "unknown placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")] for variant `{}`",
+                            variant.ident
+                        ),
+                    ));
+                }
+            }
+        }
+        Fields::Unit => {
+            if let Some(placeholder) = placeholders.first() {
+                return Err(syn::Error::new_spanned(
+                    &template,
+                    format!(
+                        "unit variant `{}` has no fields, but {attr_name} template references `{placeholder}`",
+                        variant.ident
+                    ),
+                ));
+            }
+        }
+        Fields::Unnamed(_) => {
+            return Err(syn::Error::new_spanned(
+                variant,
+                format!(
+                    "#[eggplant::{attr_name}(\"...\")] currently supports only named-field or unit variants"
+                ),
+            ));
+        }
+    }
+
+    Ok(quote!(Some(#template)))
+}
+
+pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    variant_template_tokens(variant, "display")
+}
+
+pub fn variant_typst_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    variant_template_tokens(variant, "typst")
+}
+
+fn struct_template_tokens(
+    item_name: &Ident,
+    attrs: &[Attribute],
+    fields: &Fields,
+    attr_name: &str,
+) -> syn::Result<TokenStream> {
+    let attrs = attrs
+        .iter()
+        .filter(|attr| is_eggplant_template_attr(attr, attr_name))
+        .collect::<Vec<_>>();
+
+    if attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            item_name,
+            format!("only one #[eggplant::{attr_name}(\"...\")] attribute is allowed"),
+        ));
+    }
+
+    let Some(attr) = attrs.first() else {
+        return Ok(quote!(None));
+    };
+    let template = attr.parse_args::<LitStr>()?;
+    let placeholders = extract_template_placeholders(&template, attr_name)?;
+
+    match fields {
+        Fields::Named(named) => {
+            let field_names = named
+                .named
+                .iter()
+                .filter_map(|field| field.ident.as_ref().map(ToString::to_string))
+                .collect::<Vec<_>>();
+            for placeholder in placeholders {
+                if !field_names.iter().any(|field| field == &placeholder) {
+                    return Err(syn::Error::new_spanned(
+                        &template,
+                        format!(
+                            "unknown placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")] for `{}`",
+                            item_name
+                        ),
+                    ));
+                }
+            }
+        }
+        Fields::Unit => {
+            if let Some(placeholder) = placeholders.first() {
+                return Err(syn::Error::new_spanned(
+                    &template,
+                    format!(
+                        "`{}` has no fields, but {attr_name} template references `{placeholder}`",
+                        item_name
+                    ),
+                ));
+            }
+        }
+        Fields::Unnamed(_) => {
+            return Err(syn::Error::new_spanned(
+                item_name,
+                format!(
+                    "#[eggplant::{attr_name}(\"...\")] currently supports only named-field or unit structs"
+                ),
+            ));
+        }
+    }
+
+    Ok(quote!(Some(#template)))
+}
+
+pub fn struct_display_template_tokens(
+    item_name: &Ident,
+    attrs: &[Attribute],
+    fields: &Fields,
+) -> syn::Result<TokenStream> {
+    struct_template_tokens(item_name, attrs, fields, "display")
+}
+
+pub fn struct_typst_template_tokens(
+    item_name: &Ident,
+    attrs: &[Attribute],
+    fields: &Fields,
+) -> syn::Result<TokenStream> {
+    struct_template_tokens(item_name, attrs, fields, "typst")
+}
+
+pub fn variant_precedence_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    let attrs = variant
+        .attrs
+        .iter()
+        .filter(|attr| is_eggplant_template_attr(attr, "precedence"))
+        .collect::<Vec<_>>();
+
+    if attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            variant,
+            "only one #[eggplant::precedence(...)] attribute is allowed per variant",
+        ));
+    }
+
+    let Some(attr) = attrs.first() else {
+        return Ok(quote!(u16::MAX));
+    };
+
+    let precedence = attr.parse_args::<syn::LitInt>()?;
+    let precedence = precedence.base10_parse::<u16>()?;
+    Ok(quote!(#precedence))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        struct_display_template_tokens, struct_typst_template_tokens, variant_display_template_tokens,
+        variant_precedence_tokens, variant_typst_template_tokens,
+    };
+    use quote::quote;
+    use syn::{DeriveInput, Variant, parse_quote};
+
+    #[test]
+    fn display_template_accepts_valid_single_attr() {
+        let variant: Variant = parse_quote! {
+            #[display("{x} + {f}")]
+            Add { x: Math, f: Math }
+        };
+        let tokens = variant_display_template_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("{x} + {f}")).to_string());
+    }
+
+    #[test]
+    fn typst_template_accepts_valid_single_attr() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::typst("diff({x}, {f})")]
+            MDiff { x: Math, f: Math }
+        };
+        let tokens = variant_typst_template_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("diff({x}, {f})")).to_string());
+    }
+
+    #[test]
+    fn typst_template_rejects_unknown_placeholder() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::typst("diff({x}, {missing})")]
+            MDiff { x: Math, f: Math }
+        };
+        let err = variant_typst_template_tokens(&variant).unwrap_err();
+        assert!(err.to_string().contains("unknown placeholder"));
+    }
+
+    #[test]
+    fn precedence_defaults_to_max() {
+        let variant: Variant = parse_quote! {
+            Add { x: Math, y: Math }
+        };
+        let tokens = variant_precedence_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(u16 :: MAX).to_string());
+    }
+
+    #[test]
+    fn precedence_accepts_integer_literal() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::precedence(120)]
+            Add { x: Math, y: Math }
+        };
+        let tokens = variant_precedence_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(120u16).to_string());
+    }
+
+    #[test]
+    fn struct_typst_template_accepts_valid_attr() {
+        let input: DeriveInput = parse_quote! {
+            #[eggplant::typst("path({src}, {dst})")]
+            struct PathCost { src: i64, dst: i64 }
+        };
+        let fields = match &input.data {
+            syn::Data::Struct(data) => &data.fields,
+            _ => unreachable!(),
+        };
+        let tokens = struct_typst_template_tokens(&input.ident, &input.attrs, fields).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("path({src}, {dst})")).to_string());
+    }
+
+    #[test]
+    fn struct_display_template_rejects_unknown_placeholder() {
+        let input: DeriveInput = parse_quote! {
+            #[eggplant::display("{src} -> {missing}")]
+            struct PathCost { src: i64, dst: i64 }
+        };
+        let fields = match &input.data {
+            syn::Data::Struct(data) => &data.fields,
+            _ => unreachable!(),
+        };
+        let err = struct_display_template_tokens(&input.ident, &input.attrs, fields).unwrap_err();
+        assert!(err.to_string().contains("unknown placeholder"));
+    }
 }
