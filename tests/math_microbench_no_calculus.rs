@@ -13,7 +13,8 @@ fn test_guard() -> &'static Mutex<()> {
 #[test]
 fn no_calculus_rules_use_inline_pattern_closures() {
     let source = std::fs::read_to_string(
-        "/Users/mineralsteins/Repos/egg_related/eggplant_backup/benches/runners/eggplant_rewrite/math_microbenchmark_no_calculus.rs",
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("benches/runners/eggplant_rewrite/math_microbenchmark_no_calculus.rs"),
     )
     .expect("benchmark source should be readable");
 

@@ -8,7 +8,8 @@ mod typed_math_microbenchmark;
 #[test]
 fn typed_math_microbenchmark_rules_use_inline_pattern_closures() {
     let source = std::fs::read_to_string(
-        "/Users/mineralsteins/Repos/egg_related/eggplant_backup/benches/runners/eggplant_rewrite/math_microbenchmark.rs",
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("benches/runners/eggplant_rewrite/math_microbenchmark.rs"),
     )
     .expect("benchmark source should be readable");
 

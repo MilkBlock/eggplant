@@ -1199,6 +1199,29 @@ impl ParseError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
+
+    fn find_repo_sibling(name: &str) -> Option<PathBuf> {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir
+            .ancestors()
+            .map(|ancestor| ancestor.join(name))
+            .find(|candidate| candidate.is_dir())
+    }
+
+    fn egglog_tests_path() -> Option<PathBuf> {
+        find_repo_sibling("egglog")
+            .map(|root| root.join("tests"))
+            .or_else(|| find_repo_sibling("upstream_egglog").map(|root| root.join("tests")))
+    }
+
+    fn upstream_egglog_fixture(rel: &str) -> String {
+        find_repo_sibling("upstream_egglog")
+            .unwrap_or_else(|| panic!("could not locate sibling repo `upstream_egglog`"))
+            .join(rel)
+            .to_string_lossy()
+            .into_owned()
+    }
 
     #[test]
     fn test_debug_stresstest() {
@@ -1224,18 +1247,12 @@ mod tests {
     #[test]
     fn test_parse_all_egg_files() {
         use std::fs;
-        use std::path::Path;
-
-        // Path to the egglog project's tests directory
-        let egglog_tests_path = Path::new("/Users/mineralsteins/Repos/egglog/tests");
-
-        if !egglog_tests_path.exists() {
+        let Some(egglog_tests_path) = egglog_tests_path() else {
             println!(
-                "Egglog tests directory not found at: {:?}",
-                egglog_tests_path
+                "Egglog tests directory not found under sibling `egglog` or `upstream_egglog` repo"
             );
             return;
-        }
+        };
 
         let mut parser = Parser::default();
         let mut total_files = 0;
@@ -1243,7 +1260,7 @@ mod tests {
         let mut failed_files = Vec::new();
 
         // Walk through all .egg files in the tests directory
-        if let Ok(entries) = fs::read_dir(egglog_tests_path) {
+        if let Ok(entries) = fs::read_dir(&egglog_tests_path) {
             for entry in entries {
                 if let Ok(entry) = entry {
                     let path = entry.path();
@@ -1501,8 +1518,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_web_demo_math_has_no_diagnostics() {
-        let path = "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/math.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/web-demo/math.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1556,8 +1573,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_vec_has_no_diagnostics() {
-        let path = "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/vec.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/vec.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1573,9 +1590,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_repro_738_fn_sort_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/repro-738-fn-sort.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/repro-738-fn-sort.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1681,7 +1697,13 @@ mod tests {
             &commands[0],
             Command::Datatype { name, .. } if name == "Math"
         ));
-        assert!(matches!(&commands[1], Command::Sort(_, name, None) if name == "MathVec"));
+        assert!(matches!(
+            &commands[1],
+            Command::Sort(_, name, Some((kind, args)))
+                if name == "MathVec"
+                    && kind == "Vec"
+                    && matches!(&args[..], [Expr::Var(_, arg)] if arg == "Math")
+        ));
         assert!(matches!(
             &commands[2],
             Command::Datatype { name, .. } if name == "Bool"
@@ -1725,9 +1747,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_multiset_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/multiset.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/web-demo/multiset.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1743,9 +1764,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_combined_nested_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/combined-nested.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/combined-nested.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1761,9 +1781,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_test_combined_steps_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/test-combined-steps.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/test-combined-steps.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1779,9 +1798,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_tricky_type_checking_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/tricky-type-checking.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/tricky-type-checking.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1797,9 +1815,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_fail_wrong_assertion_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/fail_wrong_assertion.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/fail_wrong_assertion.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1815,9 +1832,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_repro_filter_bug_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/repro-filter-bug.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/repro-filter-bug.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1833,8 +1849,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_repro_new_backend_prims_has_no_diagnostics() {
-        let path = "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/repro-new-backend-prims.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/repro-new-backend-prims.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1850,8 +1866,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_repro_unsound_has_no_diagnostics() {
-        let path = "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/repro-unsound.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/repro-unsound.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1867,9 +1883,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_web_demo_bignum_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/bignum.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/web-demo/bignum.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1885,9 +1900,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_web_demo_datatypes_has_no_diagnostics() {
-        let path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/datatypes.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/web-demo/datatypes.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser
@@ -1903,8 +1917,8 @@ mod tests {
 
     #[test]
     fn test_parse_full_program_web_demo_eqsat_basic_multiset_has_no_diagnostics() {
-        let path = "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/eqsat-basic-multiset.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/web-demo/eqsat-basic-multiset.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
 
         let mut parser = Parser::default();
         let outcome = parser

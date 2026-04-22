@@ -4249,6 +4249,23 @@ fn find_variant_info<'a>(
 mod tests {
     use super::*;
     use crate::ast::parse::Parser;
+    use std::path::PathBuf;
+
+    fn find_repo_sibling(name: &str) -> Option<PathBuf> {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir
+            .ancestors()
+            .map(|ancestor| ancestor.join(name))
+            .find(|candidate| candidate.is_dir())
+    }
+
+    fn upstream_egglog_fixture(rel: &str) -> String {
+        find_repo_sibling("upstream_egglog")
+            .unwrap_or_else(|| panic!("could not locate sibling repo `upstream_egglog`"))
+            .join(rel)
+            .to_string_lossy()
+            .into_owned()
+    }
 
     #[test]
     fn test_eggplant_conversion() {
@@ -4517,8 +4534,7 @@ mod tests {
 
     #[test]
     fn test_include_conversion_and_codegen_uses_resolved_path() {
-        let source_path =
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/include.egg".to_string();
+        let source_path = upstream_egglog_fixture("tests/include.egg");
         let program = std::fs::read_to_string(&source_path).unwrap();
 
         let mut parser = Parser::default();
@@ -4532,8 +4548,7 @@ mod tests {
             matches!(
                 &cmd.command,
                 EggplantCommand::Include { file }
-                    if file
-                        == "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/path.egg"
+                    if file == &upstream_egglog_fixture("tests/web-demo/path.egg")
             )
         }));
 
@@ -4543,9 +4558,7 @@ mod tests {
         ));
 
         assert!(rust.contains("parse_and_run_program"));
-        assert!(rust.contains(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/path.egg"
-        ));
+        assert!(rust.contains(&upstream_egglog_fixture("tests/web-demo/path.egg")));
     }
 
     #[test]
@@ -5418,106 +5431,78 @@ mod tests {
 
     #[test]
     fn test_full_program_combined_steps_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/test-combined-steps.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/test-combined-steps.egg");
     }
 
     #[test]
     fn test_full_program_combinators_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/combinators.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/combinators.egg");
     }
 
     #[test]
     fn test_full_program_eqsolve_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/eqsolve.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/eqsolve.egg");
     }
 
     #[test]
     fn test_full_program_herbie_tutorial_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/herbie-tutorial.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/herbie-tutorial.egg");
     }
 
     #[test]
     fn test_full_program_taylor51_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/taylor51.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/taylor51.egg");
     }
 
     #[test]
     fn test_full_program_type_constraints_tests_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/type-constraints-tests.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/type-constraints-tests.egg");
     }
 
     #[test]
     fn test_full_program_rw_analysis_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/rw-analysis.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/rw-analysis.egg");
     }
 
     #[test]
     fn test_full_program_typeinfer_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/typeinfer.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/typeinfer.egg");
     }
 
     #[test]
     fn test_full_program_print_function_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/print-function.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/print-function.egg");
     }
 
     #[test]
     fn test_full_program_hidden_print_size_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/hidden_print_size.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/hidden_print_size.egg");
     }
 
     #[test]
     fn test_full_program_internal_let_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/internal_let.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/internal_let.egg");
     }
 
     #[test]
     fn test_full_program_until_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/until.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/until.egg");
     }
 
     #[test]
     fn test_full_program_calc_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/calc.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/calc.egg");
     }
 
     #[test]
     fn test_full_program_resolution_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/resolution.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/resolution.egg");
     }
 
     #[test]
     fn test_full_program_include_has_no_todo() {
-        let path = "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/include.egg";
-        let program = std::fs::read_to_string(path).unwrap();
+        let path = upstream_egglog_fixture("tests/include.egg");
+        let program = std::fs::read_to_string(&path).unwrap();
         let mut parser = crate::ast::parse::Parser::default();
         let commands = parser
             .get_program_from_string(Some(path.to_string()), &program)
@@ -5534,99 +5519,92 @@ mod tests {
 
     #[test]
     fn test_full_program_egglog_bridge_math_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/egglog-bridge/examples/math.egg",
-        );
+        assert_program_has_no_generic_rule_todo("egglog-bridge/examples/math.egg");
     }
 
     #[test]
     fn test_full_program_web_demo_math_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/math.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/math.egg");
     }
 
     #[test]
     fn test_full_program_combined_nested_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/combined-nested.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/combined-nested.egg");
     }
 
     #[test]
     fn test_full_program_test_combined_steps_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/test-combined-steps.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/test-combined-steps.egg");
     }
 
     #[test]
     fn test_full_program_before_proofs_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/before-proofs.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/before-proofs.egg");
     }
 
     #[test]
     fn test_full_program_eggcc_extraction_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/eggcc-extraction.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/eggcc-extraction.egg");
     }
 
     #[test]
     fn test_full_program_web_demo_prims_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/prims.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/prims.egg");
     }
 
     #[test]
     fn test_full_program_web_demo_multiset_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/multiset.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/multiset.egg");
     }
 
     #[test]
     fn test_full_program_python_array_optimize_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/python_array_optimize.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/python_array_optimize.egg");
     }
 
     #[test]
     fn test_full_program_tricky_type_checking_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/tricky-type-checking.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/tricky-type-checking.egg");
     }
 
     #[test]
     fn test_full_program_web_demo_bignum_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/bignum.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/bignum.egg");
     }
 
     #[test]
     fn test_full_program_web_demo_datatypes_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/datatypes.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/datatypes.egg");
     }
 
     #[test]
     fn test_full_program_web_demo_eqsat_basic_multiset_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/eqsat-basic-multiset.egg",
-        );
+        assert_program_has_no_generic_rule_todo("tests/web-demo/eqsat-basic-multiset.egg");
     }
 }
 
 #[cfg(test)]
-fn assert_program_has_no_generic_rule_todo(path: &str) {
-    let program = std::fs::read_to_string(path).unwrap();
+fn find_repo_sibling(name: &str) -> Option<std::path::PathBuf> {
+    let manifest_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    manifest_dir
+        .ancestors()
+        .map(|ancestor| ancestor.join(name))
+        .find(|candidate| candidate.is_dir())
+}
+
+#[cfg(test)]
+fn upstream_egglog_fixture(rel: &str) -> String {
+    find_repo_sibling("upstream_egglog")
+        .unwrap_or_else(|| panic!("could not locate sibling repo `upstream_egglog`"))
+        .join(rel)
+        .to_string_lossy()
+        .into_owned()
+}
+
+#[cfg(test)]
+fn assert_program_has_no_generic_rule_todo(rel_path: &str) {
+    let path = upstream_egglog_fixture(rel_path);
+    let program = std::fs::read_to_string(&path).unwrap();
 
     let mut parser = crate::ast::parse::Parser::default();
     let commands = parser.get_program_from_string(None, &program).unwrap();
