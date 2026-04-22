@@ -139,7 +139,7 @@ pub trait PersistedSnapshotUserBaseSortHook: Send + Sync {
     ) -> Option<serde_json::Value>;
     fn restore_machine_value(
         &self,
-        ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+        ctx: &mut egglog::prelude::RustRuleContext<'_, '_>,
         machine_value: &serde_json::Value,
     ) -> Result<egglog::Value, String>;
 }
@@ -191,7 +191,7 @@ where
 
     fn restore_machine_value(
         &self,
-        ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+        ctx: &mut egglog::prelude::RustRuleContext<'_, '_>,
         machine_value: &serde_json::Value,
     ) -> Result<egglog::Value, String> {
         let decoded =

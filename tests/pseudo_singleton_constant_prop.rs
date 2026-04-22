@@ -30,3 +30,13 @@ fn pseudo_singleton_constant_prop_sync_run_can_override_outer_async_session() {
 fn pseudo_singleton_constant_prop_same_session_concurrent_registration_is_safe() {
     pseudo_singleton_constant_prop::same_session_concurrent_registration_is_safe();
 }
+
+#[test]
+fn pseudo_singleton_constant_prop_nested_ruleset_registration_is_safe() {
+    pseudo_singleton_constant_prop::nested_ruleset_registration_is_safe();
+}
+
+#[test]
+fn pseudo_singleton_constant_prop_same_key_nested_registration_fails_fast() {
+    pseudo_singleton_constant_prop::nested_same_key_registration_panics_instead_of_deadlocking();
+}

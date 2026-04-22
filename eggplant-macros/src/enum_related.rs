@@ -774,7 +774,7 @@ pub fn ctx_insert_fn_ts_with_pr(
             fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 use #W::Value;
                 use #W::Insertable;
-                static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
                 let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
@@ -857,20 +857,20 @@ pub fn ctx_set_fn_ts(
     };
 
     (
-            quote! {
-                #[track_caller]
-                #[allow(non_camel_case_types)]
-                fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty) {
-                    use #W::EgglogFunc;
-                    use #W::Value;
-                    use #W::Insertable;
-                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
-                    let key = [
-                        #(#field_idents.to_value(self).erase(),)* output.to_value(self).erase()
-                    ];
-                    self.insert_func_tbl_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key);
-                }
-            },
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty) {
+                use #W::EgglogFunc;
+                use #W::Value;
+                use #W::Insertable;
+                static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
+                let key = [
+                    #(#field_idents.to_value(self).erase(),)* output.to_value(self).erase()
+                ];
+                self.insert_func_tbl_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key);
+            }
+        },
         quote! {
             #[track_caller]
             #[allow(non_camel_case_types)]
@@ -930,7 +930,7 @@ pub fn ctx_read_fn_ts(
                 fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #output {
                     use #W::EgglogFunc;
                     use #W::Insertable;
-                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
@@ -949,7 +949,7 @@ pub fn ctx_read_fn_ts(
                 fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output> {
                     use #W::EgglogFunc;
                     use #W::Insertable;
-                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
@@ -972,7 +972,7 @@ pub fn ctx_read_fn_ts(
                     use #W::EgglogFunc;
                     use #W::Value;
                     use #W::Insertable;
-                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
@@ -991,7 +991,7 @@ pub fn ctx_read_fn_ts(
                     use #W::EgglogFunc;
                     use #W::Value;
                     use #W::Insertable;
-                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
                     let key = [
                         #(#field_idents.to_value(self).erase()),*
                     ];
@@ -1013,7 +1013,7 @@ pub fn ctx_read_fn_ts(
             use #W::EgglogFunc;
             use #W::Value;
             use #W::Insertable;
-            static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+            static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
             let key = [
                 #(#field_idents.to_value(self).erase()),*
             ];
@@ -1027,7 +1027,7 @@ pub fn ctx_read_fn_ts(
             use #W::EgglogFunc;
             use #W::Value;
             use #W::Insertable;
-            static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+            static FUNC_ID: std::sync::OnceLock<#W::CachedTableId> = std::sync::OnceLock::new();
             let key = [
                 #(#field_idents.to_value(self).erase()),*
             ];

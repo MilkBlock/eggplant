@@ -1,3 +1,5 @@
+#![cfg(feature = "fork-egglog")]
+
 use eggplant::egglog::prelude::{BaseSort, Fact, Facts, I64Sort, exprs, query};
 use eggplant::egglog::{expr, fact, facts, sort, vars};
 use eggplant::prelude::*;

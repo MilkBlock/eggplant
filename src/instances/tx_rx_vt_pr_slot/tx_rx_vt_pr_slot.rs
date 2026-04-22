@@ -1,6 +1,5 @@
 #[cfg(feature = "viewer")]
 use crate::prelude::SlottedPatRecorder;
-use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
 use crate::{
     etc::{Escape, quote, topo_sort},
     prelude::{SlotMeta, SlotWorkAreaNode},
@@ -17,7 +16,7 @@ use egglog::{
 };
 use egglog::{
     ast::{RustSpan, Span},
-    prelude::{rust_rule, rust_rule_with_metadata},
+    prelude::rust_rule,
 };
 use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
@@ -859,7 +858,11 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
             .collect();
         let decode_plan = Arc::new(pat_vars.build_decode_plan(&binding_var_slots));
         let hook = RuleHookObj(ctx_hook);
-        let rst = rust_rule_with_metadata(
+        assert!(
+            timestamp_constraints.is_empty(),
+            "timestamp-constrained rules require fork-egglog support and are disabled on stable-big-pr"
+        );
+        let rst = rust_rule(
             &mut egraph,
             rule_name,
             rule_set.0,
@@ -868,29 +871,15 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 .map(|x| (x.0.as_str(), x.1.clone()))
                 .collect::<Vec<_>>(),
             Facts(facts),
-            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>, values| {
+            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_>, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
-                let _premise_scope = if proofs_enabled {
-                    Some(PremiseProofScope::enter(empty_premise_proofs()))
-                } else {
-                    None
-                };
+                let _ = proofs_enabled;
                 let valued_pat_vars = P::decode_with_plan(values, &metas, decode_plan.as_ref());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },
         );
-        let rule_handle = rst.expect("add_rule err");
-        for ts_constraint in timestamp_constraints {
-            egraph
-                .constrain_rule_atom_timestamp_range(
-                    rule_handle.rule_id,
-                    ts_constraint.atom_index,
-                    ts_constraint.min_inclusive,
-                    ts_constraint.max_exclusive,
-                )
-                .expect("failed to attach timestamp constraint to slotted rule");
-        }
+        rst.expect("add_rule err");
     }
 
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId {

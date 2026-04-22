@@ -20,17 +20,6 @@ struct f {}
 
 tx_rx_vt_pr!(MyTxRepro, MyPatRecRepro);
 
-#[eggplant::pat_vars]
-struct StepPat<PR: PatRecSgl> {
-    r: R,
-}
-
-fn step_pat<PR: PatRecSgl>() -> StepPat<PR> {
-    let r = R::query();
-    let constraint = r.handle_i().lt(&2000);
-    StepPat::new(r).assert(constraint)
-}
-
 pub fn bench() {
     MyTxRepro::sgl().reset_for_bench();
 
@@ -48,14 +37,27 @@ pub fn bench() {
     );
 
     let step = MyTxRepro::new_ruleset("repro_665_step");
-    MyTxRepro::add_rule("repro_665_step", step, step_pat, |ctx, pat| {
-        let i = ctx.devalue(pat.r.i);
-        ctx.insert_r(i + 1);
+    MyTxRepro::add_rule(
+        "repro_665_step",
+        step,
+        || {
+            let r = R::query();
+            let below_limit = r.handle_i().lt(&2000);
+            #[eggplant::pat_vars]
+            struct Pat {
+                r: R,
+            }
+            Pat::new(r).assert(below_limit)
+        },
+        |ctx, pat| {
+            let i = ctx.devalue(pat.r.i);
+            ctx.insert_r(i + 1);
 
-        let mut set = SetContainer::<i64>::new();
-        set.insert(pat.r.i);
-        ctx.set_f(set);
-    });
+            let mut set = SetContainer::<i64>::new();
+            set.insert(pat.r.i);
+            ctx.set_f(set);
+        },
+    );
 
     MyTxRepro::run_ruleset(seed, RunConfig::Once);
     MyTxRepro::run_ruleset(step, RunConfig::Sat);

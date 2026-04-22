@@ -82,165 +82,6 @@ fn bind_const_set<PR: PatRecSgl>(
     var
 }
 
-#[eggplant::pat_vars]
-struct CheckSetInsertPat<PR: PatRecSgl> {
-    expected: BaseVar<ISetBase, PR>,
-    empty: BaseVar<ISetBase, PR>,
-}
-
-fn pat_set_check_set_of_12_push_12<PR: PatRecSgl>() -> CheckSetInsertPat<PR> {
-    let expected = bind_const_set::<PR>("S12", BaseVar::<ISetBase, PR>::query_named("s12"));
-    let empty = bind_const_set::<PR>("SEmpty", BaseVar::<ISetBase, PR>::query_named("empty"));
-    let expected_h = expected.handle();
-    let empty_h = empty.handle();
-
-    let rhs = empty_h.clone().set_insert(&1_i64).set_insert(&2_i64);
-
-    CheckSetInsertPat::new(expected, empty).assert(expected_h.eq(&rhs))
-}
-
-fn pat_set_check_set_of_12_push_21<PR: PatRecSgl>() -> CheckSetInsertPat<PR> {
-    let expected = bind_const_set::<PR>("S12", BaseVar::<ISetBase, PR>::query_named("s12"));
-    let empty = bind_const_set::<PR>("SEmpty", BaseVar::<ISetBase, PR>::query_named("empty"));
-    let expected_h = expected.handle();
-    let empty_h = empty.handle();
-
-    let rhs = empty_h.clone().set_insert(&2_i64).set_insert(&1_i64);
-
-    CheckSetInsertPat::new(expected, empty).assert(expected_h.eq(&rhs))
-}
-
-#[eggplant::pat_vars]
-struct CheckSetUnionPat<PR: PatRecSgl> {
-    s12: BaseVar<ISetBase, PR>,
-    s34: BaseVar<ISetBase, PR>,
-    expected: BaseVar<ISetBase, PR>,
-}
-
-fn pat_set_check_set_union_1234<PR: PatRecSgl>() -> CheckSetUnionPat<PR> {
-    let s12 = bind_const_set::<PR>("S12", BaseVar::<ISetBase, PR>::query_named("s12"));
-    let s34 = bind_const_set::<PR>("S34", BaseVar::<ISetBase, PR>::query_named("s34"));
-    let expected = bind_const_set::<PR>("S1234", BaseVar::<ISetBase, PR>::query_named("s1234"));
-    let expected_h = expected.handle();
-
-    let lhs = s12.handle().set_union(s34.handle());
-
-    CheckSetUnionPat::new(s12, s34, expected).assert(expected_h.eq(&lhs))
-}
-
-#[eggplant::pat_vars]
-struct CheckSetLenPat<PR: PatRecSgl> {
-    set: BaseVar<ISetBase, PR>,
-}
-
-fn pat_set_check_set_length_empty_0<PR: PatRecSgl>() -> CheckSetLenPat<PR> {
-    let set = bind_const_set::<PR>("SEmpty", BaseVar::<ISetBase, PR>::query_named("s"));
-    let len = set.handle().set_len();
-    CheckSetLenPat::new(set).assert(len.eq(&0_i64))
-}
-
-fn pat_set_check_set_length_of_111_1<PR: PatRecSgl>() -> CheckSetLenPat<PR> {
-    let set = bind_const_set::<PR>("S111", BaseVar::<ISetBase, PR>::query_named("s"));
-    let len = set.handle().set_len();
-    CheckSetLenPat::new(set).assert(len.eq(&1_i64))
-}
-
-fn pat_set_check_set_length_of_1m111_2<PR: PatRecSgl>() -> CheckSetLenPat<PR> {
-    let set = bind_const_set::<PR>("S1m111", BaseVar::<ISetBase, PR>::query_named("s"));
-    let len = set.handle().set_len();
-    CheckSetLenPat::new(set).assert(len.eq(&2_i64))
-}
-
-#[eggplant::pat_vars]
-struct CheckSetGetPat<PR: PatRecSgl> {
-    set: BaseVar<ISetBase, PR>,
-}
-
-fn pat_set_check_set_get_1m1241_0_is_1<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
-    let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = set.handle().set_get(&0_i64);
-    CheckSetGetPat::new(set).assert(got.eq(&1_i64))
-}
-
-fn pat_set_check_set_get_1m1241_1_is_2<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
-    let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = set.handle().set_get(&1_i64);
-    CheckSetGetPat::new(set).assert(got.eq(&2_i64))
-}
-
-fn pat_set_check_set_get_1m1241_2_is_4<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
-    let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = set.handle().set_get(&2_i64);
-    CheckSetGetPat::new(set).assert(got.eq(&4_i64))
-}
-
-fn pat_set_check_set_get_1m1241_3_is_m1<PR: PatRecSgl>() -> CheckSetGetPat<PR> {
-    let set = bind_const_set::<PR>("S1m1241", BaseVar::<ISetBase, PR>::query_named("s"));
-    let got = set.handle().set_get(&3_i64);
-    CheckSetGetPat::new(set).assert(got.eq(&-1_i64))
-}
-
-// Reify rules.
-#[eggplant::pat_vars]
-struct Reify0Pat<PR: PatRecSgl> {
-    x: BaseVar<ISetBase, PR>,
-    y: BaseVar<i64, PR>,
-}
-
-fn reify0_pat<PR: PatRecSgl>() -> Reify0Pat<PR> {
-    let x = BaseVar::<ISetBase, PR>::query_named("x");
-    let y = BaseVar::<i64, PR>::query_named("y");
-    let yh = y.handle();
-
-    // Bind `x` by reading the 0-arg "global" function `Myset()` (replaces egglog's `$myset`).
-    //
-    // Without a table-fact assignment like this, `x` would be an unassigned variable and the
-    // rule would fail egglog's rule typechecking.
-    MyPatRecSet::on_new_table_fact(
-        "Myset".to_string(),
-        vec![(x.name(), "ISetBase".to_string())],
-    );
-
-    let len = x.handle().set_len();
-    let y_expr = x.handle().set_get(&0_i64);
-
-    Reify0Pat::new(x, y)
-        .assert(len.gt(&0_i64))
-        .assert(yh.eq(&y_expr))
-}
-
-#[eggplant::pat_vars]
-struct ReifyStepPat<PR: PatRecSgl> {
-    seen: Seen,
-    x: BaseVar<ISetBase, PR>,
-    i: BaseVar<i64, PR>,
-    y: BaseVar<i64, PR>,
-}
-
-fn reify_step_pat<PR: PatRecSgl>() -> ReifyStepPat<PR> {
-    let seen = Seen::query();
-    let x = BaseVar::<ISetBase, PR>::query_named("x");
-    let i = BaseVar::<i64, PR>::query_named("i");
-    let y = BaseVar::<i64, PR>::query_named("y");
-    let ih = i.handle();
-    let yh = y.handle();
-
-    // Same `Myset()` binding as `reify0_pat`.
-    MyPatRecSet::on_new_table_fact(
-        "Myset".to_string(),
-        vec![(x.name(), "ISetBase".to_string())],
-    );
-
-    let i_expr = seen.handle_j() + (&1_i64).as_handle();
-    let len = x.handle().set_len();
-    let y_expr = x.handle().set_get(&ih);
-
-    ReifyStepPat::new(seen, x, i, y)
-        .assert(ih.eq(&i_expr))
-        .assert(ih.lt(&len))
-        .assert(yh.eq(&y_expr))
-}
-
 pub fn bench() {
     let breakdown = std::env::var_os("EGGPLANT_BENCH_BREAKDOWN").is_some();
     let t_total = Instant::now();
@@ -341,61 +182,193 @@ pub fn bench() {
     MyTxSet::add_rule(
         "set_check_set_of_12_push_12",
         checks,
-        pat_set_check_set_of_12_push_12,
+        || {
+            let expected = bind_const_set::<MyPatRecSet>(
+                "S12",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s12"),
+            );
+            let empty = bind_const_set::<MyPatRecSet>(
+                "SEmpty",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("empty"),
+            );
+            let expected_h = expected.handle();
+            let rhs = empty.handle().set_insert(&1_i64).set_insert(&2_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                expected: BaseVar<ISetBase>,
+                empty: BaseVar<ISetBase>,
+            }
+            Pat::new(expected, empty).assert(expected_h.eq(&rhs))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_of_12_push_21",
         checks,
-        pat_set_check_set_of_12_push_21,
+        || {
+            let expected = bind_const_set::<MyPatRecSet>(
+                "S12",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s12"),
+            );
+            let empty = bind_const_set::<MyPatRecSet>(
+                "SEmpty",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("empty"),
+            );
+            let expected_h = expected.handle();
+            let rhs = empty.handle().set_insert(&2_i64).set_insert(&1_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                expected: BaseVar<ISetBase>,
+                empty: BaseVar<ISetBase>,
+            }
+            Pat::new(expected, empty).assert(expected_h.eq(&rhs))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_union_1234",
         checks,
-        pat_set_check_set_union_1234,
+        || {
+            let s12 = bind_const_set::<MyPatRecSet>(
+                "S12",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s12"),
+            );
+            let s34 = bind_const_set::<MyPatRecSet>(
+                "S34",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s34"),
+            );
+            let expected = bind_const_set::<MyPatRecSet>(
+                "S1234",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s1234"),
+            );
+            let lhs = s12.handle().set_union(s34.handle());
+            #[eggplant::pat_vars]
+            struct Pat {
+                s12: BaseVar<ISetBase>,
+                s34: BaseVar<ISetBase>,
+                expected: BaseVar<ISetBase>,
+            }
+            Pat::new(s12, s34, expected).assert(expected.handle().eq(&lhs))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_length_empty_0",
         checks,
-        pat_set_check_set_length_empty_0,
+        || {
+            let set = bind_const_set::<MyPatRecSet>(
+                "SEmpty",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s"),
+            );
+            let len = set.handle().set_len();
+            #[eggplant::pat_vars]
+            struct Pat {
+                set: BaseVar<ISetBase>,
+            }
+            Pat::new(set).assert(len.eq(&0_i64))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_length_of_111_1",
         checks,
-        pat_set_check_set_length_of_111_1,
+        || {
+            let set = bind_const_set::<MyPatRecSet>(
+                "S111",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s"),
+            );
+            let len = set.handle().set_len();
+            #[eggplant::pat_vars]
+            struct Pat {
+                set: BaseVar<ISetBase>,
+            }
+            Pat::new(set).assert(len.eq(&1_i64))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_length_of_1m111_2",
         checks,
-        pat_set_check_set_length_of_1m111_2,
+        || {
+            let set = bind_const_set::<MyPatRecSet>(
+                "S1m111",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s"),
+            );
+            let len = set.handle().set_len();
+            #[eggplant::pat_vars]
+            struct Pat {
+                set: BaseVar<ISetBase>,
+            }
+            Pat::new(set).assert(len.eq(&2_i64))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_get_1m1241_0_is_1",
         checks,
-        pat_set_check_set_get_1m1241_0_is_1,
+        || {
+            let set = bind_const_set::<MyPatRecSet>(
+                "S1m1241",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s"),
+            );
+            let got = set.handle().set_get(&0_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                set: BaseVar<ISetBase>,
+            }
+            Pat::new(set).assert(got.eq(&1_i64))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_get_1m1241_1_is_2",
         checks,
-        pat_set_check_set_get_1m1241_1_is_2,
+        || {
+            let set = bind_const_set::<MyPatRecSet>(
+                "S1m1241",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s"),
+            );
+            let got = set.handle().set_get(&1_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                set: BaseVar<ISetBase>,
+            }
+            Pat::new(set).assert(got.eq(&2_i64))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_get_1m1241_2_is_4",
         checks,
-        pat_set_check_set_get_1m1241_2_is_4,
+        || {
+            let set = bind_const_set::<MyPatRecSet>(
+                "S1m1241",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s"),
+            );
+            let got = set.handle().set_get(&2_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                set: BaseVar<ISetBase>,
+            }
+            Pat::new(set).assert(got.eq(&4_i64))
+        },
         |_ctx, _pat| {},
     );
     MyTxSet::add_rule(
         "set_check_set_get_1m1241_3_is_m1",
         checks,
-        pat_set_check_set_get_1m1241_3_is_m1,
+        || {
+            let set = bind_const_set::<MyPatRecSet>(
+                "S1m1241",
+                BaseVar::<ISetBase, MyPatRecSet>::query_named("s"),
+            );
+            let got = set.handle().set_get(&3_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                set: BaseVar<ISetBase>,
+            }
+            Pat::new(set).assert(got.eq(&-1_i64))
+        },
         |_ctx, _pat| {},
     );
     if breakdown {
@@ -479,26 +452,71 @@ pub fn bench() {
 
     let t_reify_setup = Instant::now();
     let reify = MyTxSet::new_ruleset("web_demo_set_reify");
-    MyTxSet::add_rule("web_demo_set_reify0", reify, reify0_pat, |ctx, pat| {
-        // Manual `ISet-get` access (declared via inventory above).
-        //
-        // Generated `ctx.set_i_set_get` helpers are unavailable because base-container sorts
-        // can't currently be used as `#[eggplant::func]` inputs.
-        let key = [pat.x.erase(), ctx.intern_base::<i64, _>(0_i64).erase()];
-        if ctx.lookup("ISet-get", &key).is_none() {
-            let row = [
-                pat.x.erase(),
-                ctx.intern_base::<i64, _>(0_i64).erase(),
-                pat.y.erase(),
-            ];
-            ctx.insert_func_tbl("ISet-get", &row);
-            ctx.insert_seen(0);
-        }
-    });
+    MyTxSet::add_rule(
+        "web_demo_set_reify0",
+        reify,
+        || {
+            let x = BaseVar::<ISetBase, MyPatRecSet>::query_named("x");
+            let y = BaseVar::<i64, MyPatRecSet>::query_named("y");
+            MyPatRecSet::on_new_table_fact(
+                "Myset".to_string(),
+                vec![(x.name(), "ISetBase".to_string())],
+            );
+            let len = x.handle().set_len();
+            let y_expr = x.handle().set_get(&0_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                x: BaseVar<ISetBase>,
+                y: BaseVar<i64>,
+            }
+            Pat::new(x, y)
+                .assert(len.gt(&0_i64))
+                .assert(y.handle().eq(&y_expr))
+        },
+        |ctx, pat| {
+            // Manual `ISet-get` access (declared via inventory above).
+            //
+            // Generated `ctx.set_i_set_get` helpers are unavailable because base-container sorts
+            // can't currently be used as `#[eggplant::func]` inputs.
+            let key = [pat.x.erase(), ctx.intern_base::<i64, _>(0_i64).erase()];
+            if ctx.lookup("ISet-get", &key).is_none() {
+                let row = [
+                    pat.x.erase(),
+                    ctx.intern_base::<i64, _>(0_i64).erase(),
+                    pat.y.erase(),
+                ];
+                ctx.insert_func_tbl("ISet-get", &row);
+                ctx.insert_seen(0);
+            }
+        },
+    );
     MyTxSet::add_rule(
         "web_demo_set_reify_step",
         reify,
-        reify_step_pat,
+        || {
+            let seen = Seen::query();
+            let x = BaseVar::<ISetBase, MyPatRecSet>::query_named("x");
+            let i = BaseVar::<i64, MyPatRecSet>::query_named("i");
+            let y = BaseVar::<i64, MyPatRecSet>::query_named("y");
+            MyPatRecSet::on_new_table_fact(
+                "Myset".to_string(),
+                vec![(x.name(), "ISetBase".to_string())],
+            );
+            let i_expr = seen.handle_j() + (&1_i64).as_handle();
+            let len = x.handle().set_len();
+            let y_expr = x.handle().set_get(&i.handle());
+            #[eggplant::pat_vars]
+            struct Pat {
+                seen: Seen,
+                x: BaseVar<ISetBase>,
+                i: BaseVar<i64>,
+                y: BaseVar<i64>,
+            }
+            Pat::new(seen, x, i, y)
+                .assert(i.handle().eq(&i_expr))
+                .assert(i.handle().lt(&len))
+                .assert(y.handle().eq(&y_expr))
+        },
         |ctx, pat| {
             let i = ctx._devalue_base::<i64>(pat.i.erase());
             let key = [pat.x.erase(), pat.i.erase()];

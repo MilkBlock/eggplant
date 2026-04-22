@@ -176,6 +176,7 @@ fn typed_extract_backend_cost_model_matches_existing_cost_model_api() {
     assert_eq!(via_backend, existing);
 }
 
+#[cfg(feature = "rustsat-extract")]
 #[test]
 fn typed_extract_backend_rustsat_uses_variant_costs_over_custom_cost_model_bias() {
     let _ = env_logger::builder().is_test(true).try_init();

@@ -63,23 +63,21 @@ impl BSGS {
 ///
 /// # Example
 /// ```rust
-/// use butler_portugal::{canonicalize, Symmetry, Tensor, TensorIndex};
+/// use eggplant::butler_portugal::{canonicalize, DeBru, Symmetry, Tensor, TensorIndex};
 ///
-/// let mut tensor = Tensor::new(
-///     "R",
-///     vec![
-///         TensorIndex::new("a", 0),
-///         TensorIndex::new("b", 1),
-///         TensorIndex::new("c", 2),
-///         TensorIndex::new("d", 3),
-///     ],
-/// );
+/// let mut tensor = Tensor::new(vec![
+///         TensorIndex::new(DeBru::new(1), 0),
+///         TensorIndex::new(DeBru::new(2), 1),
+///         TensorIndex::new(DeBru::new(3), 2),
+///         TensorIndex::new(DeBru::new(4), 3),
+/// ]);
 ///
 /// // Riemann tensor symmetries
 /// tensor.add_symmetry(Symmetry::antisymmetric(vec![0, 1]));
 /// tensor.add_symmetry(Symmetry::antisymmetric(vec![2, 3]));
 ///
-/// let canonical = canonicalize(&tensor);
+/// let canonical = canonicalize(&tensor)?;
+/// # Ok::<(), eggplant::butler_portugal::ButlerPortugalError>(())
 /// ```
 pub fn canonicalize(tensor: &Tensor) -> Result<Tensor> {
     // Handle trivial cases

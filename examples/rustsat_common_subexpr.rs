@@ -1,3 +1,10 @@
+#[cfg(not(feature = "rustsat-extract"))]
+fn main() {
+    eprintln!("rustsat_common_subexpr requires --features rustsat-extract");
+}
+
+#[cfg(feature = "rustsat-extract")]
+mod real {
 use eggplant::{prelude::*, tx_rx_vt_pr};
 
 #[eggplant::dsl]
@@ -9,7 +16,7 @@ enum CseExpr {
 
 tx_rx_vt_pr!(RustsatCseTx, RustsatCsePatRec);
 
-fn main() {
+pub fn main() {
     let _ = env_logger::try_init();
     RustsatCseTx::sgl().reset_for_bench();
 
@@ -89,4 +96,10 @@ fn main() {
         legacy_cost > rustsat_cost,
         "the demo should show a strictly smaller weighted-MaxSAT/DAG cost than the legacy tree-additive cost"
     );
+}
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn main() {
+    real::main();
 }

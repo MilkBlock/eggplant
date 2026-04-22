@@ -58,9 +58,11 @@ pub struct PRRuleCtx<'a, 'b, 'c, 'p, PR: PatRecSgl> {
     _p: PhantomData<PR>,
 }
 pub struct RuleCtx<'a, 'b, 'c, 'p> {
-    pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b, 'p>>,
+    pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b>>,
     hook: RuleHookObj,
+    _proof: PhantomData<&'p ()>,
 }
+pub type CachedTableId = ();
 unsafe impl Send for RuleHookObj {}
 unsafe impl Sync for RuleHookObj {}
 pub struct RuleHookObj(pub Option<Box<dyn RuleCtxHook>>);
@@ -334,7 +336,7 @@ fn scan_action_call_end(text: &str, start: usize) -> Option<usize> {
 }
 
 impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
-    pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b, 'p>, hook: RuleHookObj) -> Self {
+    pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
         Self {
             _p: PhantomData::default(),
             ctx: RuleCtx::new(rule_ctx, hook),
@@ -413,10 +415,11 @@ impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
     }
 }
 impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
-    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b, 'p>, hook: RuleHookObj) -> Self {
+    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
         RuleCtx {
             rule_ctx: UnsafeCell::new(egglog_ctx),
             hook,
+            _proof: PhantomData,
         }
     }
     pub fn devalue<'d, B: BoxedValue, D: RetypeValue<Target = B>>(
@@ -443,12 +446,8 @@ impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
     fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
-    fn cached_function_id(
-        &self,
-        table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
-    ) -> egglog::FunctionId {
-        *cached.get_or_init(|| unsafe { (*self.rule_ctx.get()).function_id(table) })
+    fn touch_cached_table(&self, _table: &'static str, cached: &OnceLock<CachedTableId>) {
+        let _ = cached.get_or_init(|| ());
     }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.lookup_expect(table, key)
@@ -457,7 +456,7 @@ impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
     pub fn insert_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<CachedTableId>,
         key: &[egglog::Value],
     ) -> egglog::Value {
         self.lookup_expect_cached(table, cached, key)
@@ -485,21 +484,21 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
     pub fn lookup_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<CachedTableId>,
         key: &[egglog::Value],
     ) -> Option<egglog::Value> {
         if let Some(hook) = self.hook.0.as_ref() {
             let _effect_scope = ActionEffectScope::enter(Location::caller());
             hook.on_insert(table, key);
         }
-        let table_id = self.cached_function_id(table, cached);
-        unsafe { (*self.rule_ctx.get()).lookup_id(table_id, key) }
+        self.touch_cached_table(table, cached);
+        unsafe { (*self.rule_ctx.get()).lookup(table, key) }
     }
     #[track_caller]
     pub fn lookup_expect_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<CachedTableId>,
         key: &[egglog::Value],
     ) -> egglog::Value {
         self.lookup_cached(table, cached, key).unwrap_or_else(|| {
@@ -523,15 +522,15 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
     pub fn insert_func_tbl_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<CachedTableId>,
         key: &[egglog::Value],
     ) {
         if let Some(hook) = self.hook.0.as_ref() {
             let _effect_scope = ActionEffectScope::enter(Location::caller());
             hook.on_insert(table, key);
         }
-        let table_id = self.cached_function_id(table, cached);
-        unsafe { (*self.rule_ctx.get()).insert_id(table_id, key.iter().cloned()) }
+        self.touch_cached_table(table, cached);
+        unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
     }
     pub fn union<T0: EgglogTy, T1: EgglogTy>(
         &self,
@@ -543,21 +542,8 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
         if let Some(hook) = self.hook.0.as_ref() {
             hook.on_union(x.val, y.val);
         }
-        unsafe {
-            CURRENT_PREMISE_PROOFS.with(|cell| {
-                let premise_proofs_stack = cell.borrow();
-                if let Some(premise_proofs) = premise_proofs_stack.last() {
-                    (*self.rule_ctx.get()).union_typed(
-                        T0::TY_NAME,
-                        x.val,
-                        y.val,
-                        premise_proofs.as_ref(),
-                    );
-                } else {
-                    (*self.rule_ctx.get()).union(x.val, y.val);
-                }
-            });
-        }
+        let _ = (T0::TY_NAME, T1::TY_NAME);
+        CURRENT_PREMISE_PROOFS.with(|_| unsafe { (*self.rule_ctx.get()).union(x.val, y.val) });
     }
     #[track_caller]
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {

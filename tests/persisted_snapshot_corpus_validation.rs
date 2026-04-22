@@ -1,3 +1,5 @@
+#![cfg(feature = "fork-egglog")]
+
 use eggplant::artifact::{
     PersistedSnapshotRestoreError, build_persisted_snapshot_v1,
     persisted_snapshot_capability_summary, restore_persisted_snapshot_v1,

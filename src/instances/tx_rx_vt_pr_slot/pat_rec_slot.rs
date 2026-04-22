@@ -519,6 +519,7 @@ impl Default for SlotMeta {
 impl SlotMeta {
     /// here we should merge mapping
     /// for example  
+    /// ```text
     ///    Add           Add(2) with mapping [x=>1, y=>2]
     ///   x    y    =>  [1]  [2]
     ///
@@ -539,7 +540,7 @@ impl SlotMeta {
     ///  /    \                /   \                    /   \
     /// Var  Var       =>  Var(1) Var(1)          => Var(1)  Var(1)
     ///  x     y             {x}   {y}                 {x}    {y}
-    ///
+    /// ```
     pub fn from_metas(sub_metas: impl Iterator<Item = SlotMeta>) -> Self {
         let sub_metas: Vec<_> = sub_metas.collect();
         let var_id_set = sub_metas

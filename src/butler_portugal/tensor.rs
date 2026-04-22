@@ -32,18 +32,17 @@ pub struct Tensor {
 }
 
 impl Tensor {
-    /// Creates a new tensor with the given name and indices
+    /// Creates a new tensor with the given indices
     ///
     /// # Arguments
-    /// * `name` - The name/symbol of the tensor
     /// * `indices` - Vector of tensor indices
     ///
     /// # Example
     /// ```rust
-    /// use butler_portugal::{Tensor, TensorIndex};
+    /// use eggplant::butler_portugal::{DeBru, Tensor, TensorIndex};
     ///
     /// let tensor = Tensor::new(
-    ///     vec![TensorIndex::new("mu", 0), TensorIndex::new("nu", 1)],
+    ///     vec![TensorIndex::new(DeBru::new(1), 0), TensorIndex::new(DeBru::new(2), 1)],
     /// );
     /// ```
     pub fn new(indices: Vec<TensorIndex>) -> Self {
@@ -329,8 +328,8 @@ mod tests {
         ]);
 
         let display = format!("{tensor}");
-        assert!(display.contains("g"));
-        assert!(display.contains("mu"));
-        assert!(display.contains("nu"));
+        assert!(display.contains("{1}"));
+        assert!(display.contains("{2}"));
+        assert!(display.starts_with("__"));
     }
 }

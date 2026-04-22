@@ -27,9 +27,9 @@ impl TensorIndex {
     ///
     /// # Example
     /// ```rust
-    /// use butler_portugal::TensorIndex;
+    /// use eggplant::butler_portugal::{DeBru, TensorIndex};
     ///
-    /// let index = TensorIndex::new("mu", 0);
+    /// let index = TensorIndex::new(DeBru::new(1), 0);
     /// ```
     pub fn new(de_bruijn: DeBru, position: usize) -> Self {
         Self {

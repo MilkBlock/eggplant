@@ -1,3 +1,10 @@
+#[cfg(not(feature = "rustsat-extract"))]
+fn main() {
+    eprintln!("rustsat_optimize_expression requires --features rustsat-extract");
+}
+
+#[cfg(feature = "rustsat-extract")]
+mod real {
 use eggplant::{prelude::*, tx_rx_vt_pr};
 
 #[eggplant::dsl]
@@ -17,7 +24,7 @@ enum RustsatExpr {
 
 tx_rx_vt_pr!(RustsatDemoTx, RustsatDemoPatRec);
 
-fn main() {
+pub fn main() {
     let _ = env_logger::try_init();
     RustsatDemoTx::sgl().reset_for_bench();
 
@@ -67,4 +74,10 @@ fn main() {
         "rustsat backend should pick the lower-cost wrapper"
     );
     assert_eq!(rustsat_cost, 1);
+}
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn main() {
+    real::main();
 }

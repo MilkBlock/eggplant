@@ -1,5 +1,6 @@
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr;
+use eggplant::wrap::NonPatRecSgl;
 
 #[eggplant::dsl]
 enum IndexedDecodeExpr {

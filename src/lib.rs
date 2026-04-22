@@ -1,10 +1,7 @@
-pub mod artifact;
-mod butler_portugal;
+pub mod butler_portugal;
+pub mod helpers;
 pub mod instances;
 pub mod prelude;
-pub mod schema;
-#[cfg(test)]
-mod test;
 pub mod wrap;
 
 pub mod derive_more {

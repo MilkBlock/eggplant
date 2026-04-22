@@ -1,4 +1,3 @@
-use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
 use crate::{
     etc::{Escape, quote, topo_sort},
     wrap::*,
@@ -15,7 +14,7 @@ use egglog::{
 };
 use egglog::{
     ast::{RustSpan, Span},
-    prelude::{rust_rule, rust_rule_with_metadata},
+    prelude::rust_rule,
 };
 use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
@@ -45,14 +44,6 @@ pub struct TxRxVTPR {
     sym2value_map: Arc<DashMap<Sym, egglog::Value>>,
     // proof_store: Mutex<ProofStore>,
     commit_counter: Mutex<u32>,
-}
-
-#[derive(Clone)]
-struct PremiseProofSpec {
-    /// Freshened name of the `{Ctor}ViewProof` function (e.g. `@MulViewProof`).
-    view_proof_func: Arc<str>,
-    /// Slot indices into the rust_rule callback `values` slice for this premise.
-    key_slots: Arc<[usize]>,
 }
 
 #[allow(unused)]
@@ -259,13 +250,11 @@ impl TxRxVTPR {
         lhs: egglog::Value,
         rhs: egglog::Value,
     ) -> Result<String, egglog::Error> {
-        let mut egraph = self.egraph.lock().unwrap();
-        if !egraph.are_proofs_enabled() {
-            return Err(egglog::Error::BackendError(
-                "prove_eq_pretty_raw requires EGraph::new_with_proofs".into(),
-            ));
-        }
-        egraph.prove_values_equal_pretty(sort_name, lhs, rhs)
+        let _ = (sort_name, lhs, rhs);
+        Err(egglog::Error::BackendError(
+            "pretty proof rendering requires fork-egglog support and is disabled on stable-big-pr"
+                .into(),
+        ))
     }
 
     pub fn prove_eq_pretty<T: EgglogTy>(
@@ -285,21 +274,11 @@ impl TxRxVTPR {
         lhs: egglog::ast::Expr,
         rhs: egglog::ast::Expr,
     ) -> Result<String, egglog::Error> {
-        let mut egraph = self.egraph.lock().unwrap();
-        if !egraph.are_proofs_enabled() {
-            return Err(egglog::Error::BackendError(
-                "prove_eq_pretty_expr_ast requires EGraph::new_with_proofs".into(),
-            ));
-        }
-
-        egraph.push();
-        let res = (|| {
-            let (_lhs_sort, lhs_value) = egraph.eval_expr(&lhs)?;
-            let (_rhs_sort, rhs_value) = egraph.eval_expr(&rhs)?;
-            egraph.prove_values_equal_pretty(sort_name, lhs_value, rhs_value)
-        })();
-        egraph.pop()?;
-        res
+        let _ = (sort_name, lhs, rhs);
+        Err(egglog::Error::BackendError(
+            "pretty proof rendering requires fork-egglog support and is disabled on stable-big-pr"
+                .into(),
+        ))
     }
 
     /// Check whether an e-graph `Value` is in the same e-class as a given surface expression (AST).
@@ -955,57 +934,12 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
             .map(|(idx, (name, _))| (Arc::<str>::from(name.as_str()), idx))
             .collect();
         let decode_plan = Arc::new(pat_vars.build_decode_plan(&binding_var_slots));
-        let premise_specs: Arc<[PremiseProofSpec]> = if proofs_enabled {
-            let mut specs = Vec::new();
-            for fact in facts.iter() {
-                let Fact::Eq(_, lhs, rhs) = fact else {
-                    continue;
-                };
-                let (out, head, args) = match (lhs, rhs) {
-                    (Expr::Var(_, out), Expr::Call(_, head, args)) => (out, head, args),
-                    (Expr::Call(_, head, args), Expr::Var(_, out)) => (out, head, args),
-                    _ => continue,
-                };
-                let mut key_slots: Vec<usize> = Vec::with_capacity(args.len() + 1);
-                for arg in args.iter() {
-                    match arg {
-                        Expr::Var(_, v) => key_slots.push(
-                            *binding_var_slots
-                                .get(v.as_str())
-                                .unwrap_or_else(|| panic!("missing premise arg binding {}", v)),
-                        ),
-                        _ => {
-                            key_slots.clear();
-                            break;
-                        }
-                    }
-                }
-                if key_slots.is_empty() {
-                    continue;
-                }
-                key_slots.push(
-                    *binding_var_slots
-                        .get(out.as_str())
-                        .unwrap_or_else(|| panic!("missing premise out binding {}", out)),
-                );
-
-                let view_proof_func = match egraph.proof_view_proof_name(head) {
-                    Ok(name) => Arc::<str>::from(name.to_owned()),
-                    Err(_) => {
-                        continue;
-                    }
-                };
-                specs.push(PremiseProofSpec {
-                    view_proof_func,
-                    key_slots: Arc::from(key_slots.into_boxed_slice()),
-                });
-            }
-            Arc::from(specs.into_boxed_slice())
-        } else {
-            Arc::from(Vec::<PremiseProofSpec>::new().into_boxed_slice())
-        };
         let hook = RuleHookObj(ctx_hook);
-        let rst = rust_rule_with_metadata(
+        assert!(
+            timestamp_constraints.is_empty(),
+            "timestamp-constrained rules require fork-egglog support and are disabled on stable-big-pr"
+        );
+        let rst = rust_rule(
             &mut egraph,
             rust_rule_name.as_ref(),
             rule_set.0,
@@ -1016,41 +950,13 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
             Facts(facts),
             move |ctx, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
-                let _premise_scope = if proofs_enabled {
-                    let premise_proofs: Arc<[egglog::Value]> = if premise_specs.is_empty() {
-                        empty_premise_proofs()
-                    } else {
-                        let mut proofs = Vec::with_capacity(premise_specs.len());
-                        for spec in premise_specs.iter() {
-                            let mut key = Vec::with_capacity(spec.key_slots.len());
-                            for &slot in spec.key_slots.iter() {
-                                key.push(values[slot]);
-                            }
-                            let prf = ctx.ctx.insert(spec.view_proof_func.as_ref(), &key);
-                            proofs.push(prf);
-                        }
-                        Arc::from(proofs.into_boxed_slice())
-                    };
-                    Some(PremiseProofScope::enter(premise_proofs))
-                } else {
-                    None
-                };
+                let _ = proofs_enabled;
                 let valued_pat_vars = P::decode_with_plan(values, &[], decode_plan.as_ref());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },
         );
-        let rule_handle = rst.expect("add_rule err");
-        for ts_constraint in timestamp_constraints {
-            egraph
-                .constrain_rule_atom_timestamp_range(
-                    rule_handle.rule_id,
-                    ts_constraint.atom_index,
-                    ts_constraint.min_inclusive,
-                    ts_constraint.max_exclusive,
-                )
-                .expect("failed to attach timestamp constraint to rule");
-        }
+        rst.expect("add_rule err");
     }
 
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId {

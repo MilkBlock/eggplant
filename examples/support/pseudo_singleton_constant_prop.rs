@@ -2,7 +2,9 @@
 mod pseudo_singleton_runtime;
 
 use eggplant::prelude::*;
-use std::sync::{Arc, Barrier};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::{Arc, Barrier, mpsc};
+use std::time::Duration;
 
 pub use pseudo_singleton_runtime::{MyTx, Session, new_session};
 
@@ -51,33 +53,36 @@ pub fn register_constant_prop_rules() -> RuleSetId {
     })
 }
 
-fn current_snapshot() -> PersistedSnapshot {
-    let egraph = <MyTx as eggplant::wrap::NonPatRecSgl>::egraph();
-    let egraph = egraph.lock().unwrap();
-    build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
-}
-
-fn snapshot_has_const(snapshot: &PersistedSnapshot, needle: i64) -> bool {
-    let Some(const_decl) = snapshot
-        .schema
-        .constructor_decls
-        .iter()
-        .find(|decl| decl.name == "Const")
-    else {
-        return false;
-    };
-
-    snapshot.state.function_rows.iter().any(|row| {
-        row.op_id == const_decl.op_id
-            && matches!(
-                row.inputs.first(),
-                Some(PersistedSnapshotValue::Lit { value, .. }) if value.value == needle.to_string()
-            )
-    })
-}
-
 fn current_session_has_const(needle: i64) -> bool {
-    snapshot_has_const(&current_snapshot(), needle)
+    static NEXT_SCAN_ID: AtomicUsize = AtomicUsize::new(0);
+
+    let scan_id = NEXT_SCAN_ID.fetch_add(1, Ordering::Relaxed);
+    let ruleset_name: &'static str =
+        Box::leak(format!("constant_prop_scan_ruleset_{scan_id}").into_boxed_str());
+    let rule_name: &'static str =
+        Box::leak(format!("constant_prop_scan_rule_{scan_id}").into_boxed_str());
+    let found = Arc::new(AtomicBool::new(false));
+    let found_in_rule = Arc::clone(&found);
+
+    let ruleset = MyTx::new_ruleset(ruleset_name);
+    MyTx::add_rule(
+        rule_name,
+        ruleset,
+        || {
+            let c = Const::query();
+            #[eggplant::pat_vars_catch]
+            struct ConstPat {
+                c: Const,
+            }
+        },
+        move |ctx, pat| {
+            if ctx.devalue(pat.c.num) == needle {
+                found_in_rule.store(true, Ordering::Relaxed);
+            }
+        },
+    );
+    let _ = MyTx::run_ruleset(ruleset, RunConfig::Once);
+    found.load(Ordering::Relaxed)
 }
 
 fn canonical_eq(lhs: &Expr<MyTx>, rhs_const: i64) -> bool {
@@ -207,6 +212,64 @@ pub fn same_session_concurrent_registration_is_safe() {
     assert_eq!(right.1, 17);
     assert!(left.2);
     assert!(right.2);
+}
+
+pub fn nested_ruleset_registration_is_safe() {
+    let session = new_session();
+    let (sender, receiver) = mpsc::sync_channel(1);
+
+    let handle = session.spawn(move || {
+        let outer =
+            pseudo_singleton_runtime::get_or_register_ruleset("outer_constant_prop", || {
+                let inner = pseudo_singleton_runtime::get_or_register_ruleset(
+                    "inner_constant_prop",
+                    || MyTx::new_ruleset("inner_constant_prop_ruleset"),
+                );
+                let outer = MyTx::new_ruleset("outer_constant_prop_ruleset");
+                assert_ne!(
+                    inner.0, outer.0,
+                    "nested registration should be able to build dependent rulesets"
+                );
+                outer
+            });
+        sender.send(outer.0.to_owned()).unwrap();
+    });
+
+    let outer_ruleset = receiver
+        .recv_timeout(Duration::from_secs(1))
+        .expect("nested ruleset registration should finish without deadlocking");
+    assert_eq!(outer_ruleset, "outer_constant_prop_ruleset");
+    handle.join().unwrap();
+}
+
+pub fn nested_same_key_registration_panics_instead_of_deadlocking() {
+    let session = new_session();
+
+    let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        session.run(|| {
+            let _ = pseudo_singleton_runtime::get_or_register_ruleset("same_key_ruleset", || {
+                let _ =
+                    pseudo_singleton_runtime::get_or_register_ruleset("same_key_ruleset", || {
+                        MyTx::new_ruleset("same_key_inner_ruleset")
+                    });
+                MyTx::new_ruleset("same_key_outer_ruleset")
+            });
+        });
+    }))
+    .expect_err("same-key nested registration should fail fast instead of deadlocking");
+
+    let message = if let Some(message) = panic.downcast_ref::<&str>() {
+        (*message).to_owned()
+    } else if let Some(message) = panic.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        String::new()
+    };
+
+    assert!(
+        message.contains("reentrant ruleset registration"),
+        "panic message should explain the reentrant registration failure, got: {message}"
+    );
 }
 
 pub fn async_sessions_can_survive_yield_and_spawn() {

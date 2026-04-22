@@ -22,8 +22,8 @@ fn print_stats(label: &str, stats: &MathMicrobenchmarkStats) {
 }
 
 fn collect_egg_stats() -> MathMicrobenchmarkStats {
-    let egglog_repo_root =
-        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../stable/egglog_sync_serialize_raw");
+    let egglog_repo_root = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../stable/egglog_sync_serialize_raw");
     let filename = egglog_repo_root.join("tests/math-microbenchmark.egg");
     let tables = [
         ("Diff", "Diff"),

@@ -1,3 +1,4 @@
+use eggplant::egglog;
 use eggplant::{prelude::*, tx_rx_vt_pr, wrap::EgglogEnumVariantTy};
 
 const ALICE_ID: i64 = 1;
@@ -68,15 +69,14 @@ fn main() {
         "mark_ownership",
         ruleset,
         || {
-            let owns = Owns::query();
             let owner = Human::query();
-            let same_owner = owns.owner.handle().eq(&owner.handle());
+            let owns = Owns::query(&owner);
             #[eggplant::pat_vars]
             struct Pat {
                 owns: Owns,
                 owner: Human,
             }
-            Pat::new(owns, owner).assert(same_owner)
+            Pat::new(owns, owner)
         },
         |ctx, pat| {
             let owner_id = ctx.devalue(pat.owner.id);
@@ -88,12 +88,10 @@ fn main() {
         "apply_transfer",
         ruleset,
         || {
-            let owns = Owns::query();
             let current_owner = Human::query();
-            let request = TransferRequest::query();
+            let owns = Owns::query(&current_owner);
             let new_owner = Human::query();
-            let same_current_owner = owns.owner.handle().eq(&current_owner.handle());
-            let same_new_owner = request.new_owner.handle().eq(&new_owner.handle());
+            let request = TransferRequest::query(&new_owner);
             let same_item = owns.handle_item_id().eq(&request.handle_item_id());
             let owner_changes = current_owner.handle().ne(&new_owner.handle());
             #[eggplant::pat_vars]
@@ -104,8 +102,6 @@ fn main() {
                 new_owner: Human,
             }
             Pat::new(owns, current_owner, request, new_owner)
-                .assert(same_current_owner)
-                .assert(same_new_owner)
                 .assert(same_item)
                 .assert(owner_changes)
         },
@@ -122,20 +118,25 @@ fn main() {
 
     let report = OwnershipTx::run_ruleset(ruleset, RunConfig::Sat);
     println!("matches: {:?}", report.num_matches_per_rule);
-    println!(
-        "seed ownership observed (alice, ring): {}",
-        OwnershipSeen::<OwnershipTx>::get((&ALICE_ID, &RING_ID))
+    let mark_matches = report
+        .num_matches_per_rule
+        .get("@mark_ownership")
+        .copied()
+        .unwrap_or(0);
+    let transfer_matches = report
+        .num_matches_per_rule
+        .get("@apply_transfer")
+        .copied()
+        .unwrap_or(0);
+
+    assert!(
+        mark_matches >= 3,
+        "expected at least the seeded ownership facts to be observed"
     );
-    println!(
-        "new ownership observed after transfer (bob, ring): {}",
-        OwnershipSeen::<OwnershipTx>::get((&BOB_ID, &RING_ID))
+    assert_eq!(
+        transfer_matches, 1,
+        "expected exactly one transfer application in the story"
     );
-    println!(
-        "unrelated ownership untouched (carol, book): {}",
-        OwnershipSeen::<OwnershipTx>::get((&CAROL_ID, &BOOK_ID))
-    );
-    println!(
-        "transfer applied for ring: {}",
-        TransferApplied::<OwnershipTx>::get((&RING_ID, &ALICE_ID, &BOB_ID))
-    );
+    println!("ownership observations recorded: {mark_matches}");
+    println!("transfer applications recorded: {transfer_matches}");
 }

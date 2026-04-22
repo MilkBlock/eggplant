@@ -1,4 +1,5 @@
 pub use derive_more;
+pub use crate::egglog;
 mod func;
 pub use func::*;
 mod literal;
@@ -9,6 +10,8 @@ mod base_var;
 pub use base_var::*;
 mod type_reg;
 pub use type_reg::*;
+mod eboost_extract;
+pub use eboost_extract::*;
 
 mod wrap;
 pub use wrap::*;

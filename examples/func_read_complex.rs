@@ -1,3 +1,4 @@
+use eggplant::egglog;
 use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr;
 

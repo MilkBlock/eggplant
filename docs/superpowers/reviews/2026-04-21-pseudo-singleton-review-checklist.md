@@ -101,6 +101,21 @@ This file records the issues raised during review, one by one, with an explicit 
   Result:
   Fixed and covered by a same-session concurrent registration test.
 
+- [x] Issue 9: nested/composable ruleset registration could deadlock.
+  Problem:
+  A later review found that `get_or_register_ruleset(...)` executed `build()` while still holding the per-session ruleset mutex. That meant nested registration of another ruleset, or accidental recursion on the same key, could deadlock.
+  Handling:
+  The helper now uses a two-phase state machine:
+  `Building { owner }`
+  `Ready(RuleSetId)`
+  It releases the mutex before running `build()`, lets other threads wait on a condition variable for completion, and fails fast with a clear panic on same-key reentrant registration instead of deadlocking.
+  Evidence:
+  `examples/support/pseudo_singleton_runtime.rs`
+  `examples/support/pseudo_singleton_constant_prop.rs`
+  `tests/pseudo_singleton_constant_prop.rs`
+  Result:
+  Fixed and covered by both nested-different-key and same-key-reentrant regression tests.
+
 ## Verification
 
 - [x] `cargo test --test pseudo_singleton_constant_prop`
@@ -118,3 +133,4 @@ This file records the issues raised during review, one by one, with an explicit 
 - [x] Resolved in code: reclaimable session-owned state without process-lifetime registry growth
 - [x] Resolved in code: mixed sync/async session override ordering
 - [x] Resolved in code: same-session concurrent registration safety
+- [x] Resolved in code: nested/composable ruleset registration without deadlock

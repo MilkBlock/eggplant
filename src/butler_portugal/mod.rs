@@ -6,18 +6,15 @@
 //!
 //! ## Example
 //! ```rust
-//! use butler_portugal::{canonicalize, Symmetry, Tensor, TensorIndex};
+//! use eggplant::butler_portugal::{canonicalize, DeBru, Symmetry, Tensor, TensorIndex};
 //!
 //! // Create a tensor with some indices
-//! let mut tensor = Tensor::new(
-//!     "R",
-//!     vec![
-//!         TensorIndex::new("a", 0),
-//!         TensorIndex::new("b", 1),
-//!         TensorIndex::new("c", 2),
-//!         TensorIndex::new("d", 3),
-//!     ],
-//! );
+//! let mut tensor = Tensor::new(vec![
+//!         TensorIndex::new(DeBru::new(1), 0),
+//!         TensorIndex::new(DeBru::new(2), 1),
+//!         TensorIndex::new(DeBru::new(3), 2),
+//!         TensorIndex::new(DeBru::new(4), 3),
+//! ]);
 //!
 //! // Add symmetry properties (Riemann tensor symmetries)
 //! tensor.add_symmetry(Symmetry::antisymmetric(vec![0, 1]));
@@ -26,7 +23,7 @@
 //!
 //! // Canonicalize the tensor
 //! let canonical_tensor = canonicalize(&tensor)?;
-//! # Ok::<(), butler_portugal::ButlerPortugalError>(())
+//! # Ok::<(), eggplant::butler_portugal::ButlerPortugalError>(())
 //! ```
 
 pub mod canonicalization;
@@ -41,5 +38,6 @@ pub use canonicalization::canonicalize;
 pub use error::{ButlerPortugalError, Result};
 pub use index::DeBrus;
 pub use index::TensorIndex;
+pub use symmetry::Symmetry;
 pub use tensor::DeBru;
 pub use tensor::Tensor;

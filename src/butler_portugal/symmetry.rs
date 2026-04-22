@@ -34,7 +34,7 @@ impl Symmetry {
     ///
     /// # Example
     /// ```rust
-    /// use butler_portugal::Symmetry;
+    /// use eggplant::butler_portugal::Symmetry;
     ///
     /// let sym = Symmetry::symmetric(vec![0, 1, 2]); // T_abc = T_bac = T_cab = ...
     /// ```
@@ -49,7 +49,7 @@ impl Symmetry {
     ///
     /// # Example
     /// ```rust
-    /// use butler_portugal::Symmetry;
+    /// use eggplant::butler_portugal::Symmetry;
     ///
     /// let asym = Symmetry::antisymmetric(vec![0, 1]); // T_ab = -T_ba
     /// ```
@@ -64,7 +64,7 @@ impl Symmetry {
     ///
     /// # Example
     /// ```rust
-    /// use butler_portugal::Symmetry;
+    /// use eggplant::butler_portugal::Symmetry;
     ///
     /// // Riemann tensor: R_abcd = R_cdab
     /// let sym = Symmetry::symmetric_pairs(vec![(0, 1), (2, 3)]);
@@ -80,7 +80,7 @@ impl Symmetry {
     ///
     /// # Example
     /// ```rust
-    /// use butler_portugal::Symmetry;
+    /// use eggplant::butler_portugal::Symmetry;
     ///
     /// let cyc = Symmetry::cyclic(vec![0, 1, 2]); // T_abc = T_bca = T_cab
     /// ```

@@ -6,9 +6,10 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::{
-    Arc, Mutex,
+    Arc, Condvar, Mutex,
     atomic::{AtomicUsize, Ordering},
 };
+use std::thread::ThreadId;
 
 pub type Runtime = TxRxVTPR;
 
@@ -19,7 +20,8 @@ struct SessionState {
     id: usize,
     runtime: Runtime,
     pat_recorder: PatRecorder,
-    rulesets: Mutex<HashMap<&'static str, RuleSetId>>,
+    rulesets: Mutex<HashMap<&'static str, RulesetRegistration>>,
+    rulesets_cv: Condvar,
 }
 
 impl SessionState {
@@ -29,8 +31,15 @@ impl SessionState {
             runtime: Runtime::new(),
             pat_recorder: PatRecorder::new(),
             rulesets: Mutex::new(HashMap::new()),
+            rulesets_cv: Condvar::new(),
         }
     }
+}
+
+#[derive(Clone, Copy)]
+enum RulesetRegistration {
+    Building { owner: ThreadId },
+    Ready(RuleSetId),
 }
 
 #[derive(Clone)]
@@ -138,14 +147,50 @@ pub(super) fn get_or_register_ruleset(
     build: impl FnOnce() -> RuleSetId,
 ) -> RuleSetId {
     let state = current_state();
-    let mut rulesets = state.rulesets.lock().unwrap();
-    if let Some(existing) = rulesets.get(key).copied() {
-        return existing;
-    }
+    let current_thread = std::thread::current().id();
 
-    let ruleset = build();
-    rulesets.insert(key, ruleset);
-    ruleset
+    loop {
+        let mut rulesets = state.rulesets.lock().unwrap_or_else(|err| err.into_inner());
+        match rulesets.get(key).copied() {
+            Some(RulesetRegistration::Ready(ruleset)) => return ruleset,
+            Some(RulesetRegistration::Building { owner }) => {
+                if owner == current_thread {
+                    drop(rulesets);
+                    panic!("reentrant ruleset registration for key `{key}` is not supported");
+                }
+                let guard = state
+                    .rulesets_cv
+                    .wait(rulesets)
+                    .unwrap_or_else(|err| err.into_inner());
+                drop(guard);
+            }
+            None => {
+                rulesets.insert(
+                    key,
+                    RulesetRegistration::Building {
+                        owner: current_thread,
+                    },
+                );
+                drop(rulesets);
+
+                let build_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(build));
+
+                let mut rulesets = state.rulesets.lock().unwrap_or_else(|err| err.into_inner());
+                match build_result {
+                    Ok(ruleset) => {
+                        rulesets.insert(key, RulesetRegistration::Ready(ruleset));
+                        state.rulesets_cv.notify_all();
+                        return ruleset;
+                    }
+                    Err(payload) => {
+                        rulesets.remove(key);
+                        state.rulesets_cv.notify_all();
+                        std::panic::resume_unwind(payload);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn with_runtime<R>(f: impl FnOnce(&Runtime) -> R) -> R {

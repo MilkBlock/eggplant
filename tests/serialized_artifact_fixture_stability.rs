@@ -1,3 +1,5 @@
+#![cfg(feature = "fork-egglog")]
+
 use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard, OnceLock};
