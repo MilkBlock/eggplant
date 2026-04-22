@@ -24,18 +24,24 @@ use std::sync::Arc;
 use std::sync::{Mutex, OnceLock};
 use wrap::Value;
 
+#[cfg(feature = "fork-egglog")]
 pub(crate) fn empty_premise_proofs() -> Arc<[egglog::Value]> {
     static EMPTY: std::sync::OnceLock<Arc<[egglog::Value]>> = std::sync::OnceLock::new();
     Arc::clone(EMPTY.get_or_init(|| Arc::from(Vec::<egglog::Value>::new().into_boxed_slice())))
 }
 
+#[cfg(feature = "fork-egglog")]
 thread_local! {
     pub(crate) static CURRENT_PREMISE_PROOFS: RefCell<Vec<Arc<[egglog::Value]>>> = RefCell::new(Vec::new());
+}
+thread_local! {
     static CURRENT_ACTION_EFFECT_ID: RefCell<Option<String>> = const { RefCell::new(None) };
 }
 
+#[cfg(feature = "fork-egglog")]
 pub(crate) struct PremiseProofScope;
 
+#[cfg(feature = "fork-egglog")]
 impl PremiseProofScope {
     pub(crate) fn enter(premise_proofs: Arc<[egglog::Value]>) -> Self {
         CURRENT_PREMISE_PROOFS.with(|cell| cell.borrow_mut().push(premise_proofs));
@@ -43,6 +49,7 @@ impl PremiseProofScope {
     }
 }
 
+#[cfg(feature = "fork-egglog")]
 impl Drop for PremiseProofScope {
     fn drop(&mut self) {
         CURRENT_PREMISE_PROOFS.with(|cell| {
@@ -543,7 +550,7 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
             hook.on_union(x.val, y.val);
         }
         let _ = (T0::TY_NAME, T1::TY_NAME);
-        CURRENT_PREMISE_PROOFS.with(|_| unsafe { (*self.rule_ctx.get()).union(x.val, y.val) });
+        unsafe { (*self.rule_ctx.get()).union(x.val, y.val) };
     }
     #[track_caller]
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use egglog::prelude::*;
 use egglog::sort::S;
 use egglog::{ArcSort, Value};

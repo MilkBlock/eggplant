@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[path = "../benches/runners/eggplant_rewrite/math_microbenchmark.rs"]
 mod typed_math_microbenchmark;
 

@@ -1,3 +1,5 @@
+#![allow(non_camel_case_types)]
+
 use eggplant::egglog;
 use eggplant::{prelude::*, tx_rx_vt_pr};
 

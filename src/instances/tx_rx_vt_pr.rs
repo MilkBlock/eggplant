@@ -4,7 +4,6 @@ use crate::{
 };
 use core::panic;
 use dashmap::DashMap;
-use egglog::ast::{Expr, Fact};
 use egglog::{
     EGraph, SerializeConfig,
     ast::Facts,

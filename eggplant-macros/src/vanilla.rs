@@ -518,7 +518,7 @@ pub fn relation(
         .iter()
         .map(|ty| quote!(<#ty as #W::PatVars<PR>>::Valued))
         .collect::<Vec<_>>();
-    let metas_iter_chains = field_idents
+    let _metas_iter_chains = field_idents
         .iter()
         .zip(pat_field_types.iter())
         .map(|(ident, ty)| quote!(.chain(<#ty as #W::PatVars<PR>>::metas_iter(&self.#ident))))

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 #[path = "pseudo_singleton_runtime.rs"]
 mod pseudo_singleton_runtime;
 

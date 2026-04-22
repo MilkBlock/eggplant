@@ -717,6 +717,7 @@ pub fn ctx_subsume_remove_fn_ts_with_pr(
     )
 }
 
+#[allow(dead_code)]
 pub fn ctx_insert_fn_ts_with_pr(
     variant: &syn::Variant,
     name_node: &Ident,

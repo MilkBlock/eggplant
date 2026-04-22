@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 //! # Butler-Portugal Tensor Canonicalization Library
 //!
 //! This library implements the Butler-Portugal algorithm for tensor canonicalization
@@ -36,6 +38,7 @@ pub mod young_tableaux;
 
 pub use canonicalization::canonicalize;
 pub use error::{ButlerPortugalError, Result};
+#[allow(unused_imports)]
 pub use index::DeBrus;
 pub use index::TensorIndex;
 pub use symmetry::Symmetry;

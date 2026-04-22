@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use eggplant::egglog::EGraph;
 use eggplant::instances::{pat_rec::PatRecorder, tx_rx_vt_pr::TxRxVTPR};
 use eggplant::prelude::{RuleSetId, SingletonGetter};
