@@ -7,9 +7,13 @@ repository.workspace = true
 keywords.workspace = true
 license.workspace = true
 readme.workspace = true
+autobenches = false
 
 [features]
-default = []
+default = ["viewer"]
+viewer = ["eggplant-viewer", "dep:eframe"]
+eggcc_extraction = []
+rustsat-extract = ["dep:rustsat", "dep:rustsat-minisat"]
 
 [dependencies]
 derive_more = { version = "2.0.1", features = [
@@ -26,16 +30,54 @@ dashmap = "6.1.0"
 env_logger = "0.11.8"
 log = "0.4.27"
 eggplant-macros.workspace = true
+eggplant-viewer = { workspace = true, optional = true }
+eggplant-egui_graphs = { workspace = true, optional = true }
+eframe = { workspace = true, optional = true }
 egglog.workspace = true
+egglog-reports.workspace = true
 strum = { version = "0.27.2", features = ["strum_macros"] }
 strum_macros = "0.27.2"
 graphviz-rust = "0.9.5"
 serde.workspace = true
 serde_json.workspace = true
+rmp-serde = "1.3.0"
+rustsat = { version = "0.7.5", optional = true }
+rustsat-minisat = { version = "0.7.5", optional = true }
+itertools.workspace = true
+crossbeam.workspace = true
+indexmap.workspace = true
+sha2 = "0.10"
+num = "0.4"
+
+[dev-dependencies]
+divan = { package = "codspeed-divan-compat", version = "4.4.1" }
+glob = "0.3"
+mimalloc = "0.1"
+rayon = "1.10"
+tokio = { version = "1.48.0", features = ["rt", "rt-multi-thread", "macros", "sync"] }
+egglog_upstream = { package = "egglog", git = "https://github.com/egraphs-good/egglog.git", rev = "3595b21efb18dbf9936d258acab48324a3dc6b04" }
+egglog_upstream_reports = { package = "egglog-reports", git = "https://github.com/egraphs-good/egglog.git", rev = "3595b21efb18dbf9936d258acab48324a3dc6b04" }
+
+[[bench]]
+name = "ci_benchmarking"
+harness = false
+
+[[bench]]
+name = "insert_1000_func"
+harness = false
+
+# [[bin]]
+# name = "viewer_example"
+# path = "src/viewer_example.rs"
+# required-features = ["viewer"]
+
+[[bench]]
+name = "eggplant_bench"
+harness = false
 
 [workspace]
-members = ["eggplant-macros", "eggplant-transpiler"]
-resolver = "2"                                       # recommended 2021 Edition
+members = ["eggplant-macros", "eggplant-transpiler", "eggplant-egui_graphs"]
+resolver = "2"                                                               # recommended 2021 Edition
 
 [workspace.package]
 edition = "2024"
@@ -49,9 +91,24 @@ authors = ["MilkBlock"]
 
 [workspace.dependencies]
 eggplant-macros = { path = "eggplant-macros", version = "0.2.7" }
+eggplant-viewer = { path = "eggplant-viewer" }
+eggplant-egui_graphs = { path = "eggplant-egui_graphs" }
 eggplant-transpiler = { path = "eggplant-transpiler", version = "0.2.7" }
-egglog = "1.0.0"
+egglog = { path = "../stable/egglog_sync_serialize_raw" }
+egglog-reports = { path = "../stable/egglog_sync_serialize_raw/egglog-reports" }
 itertools = "0.14.0"
+indexmap = { version = "2.12.0", features = ["serde"] }
 
 serde = "1.0.224"
 serde_json = "1.0.145"
+egui = { version = "0.32", features = ["serde"] }
+rand = "0.9"
+petgraph = { version = "0.8", features = ["serde-1"] }
+instant = "0.1"
+crossbeam = "0.8"
+eframe = "0.32"
+ureq = "2.10"
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[profile.bench]
+debug = true

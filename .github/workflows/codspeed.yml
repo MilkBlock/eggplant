@@ -1,0 +1,157 @@
+name: CodSpeed
+
+on:
+  push:
+    branches:
+      - main
+      - stable
+      - ui
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  CARGO_TERM_COLOR: always
+  EGGLOG_REPO: MilkBlock/egglog
+  EGGLOG_REV: tableaction-cache-for-rust-api
+  UPSTREAM_EGGLOG_REPO: egraphs-good/egglog
+  UPSTREAM_EGGLOG_REV: afd5c0752b3cd0bc15d3e234273a18220787ee25
+
+jobs:
+  codspeed:
+    name: Run benchmark (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: eggplant_insert_1000_func
+            bench_target: insert_1000_func
+            benchmark_filter: benches/insert_1000_func.rs::eggplant_insert_1000_func
+          - name: tests[merge-during-rebuild]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[merge-during-rebuild]
+          - name: eggplant_rewrite_merge_during_rebuild
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_merge_during_rebuild
+          - name: tests[vec]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[vec]
+          - name: eggplant_rewrite_vec
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_vec
+          - name: tests[web-demo/unify]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[web-demo/unify]
+          - name: tests[web-demo/set]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[web-demo/set]
+          - name: eggplant_rewrite_web_demo_unify
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_web_demo_unify
+          - name: eggplant_rewrite_web_demo_set
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_web_demo_set
+          - name: tests[proof_testing_unify]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[proof_testing_unify]
+          - name: tests[proof_testing_typecheck]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[proof_testing_typecheck]
+          - name: tests[proof_testing_eqsat-basic]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[proof_testing_eqsat-basic]
+          - name: union_chain_proofs_typed_no_prove
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::union_chain_proofs_typed_no_prove
+          - name: union_chain_proofs_typed_with_prove
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::union_chain_proofs_typed_with_prove
+          - name: union_chain_term_encoding_untyped_no_prove
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::union_chain_term_encoding_untyped_no_prove
+          - name: tests[repro-665-set-union]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[repro-665-set-union]
+          - name: eggplant_rewrite_repro_665_set_union
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_repro_665_set_union
+          - name: tests[extract-vec-bench]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[extract-vec-bench]
+          - name: eggplant_rewrite_extract_vec_bench
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_extract_vec_bench
+          - name: tests[math-microbenchmark]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[math-microbenchmark]
+          - name: eggplant_rewrite_math_microbenchmark
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_math_microbenchmark
+          - name: tests[stresstest_large_expr]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[stresstest_large_expr]
+          - name: tests[typeinfer]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[typeinfer]
+          - name: tests[herbie]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[herbie]
+          - name: tests[herbie-tutorial]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[herbie-tutorial]
+          - name: tests[cykjson]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[cykjson]
+          - name: tests[taylor51]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[taylor51]
+          - name: eggplant_rewrite_taylor51
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::eggplant_rewrite_taylor51
+          - name: tests[python_array_optimize]
+            bench_target: ci_benchmarking
+            benchmark_filter: benches/ci_benchmarking.rs::tests[python_array_optimize]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Checkout egglog fork into workspace
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.EGGLOG_REPO }}
+          ref: ${{ env.EGGLOG_REV }}
+          path: stable/egglog_sync_serialize_raw
+
+      - name: Checkout upstream egglog tests into workspace
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.UPSTREAM_EGGLOG_REPO }}
+          ref: ${{ env.UPSTREAM_EGGLOG_REV }}
+          path: upstream_egglog_checkout
+
+      - name: Mirror egglog checkout to sibling path dependency
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p ../stable
+          ln -sfn "${GITHUB_WORKSPACE}/stable/egglog_sync_serialize_raw" ../stable/egglog_sync_serialize_raw
+          ln -sfn "${GITHUB_WORKSPACE}/upstream_egglog_checkout" ../upstream_egglog
+
+      - name: Setup rust toolchain, cache and cargo-codspeed binary
+        uses: moonrepo/setup-rust@v0
+        with:
+          channel: stable
+          cache-target: release
+          bins: cargo-codspeed
+
+      - name: Build the benchmark target(s)
+        run: cargo codspeed build --bench ${{ matrix.bench_target }}
+
+      - name: Run benchmark case
+        uses: CodSpeedHQ/action@v4
+        with:
+          mode: simulation
+          run: cargo codspeed run --bench ${{ matrix.bench_target }} "${{ matrix.benchmark_filter }}"

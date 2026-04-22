@@ -19,14 +19,12 @@ pub fn to_term_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> Toke
         |complex_ident, _| {
             Some(quote! {
                 let #complex_ident = sym2term.get(&#complex_ident.erase()).cloned().unwrap();
-                let #complex_ident = term_dag.get(#complex_ident).clone();
             })
         },
     );
     quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
         #(#body)*
-        let term =term_dag.app(stringify!(#variant_name).to_string(),vec![#( #variant_idents ),* ]);
-        let term_id = term_dag.lookup(&term);
+        let term_id =term_dag.app(stringify!(#variant_name).to_string(),vec![#( #variant_idents ),* ]);
         sym2term.insert(self.cur_sym(), term_id);
         term_id
     }}
@@ -35,12 +33,16 @@ pub fn to_term_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> Toke
 pub fn add_table_fact_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
     let _variant_idents = variant2field_ident(variant);
     let variant_name = &variant.ident;
-    let var_names = variant2mapped_ident_type_list(
+    // IMPORTANT: treat user-defined container sorts as complex (succ) rather than basic fields.
+    // Otherwise, constructor queries will invent fresh placeholder vars for container fields,
+    // which prevents users from binding them via `query(&container_var)` and can even make
+    // explicit container leaf vars unbound in the rule body.
+    let var_names = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _| Some(quote! {format!("{}{}", self.cur_sym(), stringify!(#basic))}),
         |_, _| Some(quote!(succs.next().unwrap().to_string())),
     );
-    let sort_names = variant2mapped_ident_type_list(
+    let sort_names = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_, basic_type| Some(quote!(<#basic_type as EgglogTy>::TY_NAME.to_string())),
         |_, complex_type| Some(quote!(<#complex_type as EgglogTy>::TY_NAME.to_string())),
@@ -61,12 +63,14 @@ pub fn add_table_fact_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) 
 pub fn collect_var_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> TokenStream {
     let _variant_idents = variant2field_ident(variant);
     let variant_name = &variant.ident;
-    let var_names = variant2mapped_ident_type_list(
+    // Same rule as `add_table_fact_match_arms_ts`: container sorts are treated as complex and
+    // should not introduce extra "field vars" like `{node_sym}a0`.
+    let var_names = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |basic, _| Some(quote! {format!("{}{}", self.cur_sym(), stringify!(#basic))}),
         |_, _| None,
     );
-    let var_types = variant2mapped_ident_type_list(
+    let var_types = variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |_, basic_type| Some(quote! {#basic_type}),
         |_, _| None,
@@ -76,6 +80,30 @@ pub fn collect_var_match_arms_ts(variant: &syn::Variant, name_inner: &Ident) -> 
     quote! {
         #discriminant_enum_name::#variant_name => {
             #(vars.push((#var_names, <#var_types as EgglogTy>::TY_NAME.to_string()));)*
+        }
+    }
+}
+
+pub fn collect_binding_name_match_arms_ts(
+    variant: &syn::Variant,
+    name_inner: &Ident,
+) -> TokenStream {
+    let variant_name = &variant.ident;
+    let binding_pushes =
+        variant2mapped_ident_type_list_detailed(variant, |ident, _ty, kind| match kind {
+            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => Some(quote! {
+                names.push(format!("{}{}", self.cur_sym(), stringify!(#ident)));
+            }),
+            BasicOrComplex::UserDefinedContainerType => Some(quote! {
+                names.push(succs.next().unwrap().to_string());
+            }),
+            BasicOrComplex::ComplexType => None,
+        });
+    let discriminant_enum_name = format_ident!("{}Discriminants", name_inner);
+
+    quote! {
+        #discriminant_enum_name::#variant_name => {
+            #(#binding_pushes)*
         }
     }
 }
@@ -229,11 +257,15 @@ pub fn query_fn_ts(
     name_counter: &Ident,
 ) -> (TokenStream, Ident, Vec<TokenStream>, Vec<TokenStream>) {
     let query_fn_args: Vec<TokenStream> = variant2ref_node_list_except_basic(&variant);
-    let query_fn_idents: Vec<TokenStream> = variant2mapped_ident_type_list(
-        &variant,
-        |_, _| None,
-        |complex, _| Some(quote! {#complex.cur_sym()}),
-    );
+    // IMPORTANT: container sorts must be treated as "complex" here.
+    // Otherwise, `query_*` will ignore container inputs and produce fresh placeholder vars,
+    // which then makes any explicit container leaf vars in the pattern unbound in the rule body.
+    let query_fn_idents: Vec<TokenStream> =
+        variant2mapped_ident_type_list_view_container_as_complex(
+            &variant,
+            |_, _| None,
+            |complex, _| Some(quote! {#complex.cur_sym()}),
+        );
     let ref_node_list_leave_idents = variant2ident_list_except_basic(&variant);
 
     let _query_fn_args = variant2sym_list_except_basic(&variant);
@@ -520,9 +552,22 @@ pub fn set_fns_tt(variant: &syn::Variant, name_inner: &Ident, name_node: &Ident)
     }
 }
 
-pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStream, TokenStream) {
+pub fn ctx_insert_fn_ts(
+    variant: &syn::Variant,
+    name_node: &Ident,
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
     let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
     let field_idents = variant2field_ident(&variant);
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant :#W::EgglogEnumVariantTy)
+            })
+        },
+    );
 
     let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
     let (variant_marker, variant_name) = variant2marker_name(variant);
@@ -531,9 +576,11 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
 
     // MARK: Enum New Fns
     (
+        // insert fn
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
                 use #W::Value;
                 use #W::Insertable;
                 let key = [
@@ -545,13 +592,235 @@ pub fn ctx_insert_fn_ts(variant: &syn::Variant, name_node: &Ident) -> (TokenStre
                 ))
             }
         },
+        // insert decl
         quote! {
             #[track_caller]
-            fn #insert_fn_name(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
         },
-        // insert_fn_name,
-        // valued_ref_node_list,
-        // ref_node_list_leave_idents,
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+                self.ctx.#insert_fn_name(#(#field_idents),*)
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+        },
+    )
+}
+pub fn ctx_subsume_remove_fn_ts_with_pr(
+    variant: &syn::Variant,
+    _name_node: &Ident,
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
+    let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let valued_ref_node_meta_list: Vec<TokenStream> = variant2valued_ref_node_meta_list(&variant);
+    let complex_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| Some(quote!(#complex)),
+    );
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant :#W::EgglogEnumVariantTy)
+            })
+        },
+    );
+    let _complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |_complex, complex_ty| Some(quote!(#complex_ty)),
+    );
+    let field_idents = variant2field_ident(&variant);
+    let _func_value_meta_field_idents = complex_field_idents
+        .iter()
+        .map(|x| format_ident!("func_value_meta_{}", x.to_string()))
+        .collect::<Vec<_>>();
+
+    let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
+    let (variant_marker, variant_name) = variant2marker_name(variant);
+    let subsume_fn_name = format_ident!("subsume_{}", variant_name.to_string().to_snake_case());
+    let remove_fn_name = format_ident!("remove_{}", variant_name.to_string().to_snake_case());
+    let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+
+    // MARK: Enum New Fns
+    (
+        // insert fn
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) {
+                use #W::Value;
+                use #W::Insertable;
+                let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                self.subsume(
+                    <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,
+                    &key
+                )
+            }
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) {
+                use #W::Value;
+                use #W::Insertable;
+                let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                self.remove(
+                    <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,
+                    &key
+                )
+            }
+        },
+        // insert decl
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) ;
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) ;
+        },
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) {
+                 self.ctx.#subsume_fn_name(#(#field_idents),*);
+            }
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) {
+                 self.ctx.#remove_fn_name(#(#field_idents),*);
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #subsume_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) ;
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #remove_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_meta_list),*) ;
+        },
+    )
+}
+
+pub fn ctx_insert_fn_ts_with_pr(
+    variant: &syn::Variant,
+    name_node: &Ident,
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
+    let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let valued_ref_node_meta_list: Vec<TokenStream> = variant2valued_ref_node_meta_list(&variant);
+    let complex_field_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| Some(quote!(#complex)),
+    );
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant )
+            })
+        },
+    );
+    let complex_generic_idents_with_constraint =
+        variant2mapped_ident_type_list_view_container_as_complex(
+            variant,
+            |_basic, _basic_ty| None,
+            |complex, _complex_ty| {
+                Some({
+                    let variant = format_ident!("V_{}", complex);
+                    quote!( #variant :#W::EgglogEnumVariantTy)
+                })
+            },
+        );
+    let _complex_field_tys = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |_complex, complex_ty| Some(quote!(#complex_ty)),
+    );
+    let field_idents = variant2field_ident(&variant);
+    let func_value_meta_field_idents = complex_field_idents
+        .iter()
+        .map(|x| format_ident!("func_value_meta_{}", x.to_string()))
+        .collect::<Vec<_>>();
+
+    let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
+    let (variant_marker, variant_name) = variant2marker_name(variant);
+    let insert_fn_name = format_ident!("insert_{}", variant_name.to_string().to_snake_case());
+    let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+
+    // MARK: Enum New Fns
+    (
+        // insert fn
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>{
+                use #W::Value;
+                use #W::Insertable;
+                static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                #W::Value::new(self.insert_cached(
+                    <#variant_marker as #W::EgglogEnumVariantTy>::TY_NAME,
+                    &FUNC_ID,
+                    &key
+                ))
+            }
+        },
+        // insert decl
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<self::#name_node<(),#variant_marker>>;
+        },
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy){
+                use #W::{Meta, EgglogEnumVariantTy, EgglogTy};
+                let __val = self.ctx.#insert_fn_name(#(#field_idents),*);
+                let __merged = if std::mem::size_of::<PR::MetaTy>() == 0 {
+                    <PR::MetaTy as Default>::default()
+                } else {
+                    #(
+                        let #func_value_meta_field_idents =
+                            (#complex_generic_idents::TY_NAME,
+                                #complex_field_idents.to_value(&self.ctx).val,
+                                #complex_field_idents.meta());
+                    )*
+                    PR::on_ctx_insert(
+                        vec![#(#func_value_meta_field_idents),*],
+                        (<#variant_marker as EgglogEnumVariantTy>::TY_NAME, __val.val )
+                    )
+                };
+                (__val,__merged)
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #insert_fn_name< #(#complex_generic_idents_with_constraint),* >(&self, #(#valued_ref_node_meta_list),*) -> (#W::Value<self::#name_node<(),#variant_marker>>, PR::MetaTy);
+        },
     )
 }
 
@@ -559,33 +828,333 @@ pub fn ctx_set_fn_ts(
     variant: &syn::Variant,
     output: &TokenStream,
     func_name: &Ident,
-) -> (TokenStream, TokenStream) {
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
     let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
     let field_idents = variant2field_ident(&variant);
 
     let _new_fn_field_idents_assign = variant2assign_node_field_typed(&variant);
+    let mut complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant :#W::EgglogEnumVariantTy)
+            })
+        },
+    );
     let (_variant_marker, variant_name) = variant2marker_name(variant);
     let set_fn_name = format_ident!("set_{}", variant_name.to_string().to_snake_case());
     let _new_fn_name = format_ident!("_new_{}", variant_name.to_string().to_snake_case());
+
+    let output_is_basic = BasicOrComplex::from(output).is_basic();
+    let output_generic = format_ident!("V_out");
+    let output_param_ty = if output_is_basic {
+        quote!(impl eggplant::wrap::Insertable<#output>)
+    } else {
+        complex_generic_idents.push(quote!( #output_generic :#W::EgglogEnumVariantTy));
+        quote!(impl eggplant::wrap::Insertable<#output<(), #output_generic>>)
+    };
+
     (
-        quote! {
-            #[track_caller]
-            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) {
-                use #W::EgglogFunc;
-                use #W::Value;
-                use #W::Insertable;
-                let key = [
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty) {
+                    use #W::EgglogFunc;
+                    use #W::Value;
+                    use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    let key = [
                         #(#field_idents.to_value(self).erase(),)* output.to_value(self).erase()
                     ];
-                self.insert_func_tbl(
-                    #func_name::<()>::FUNC_NAME,
-                    &key
-                );
-            }
-        },
+                    self.insert_func_tbl_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key);
+                }
+            },
         quote! {
             #[track_caller]
-            fn #set_fn_name(&self, #(#valued_ref_node_list,)* output:impl eggplant::wrap::Insertable<#output>) ;
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)*output:#output_param_ty) ;
+        },
+        // pr insert fn
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty){
+                self.ctx.#set_fn_name(#(#field_idents,)* output)
+            }
+        },
+        // pr insert decl
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #set_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list,)* output:#output_param_ty);
+        },
+    )
+}
+
+pub fn ctx_read_fn_ts(
+    variant: &syn::Variant,
+    output: &TokenStream,
+    func_name: &Ident,
+) -> (TokenStream, TokenStream, TokenStream, TokenStream) {
+    let valued_ref_node_list: Vec<TokenStream> = variant2valued_ref_node_list(&variant);
+    let field_idents = variant2field_ident(&variant);
+
+    let complex_generic_idents = variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |_basic, _basic_ty| None,
+        |complex, _complex_ty| {
+            Some({
+                let variant = format_ident!("V_{}", complex);
+                quote!( #variant :#W::EgglogEnumVariantTy)
+            })
+        },
+    );
+    let (_variant_marker, variant_name) = variant2marker_name(variant);
+    let read_fn_name = format_ident!("read_{}", variant_name.to_string().to_snake_case());
+    let read_value_fn_name = format_ident!("{}_value", read_fn_name);
+    let try_read_fn_name = format_ident!("try_{}", read_fn_name);
+    let try_read_value_fn_name = format_ident!("try_{}", read_value_fn_name);
+
+    let returns_base = matches!(
+        BasicOrComplex::from(output),
+        BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
+    );
+
+    let (read_fn, read_fn_decl, try_read_fn, try_read_fn_decl) = if returns_base {
+        (
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #output {
+                    use #W::EgglogFunc;
+                    use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                    let out = self.lookup_expect_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key);
+                    <#output as #W::BoxedValue>::devalue(self, out)
+                }
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #output;
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output> {
+                    use #W::EgglogFunc;
+                    use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                    let out = self.lookup_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key)?;
+                    Some(<#output as #W::BoxedValue>::devalue(self, out))
+                }
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output>;
+            },
+        )
+    } else {
+        (
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output> {
+                    use #W::EgglogFunc;
+                    use #W::Value;
+                    use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                    #W::Value::new(self.lookup_expect_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key))
+                }
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+                    use #W::EgglogFunc;
+                    use #W::Value;
+                    use #W::Insertable;
+                    static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+                    let key = [
+                        #(#field_idents.to_value(self).erase()),*
+                    ];
+                    self.lookup_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key).map(#W::Value::new)
+                }
+            },
+            quote! {
+                #[track_caller]
+                #[allow(non_camel_case_types)]
+                fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
+            },
+        )
+    };
+
+    let read_value_fn = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output> {
+            use #W::EgglogFunc;
+            use #W::Value;
+            use #W::Insertable;
+            static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+            let key = [
+                #(#field_idents.to_value(self).erase()),*
+            ];
+            #W::Value::new(self.lookup_expect_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key))
+        }
+    };
+    let try_read_value_fn = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+            use #W::EgglogFunc;
+            use #W::Value;
+            use #W::Insertable;
+            static FUNC_ID: std::sync::OnceLock<#W::egglog::FunctionId> = std::sync::OnceLock::new();
+            let key = [
+                #(#field_idents.to_value(self).erase()),*
+            ];
+            self.lookup_cached(#func_name::<()>::FUNC_NAME, &FUNC_ID, &key).map(#W::Value::new)
+        }
+    };
+    let read_value_decl = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
+    };
+    let try_read_value_decl = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
+    };
+
+    let read_fn_pr = if returns_base {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #output {
+                self.ctx.#read_fn_name(#(#field_idents),*)
+            }
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output> {
+                self.ctx.#read_fn_name(#(#field_idents),*)
+            }
+        }
+    };
+    let try_read_fn_pr = if returns_base {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output> {
+                self.ctx.#try_read_fn_name(#(#field_idents),*)
+            }
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+                self.ctx.#try_read_fn_name(#(#field_idents),*)
+            }
+        }
+    };
+    let read_value_fn_pr = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output> {
+            self.ctx.#read_value_fn_name(#(#field_idents),*)
+        }
+    };
+    let try_read_value_fn_pr = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>> {
+            self.ctx.#try_read_value_fn_name(#(#field_idents),*)
+        }
+    };
+
+    let read_fn_decl_pr = if returns_base {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #output;
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
+        }
+    };
+    let try_read_fn_decl_pr = if returns_base {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#output>;
+        }
+    } else {
+        quote! {
+            #[track_caller]
+            #[allow(non_camel_case_types)]
+            fn #try_read_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
+        }
+    };
+    let read_value_decl_pr = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> #W::Value<#output>;
+    };
+    let try_read_value_decl_pr = quote! {
+        #[track_caller]
+        #[allow(non_camel_case_types)]
+        fn #try_read_value_fn_name< #(#complex_generic_idents),* >(&self, #(#valued_ref_node_list),*) -> Option<#W::Value<#output>>;
+    };
+
+    (
+        quote! {
+            #read_fn
+            #read_value_fn
+            #try_read_fn
+            #try_read_value_fn
+        },
+        quote! {
+            #read_fn_decl
+            #read_value_decl
+            #try_read_fn_decl
+            #try_read_value_decl
+        },
+        quote! {
+            #read_fn_pr
+            #read_value_fn_pr
+            #try_read_fn_pr
+            #try_read_value_fn_pr
+        },
+        quote! {
+            #read_fn_decl_pr
+            #read_value_decl_pr
+            #try_read_fn_decl_pr
+            #try_read_value_decl_pr
         },
     )
 }

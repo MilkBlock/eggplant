@@ -1,0 +1,94 @@
+{
+  "format_version": 1,
+  "dsl_schema": {
+    "variants": [
+      {
+        "key": "PrecedenceExpr::Const",
+        "owner_ty": "PrecedenceExpr",
+        "variant_name": "Const",
+        "fields": [
+          {
+            "name": "n"
+          }
+        ],
+        "typst_template": "{n}",
+        "precedence": 65535
+      },
+      {
+        "key": "PrecedenceExpr::Add",
+        "owner_ty": "PrecedenceExpr",
+        "variant_name": "Add",
+        "fields": [
+          {
+            "name": "lhs"
+          },
+          {
+            "name": "rhs"
+          }
+        ],
+        "typst_template": "{lhs} + {rhs}",
+        "precedence": 10
+      }
+    ]
+  },
+  "payload": {
+    "egraph": {
+      "nodes": {
+        "primitive-i64-2": {
+          "op": "2",
+          "children": [],
+          "eclass": "i64-2",
+          "cost": 1.0
+        },
+        "primitive-i64-3": {
+          "op": "3",
+          "children": [],
+          "eclass": "i64-3",
+          "cost": 1.0
+        },
+        "function-0-Const-left": {
+          "op": "Const",
+          "children": [
+            "primitive-i64-2"
+          ],
+          "eclass": "PrecedenceExpr-12",
+          "cost": 1.0
+        },
+        "function-1-Const-right": {
+          "op": "Const",
+          "children": [
+            "primitive-i64-3"
+          ],
+          "eclass": "PrecedenceExpr-13",
+          "cost": 1.0
+        },
+        "function-2-Add": {
+          "op": "Add",
+          "children": [
+            "function-0-Const-left",
+            "function-1-Const-right"
+          ],
+          "eclass": "PrecedenceExpr-14",
+          "cost": 1.0
+        }
+      },
+      "class_data": {
+        "i64-2": {
+          "type": "i64"
+        },
+        "i64-3": {
+          "type": "i64"
+        },
+        "PrecedenceExpr-12": {
+          "type": "PrecedenceExpr"
+        },
+        "PrecedenceExpr-13": {
+          "type": "PrecedenceExpr"
+        },
+        "PrecedenceExpr-14": {
+          "type": "PrecedenceExpr"
+        }
+      }
+    }
+  }
+}
