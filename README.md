@@ -2,7 +2,7 @@
 
 [![CodSpeed](https://img.shields.io/endpoint?url=https://codspeed.io/badge.json)](https://codspeed.io/MilkBlock/eggplant?utm_source=badge)
 
-<img width="1254" height="1254" alt="eggplant_logo" src="https://github.com/user-attachments/assets/67add6ad-fefe-4fa4-a60e-7472dd918905" />
+<img width="209" height="209" alt="eggplant_logo" src="https://github.com/user-attachments/assets/67add6ad-fefe-4fa4-a60e-7472dd918905" />
 
 
 `eggplant` is the High-Level Rust API repo for the `egglog` tool accompanying the paper
