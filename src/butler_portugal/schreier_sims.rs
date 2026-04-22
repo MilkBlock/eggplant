@@ -81,9 +81,8 @@ pub fn schreier_sims(generators: &[Permutation], degree: usize) -> BSGS {
     }
 }
 
-/// Sift algorithm for membership testing in a permutation group given by BSGS
-/// Returns true if perm is in the group, false otherwise
-pub fn is_member(perm: &Permutation, bsgs: &BSGS) -> bool {
+#[cfg(test)]
+fn is_member(perm: &Permutation, bsgs: &BSGS) -> bool {
     let n = perm.len();
     let mut h = perm.clone();
     let id: Permutation = (0..n).collect();
@@ -107,7 +106,7 @@ pub fn is_member(perm: &Permutation, bsgs: &BSGS) -> bool {
     h == id
 }
 
-/// Compute the orbit of a point and the Schreier tree (parent map)
+#[cfg(test)]
 fn schreier_orbit_tree(
     point: usize,
     generators: &[Permutation],
@@ -135,7 +134,7 @@ fn schreier_orbit_tree(
     (orbit, schreier_tree)
 }
 
-/// Recover the coset representative (as a permutation) from Schreier tree
+#[cfg(test)]
 fn schreier_coset_representative(
     root: usize,
     target: usize,
@@ -159,7 +158,7 @@ fn schreier_coset_representative(
     rep
 }
 
-/// Compute the inverse of a permutation
+#[cfg(test)]
 fn inverse_permutation(perm: &Permutation) -> Permutation {
     let mut inv = vec![0; perm.len()];
     for (i, &p) in perm.iter().enumerate() {

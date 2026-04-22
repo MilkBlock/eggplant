@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use eggplant::egglog::EGraph;
 use eggplant::instances::{pat_rec::PatRecorder, tx_rx_vt_pr::TxRxVTPR};
 use eggplant::prelude::{RuleSetId, SingletonGetter};
@@ -15,11 +13,9 @@ use std::thread::ThreadId;
 
 pub type Runtime = TxRxVTPR;
 
-static NEXT_SESSION_ID: AtomicUsize = AtomicUsize::new(0);
 static NEXT_BINDING_ORDER: AtomicUsize = AtomicUsize::new(0);
 
 struct SessionState {
-    id: usize,
     runtime: Runtime,
     pat_recorder: PatRecorder,
     rulesets: Mutex<HashMap<&'static str, RulesetRegistration>>,
@@ -29,7 +25,6 @@ struct SessionState {
 impl SessionState {
     fn new() -> Self {
         Self {
-            id: NEXT_SESSION_ID.fetch_add(1, Ordering::Relaxed),
             runtime: Runtime::new(),
             pat_recorder: PatRecorder::new(),
             rulesets: Mutex::new(HashMap::new()),
@@ -93,10 +88,6 @@ pub struct Session {
 }
 
 impl Session {
-    pub fn raw(&self) -> usize {
-        self.state.id
-    }
-
     pub fn run<R>(&self, f: impl FnOnce() -> R) -> R {
         CURRENT_SESSION_THREAD.with(|slot| {
             let previous = slot.replace(Some(SessionBinding::new(Arc::clone(&self.state))));
@@ -135,12 +126,6 @@ impl Session {
 pub fn new_session() -> Session {
     Session {
         state: Arc::new(SessionState::new()),
-    }
-}
-
-pub(super) fn current_session() -> Session {
-    Session {
-        state: current_state(),
     }
 }
 

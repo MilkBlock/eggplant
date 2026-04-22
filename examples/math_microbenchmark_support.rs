@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use egglog::prelude::*;
 use egglog::sort::S;
 use egglog::{ArcSort, Value};
@@ -590,7 +588,6 @@ pub fn run_math_microbenchmark_iters(input: &mut MathMicroBenchInput, iters: usi
     }
 }
 
-#[allow(dead_code)]
 pub fn run_math_microbenchmark(input: &mut MathMicroBenchInput) {
     run_math_microbenchmark_iters(input, 11);
 }

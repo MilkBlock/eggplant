@@ -10,7 +10,6 @@
 use crate::butler_portugal::index::DeBrus;
 
 use super::error::Result;
-use super::index::TensorIndex;
 use super::schreier_sims::schreier_sims;
 use super::symmetry::Symmetry;
 use super::tensor::Tensor;
@@ -39,12 +38,6 @@ impl BSGS {
         }
     }
 
-    pub fn identity(size: usize) -> Self {
-        Self {
-            base: Vec::new(),
-            generators: vec![(0..size).collect()],
-        }
-    }
 }
 
 /// Canonicalizes a tensor using the Butler-Portugal algorithm
@@ -273,105 +266,9 @@ fn symmetry_to_generators(symmetry: &Symmetry, size: usize) -> Vec<Permutation> 
 }
 
 /// Checks if a permutation is the identity
-#[allow(dead_code)]
+#[cfg(test)]
 fn is_identity(perm: &[usize]) -> bool {
     perm.iter().enumerate().all(|(i, &val)| i == val)
-}
-
-/// Canonicalization method options
-pub enum CanonicalizationMethod {
-    SchreierSims,
-    YoungSymmetrizer,
-}
-
-/// Advanced canonicalization with optimization for specific tensor types
-/// Optionally, project onto a Young tableau if provided (advanced feature)
-/// and optionally use Young symmetrizer-based canonicalization.
-pub fn canonicalize_with_optimizations(
-    tensor: &Tensor,
-    tableau: Option<&super::young_tableaux::StandardTableau>,
-    method: &CanonicalizationMethod,
-) -> Result<Tensor> {
-    match method {
-        CanonicalizationMethod::SchreierSims => {
-            let mut result = if is_riemann_like(tensor) {
-                canonicalize_riemann_tensor(tensor)
-            } else if is_symmetric_tensor(tensor) {
-                canonicalize_symmetric_tensor(tensor)
-            } else if is_antisymmetric_tensor(tensor) {
-                canonicalize_antisymmetric_tensor(tensor)
-            } else {
-                canonicalize(tensor)
-            }?;
-            if let Some(tab) = tableau {
-                result = result.project_with_tableau(tab)?;
-            }
-            Ok(result)
-        }
-        CanonicalizationMethod::YoungSymmetrizer => {
-            if let Some(tab) = tableau {
-                // First canonicalize the tensor to ensure it's in the correct form
-                // before applying the Young symmetrizer projection
-                let canonicalized = canonicalize(tensor)?;
-                canonicalized.project_with_tableau(tab)
-            } else {
-                Err(super::ButlerPortugalError::InvalidPermutation(
-                    "YoungSymmetrizer method requires a tableau".to_string(),
-                ))
-            }
-        }
-    }
-}
-
-/// Checks if tensor has Riemann-like symmetries
-fn is_riemann_like(tensor: &Tensor) -> bool {
-    if tensor.rank() != 4 {
-        return false;
-    }
-
-    let symmetries = tensor.symmetries();
-    let has_first_antisym = symmetries.iter().any(|s| s.is_antisymmetric_pair(0, 1));
-    let has_second_antisym = symmetries.iter().any(|s| s.is_antisymmetric_pair(2, 3));
-
-    has_first_antisym && has_second_antisym
-}
-
-/// Optimized canonicalization for Riemann tensors
-fn canonicalize_riemann_tensor(tensor: &Tensor) -> Result<Tensor> {
-    // For Riemann tensors, use the general algorithm with full symmetries
-    canonicalize(tensor)
-}
-
-/// Checks if tensor is purely symmetric
-fn is_symmetric_tensor(tensor: &Tensor) -> bool {
-    tensor.symmetries().iter().all(|s| s.is_symmetric())
-}
-
-/// Optimized canonicalization for symmetric tensors
-fn canonicalize_symmetric_tensor(tensor: &Tensor) -> Result<Tensor> {
-    let mut indices_with_positions: Vec<(usize, &TensorIndex)> =
-        tensor.indices().iter().enumerate().collect();
-
-    indices_with_positions.sort_by(|a, b| a.1.canonical_cmp(b.1));
-
-    let permutation: Vec<usize> = indices_with_positions.iter().map(|(pos, _)| *pos).collect();
-    tensor.permute(&permutation)
-}
-
-/// Checks if tensor is purely antisymmetric
-fn is_antisymmetric_tensor(tensor: &Tensor) -> bool {
-    tensor.symmetries().iter().all(|s| s.is_antisymmetric())
-}
-
-/// Optimized canonicalization for antisymmetric tensors
-fn canonicalize_antisymmetric_tensor(tensor: &Tensor) -> Result<Tensor> {
-    let mut indices_with_positions: Vec<(usize, &TensorIndex)> =
-        tensor.indices().iter().enumerate().collect();
-
-    indices_with_positions.sort_by(|a, b| a.1.canonical_cmp(b.1));
-
-    let permutation: Vec<usize> = indices_with_positions.iter().map(|(pos, _)| *pos).collect();
-    tensor.permute(&permutation)
 }
 
 /// Converts all tensor symmetries into a flat list of permutation generators
@@ -387,6 +284,7 @@ fn tensor_symmetry_generators(tensor: &Tensor) -> Vec<Permutation> {
 #[cfg(test)]
 mod tests {
     use crate::butler_portugal::tensor::DeBru;
+    use crate::butler_portugal::TensorIndex;
 
     use super::Symmetry;
     use super::*;

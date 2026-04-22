@@ -102,8 +102,8 @@ macro_rules! bp_bail {
     };
 }
 
-/// Helper function for validating index bounds
-pub fn validate_index_bounds(index: usize, max: usize) -> Result<()> {
+#[cfg(test)]
+fn validate_index_bounds(index: usize, max: usize) -> Result<()> {
     if index >= max {
         Err(ButlerPortugalError::IndexOutOfBounds { index, max })
     } else {
@@ -111,8 +111,8 @@ pub fn validate_index_bounds(index: usize, max: usize) -> Result<()> {
     }
 }
 
-/// Helper function for validating permutation
-pub fn validate_permutation(permutation: &[usize], expected_size: usize) -> Result<()> {
+#[cfg(test)]
+fn validate_permutation(permutation: &[usize], expected_size: usize) -> Result<()> {
     if permutation.len() != expected_size {
         return Err(ButlerPortugalError::InvalidPermutation(format!(
             "Expected permutation of size {}, got {}",
@@ -141,8 +141,8 @@ pub fn validate_permutation(permutation: &[usize], expected_size: usize) -> Resu
     Ok(())
 }
 
-/// Helper function for validating tensor indices
-pub fn validate_tensor_indices(indices: &[super::TensorIndex]) -> Result<()> {
+#[cfg(test)]
+fn validate_tensor_indices(indices: &[super::TensorIndex]) -> Result<()> {
     if indices.is_empty() {
         return Err(ButlerPortugalError::InvalidTensor(
             "Tensor must have at least one index".to_string(),
@@ -190,6 +190,20 @@ mod tests {
         assert!(validate_permutation(&[0, 1], 3).is_err()); // Wrong size
         assert!(validate_permutation(&[0, 1, 3], 3).is_err()); // Out of bounds
         assert!(validate_permutation(&[0, 1, 1], 3).is_err()); // Duplicate
+    }
+
+    #[test]
+    fn test_tensor_index_validation() {
+        let valid = vec![
+            crate::butler_portugal::TensorIndex::new(crate::butler_portugal::DeBru::new(1), 0),
+            crate::butler_portugal::TensorIndex::new(crate::butler_portugal::DeBru::new(2), 1),
+        ];
+        assert!(validate_tensor_indices(&valid).is_ok());
+
+        let invalid = vec![
+            crate::butler_portugal::TensorIndex::new(crate::butler_portugal::DeBru::new(1), 1),
+        ];
+        assert!(validate_tensor_indices(&invalid).is_err());
     }
 
     #[test]

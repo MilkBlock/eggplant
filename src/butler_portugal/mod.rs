@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 //! # Butler-Portugal Tensor Canonicalization Library
 //!
 //! This library implements the Butler-Portugal algorithm for tensor canonicalization

@@ -1,8 +1,8 @@
-#![allow(dead_code)]
-
 #[path = "../examples/math_microbenchmark_support.rs"]
+#[allow(dead_code)]
 mod rust_rule_math_microbenchmark;
 #[path = "../benches/runners/eggplant_rewrite/math_microbenchmark.rs"]
+#[allow(dead_code)]
 mod typed_math_microbenchmark;
 
 #[test]

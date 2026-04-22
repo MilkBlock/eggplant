@@ -1,11 +1,12 @@
-#![allow(dead_code)]
-
 #[path = "pseudo_singleton_runtime.rs"]
 mod pseudo_singleton_runtime;
 
 use eggplant::prelude::*;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, Barrier, mpsc};
+use std::sync::Arc;
+#[cfg(test)]
+use std::sync::{Barrier, mpsc};
+#[cfg(test)]
 use std::time::Duration;
 
 pub use pseudo_singleton_runtime::{MyTx, Session, new_session};
@@ -119,6 +120,7 @@ pub fn session_has_const(session: &Session, needle: i64) -> bool {
     session.run(|| current_session_has_const(needle))
 }
 
+#[cfg(test)]
 pub fn registers_rules_twice_in_same_session() {
     let session = new_session();
 
@@ -145,6 +147,7 @@ pub fn registers_rules_twice_in_same_session() {
     });
 }
 
+#[cfg(test)]
 pub fn concurrent_sessions_can_register_rules_on_different_threads() {
     let left = new_session();
     let right = new_session();
@@ -173,6 +176,7 @@ pub fn concurrent_sessions_can_register_rules_on_different_threads() {
     );
 }
 
+#[cfg(test)]
 pub fn same_session_concurrent_registration_is_safe() {
     let session = new_session();
     let barrier = Arc::new(Barrier::new(2));
@@ -216,6 +220,7 @@ pub fn same_session_concurrent_registration_is_safe() {
     assert!(right.2);
 }
 
+#[cfg(test)]
 pub fn nested_ruleset_registration_is_safe() {
     let session = new_session();
     let (sender, receiver) = mpsc::sync_channel(1);
@@ -244,6 +249,7 @@ pub fn nested_ruleset_registration_is_safe() {
     handle.join().unwrap();
 }
 
+#[cfg(test)]
 pub fn nested_same_key_registration_panics_instead_of_deadlocking() {
     let session = new_session();
 

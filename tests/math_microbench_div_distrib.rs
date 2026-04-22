@@ -1,11 +1,12 @@
-#![allow(dead_code)]
-
 #[path = "../benches/runners/eggplant_rewrite/math_microbenchmark.rs"]
+#[allow(dead_code)]
 mod typed_math_microbenchmark;
 
+#[cfg(feature = "rustsat-extract")]
 #[derive(Default, Clone)]
 struct PreferDistributedDivisionCost;
 
+#[cfg(feature = "rustsat-extract")]
 impl eggplant::egglog::extract::CostModel<eggplant::egglog::extract::DefaultCost>
     for PreferDistributedDivisionCost
 {

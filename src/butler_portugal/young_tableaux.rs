@@ -106,12 +106,14 @@ impl fmt::Display for StandardTableau {
 }
 
 /// A semistandard Young tableau: entries weakly increase in rows, strictly in columns
+#[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct SemistandardTableau {
     pub shape: Shape,
     pub entries: Vec<Vec<usize>>, // rows of entries
 }
 
+#[cfg(test)]
 impl SemistandardTableau {
     /// Construct from a shape and row-wise entries
     pub fn new(shape: Shape, entries: Vec<Vec<usize>>) -> Option<Self> {
@@ -143,6 +145,7 @@ impl SemistandardTableau {
 }
 
 /// Robinson-Schensted (RSK) insertion for a word (returns (P, Q) tableaux)
+#[cfg(test)]
 pub fn rsk(word: &[usize]) -> (SemistandardTableau, StandardTableau) {
     // Simple RSK implementation (not optimized)
     let mut p_rows: Vec<Vec<usize>> = Vec::new();
