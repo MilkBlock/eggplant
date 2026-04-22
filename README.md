@@ -141,6 +141,16 @@ fn main() {
 }
 ```
 
+If you want to study a "pseudo-singleton" design instead of the default true-global
+runtime style, see:
+
+- `examples/constant_prop_pseudo_singleton.rs`
+- `examples/constant_prop_pseudo_singleton_async.rs`
+
+These examples keep a singleton-looking facade API (`MyTx::...`), but route operations
+through an explicit session handle. The async version only supports explicit wrapper-based
+entry (`run_async` / `spawn_async`); it does not claim ambient async-task inheritance.
+
 Finally, the following EGraph is generated, and you can see that the root node value is directly derived.
 
 Note that the execution count of `run_ruleset` is not the number of matches, but should be less than the tree depth.
@@ -263,6 +273,31 @@ Run it with:
 
 ```bash
 cargo run --example action_sample_recorder
+```
+
+### Pseudo-Singleton Session Examples
+
+- **`examples/constant_prop_pseudo_singleton.rs`**: Demonstrates a pseudo-singleton session model for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
+
+- **`examples/constant_prop_pseudo_singleton_async.rs`**: Demonstrates the same pseudo-singleton idea for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
+
+Run them with:
+
+```bash
+cargo run --example constant_prop_pseudo_singleton
+cargo run --example constant_prop_pseudo_singleton_async
+```
+
+### Feature-Gated Examples
+
+- **`examples/rustsat_common_subexpr.rs`**
+- **`examples/rustsat_optimize_expression.rs`**
+- `*_extract_bench.rs` / `*_timeline_export.rs` examples that depend on RustSAT-backed extraction
+
+These examples require the `rustsat-extract` feature:
+
+```bash
+cargo run --features rustsat-extract --example rustsat_optimize_expression
 ```
 
 ## Documentation
