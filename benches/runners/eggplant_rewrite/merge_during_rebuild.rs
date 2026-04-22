@@ -18,7 +18,7 @@ struct distance {
 tx_rx_vt_pr!(MyTxDist, MyPatRecDist);
 
 pub fn bench() {
-    MyTxDist::sgl().reset_for_bench();
+    MyTxDist::reset_for_bench();
 
     // Seed facts (ports `tests/merge-during-rebuild.egg`).
     let seed = MyTxDist::new_ruleset("merge_during_rebuild_seed");

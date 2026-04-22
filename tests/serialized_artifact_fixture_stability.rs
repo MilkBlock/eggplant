@@ -50,13 +50,14 @@ fn binary_fixture_path(name: &str) -> PathBuf {
 }
 
 fn build_common_path_artifact() -> SerializedEggplantArtifact {
-    ArtifactFixtureTx::sgl().reset_for_bench();
+    ArtifactFixtureTx::reset_for_bench();
     let root_a = Root::<ArtifactFixtureTx>::new(&Const::new(7));
     let root_b = Root::<ArtifactFixtureTx>::new(&Const::new(9));
     root_a.commit();
     root_b.commit();
     ArtifactFixtureEdge::<ArtifactFixtureTx>::insert(1, 2);
-    let egraph = ArtifactFixtureTx::sgl().egraph.lock().unwrap();
+    let egraph_handle = ArtifactFixtureTx::egraph();
+    let egraph = egraph_handle.lock().unwrap();
     build_serialized_eggplant_artifact(&egraph, eggplant::egglog::SerializeConfig::default())
         .unwrap()
 }
@@ -111,7 +112,8 @@ fn serialized_artifact_common_path_binary_fixture_is_continuation_compatible() {
     let fixture = read_binary_fixture("common_path");
 
     let report = {
-        let egraph = ArtifactFixtureTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = ArtifactFixtureTx::egraph();
+        let egraph = egraph_handle.lock().unwrap();
         compare_artifact_to_current(&fixture, &egraph)
     };
 

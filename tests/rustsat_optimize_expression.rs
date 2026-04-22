@@ -33,7 +33,7 @@ tx_rx_vt_pr!(RustsatCycleTx, RustsatCyclePatRec);
 #[test]
 fn rustsat_backend_optimizes_wrapper_expression_without_legacy_fallback() {
     let _ = env_logger::builder().is_test(true).try_init();
-    RustsatDemoTx::sgl().reset_for_bench();
+    RustsatDemoTx::reset_for_bench();
 
     let leaf = Leaf::<RustsatDemoTx>::new(7);
     let cheap = CheapWrap::<RustsatDemoTx>::new(&leaf);
@@ -85,7 +85,7 @@ fn rustsat_backend_optimizes_wrapper_expression_without_legacy_fallback() {
 #[test]
 fn rustsat_backend_keeps_acyclic_witness_in_cyclic_root_class() {
     let _ = env_logger::builder().is_test(true).try_init();
-    RustsatCycleTx::sgl().reset_for_bench();
+    RustsatCycleTx::reset_for_bench();
 
     let leaf = CycleLeaf::<RustsatCycleTx>::new(5);
     let wrap = CycleWrap::<RustsatCycleTx>::new(&leaf);

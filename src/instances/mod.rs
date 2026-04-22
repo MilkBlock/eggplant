@@ -1,4 +1,5 @@
 pub mod pat_rec;
+pub mod pseudo_singleton;
 pub mod tx;
 pub mod tx_minimal;
 pub mod tx_rx_vt;
@@ -145,8 +146,85 @@ macro_rules! basic_tx_rx_vt_pr {
 #[macro_export]
 macro_rules! tx_rx_vt_pr {
     ($tx_name:ident, $pat_rec_name:ident) => {
-        eggplant::basic_tx_rx_vt_pr!($tx_name);
-        eggplant::basic_patttern_recorder!($pat_rec_name);
+        pub struct $tx_name;
+        pub struct $pat_rec_name;
+
+        impl $tx_name {
+            pub fn new_session() -> eggplant::instances::pseudo_singleton::Session<Self> {
+                <Self as eggplant::instances::pseudo_singleton::SessionAwareTxSgl>::new_session()
+            }
+
+            pub fn default_session() -> eggplant::instances::pseudo_singleton::Session<Self> {
+                <Self as eggplant::instances::pseudo_singleton::SessionAwareTxSgl>::default_session()
+            }
+
+            pub fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
+                eggplant::instances::pseudo_singleton::egraph::<Self>()
+            }
+
+            pub fn reset_for_bench() {
+                eggplant::instances::pseudo_singleton::reset_for_bench::<Self>()
+            }
+        }
+
+        impl eggplant::instances::pseudo_singleton::SessionAwarePatRecMarker for $pat_rec_name {
+            type TxMarker = $tx_name;
+            type MetaTy =
+                <eggplant::instances::pat_rec::PatRecorder as eggplant::wrap::PatRec>::MetaTy;
+        }
+
+        impl eggplant::instances::pseudo_singleton::SessionAwareTxMarker for $tx_name {
+            type Runtime = eggplant::instances::tx_rx_vt_pr::TxRxVTPR;
+            type PatRecorder = eggplant::instances::pat_rec::PatRecorder;
+            type PatRecMarker = $pat_rec_name;
+
+            fn new_runtime() -> Self::Runtime {
+                eggplant::instances::tx_rx_vt_pr::TxRxVTPR::new()
+            }
+
+            fn new_pat_recorder() -> Self::PatRecorder {
+                eggplant::instances::pat_rec::PatRecorder::new()
+            }
+
+            fn runtime_egraph(
+                runtime: &Self::Runtime,
+            ) -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
+                runtime.egraph.clone()
+            }
+
+            fn reset_runtime_for_bench(runtime: &Self::Runtime) {
+                runtime.reset_for_bench()
+            }
+        }
+
+        impl eggplant::prelude::SingletonGetter for $tx_name {
+            type RetTy = eggplant::instances::pseudo_singleton::SessionTxFacade<$tx_name>;
+
+            fn sgl() -> &'static Self::RetTy {
+                static FACADE: eggplant::instances::pseudo_singleton::SessionTxFacade<$tx_name> =
+                    eggplant::instances::pseudo_singleton::SessionTxFacade::new();
+                &FACADE
+            }
+        }
+
+        impl eggplant::prelude::SingletonGetter for $pat_rec_name {
+            type RetTy =
+                eggplant::instances::pseudo_singleton::SessionPatRecFacade<$pat_rec_name>;
+
+            fn sgl() -> &'static Self::RetTy {
+                static FACADE: eggplant::instances::pseudo_singleton::SessionPatRecFacade<
+                    $pat_rec_name,
+                > = eggplant::instances::pseudo_singleton::SessionPatRecFacade::new();
+                &FACADE
+            }
+        }
+
+        impl eggplant::wrap::NonPatRecSgl for $tx_name {
+            fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
+                eggplant::instances::pseudo_singleton::egraph::<$tx_name>()
+            }
+        }
+
         impl eggplant::wrap::WithPatRecSgl for $tx_name {
             type PatRecSgl = $pat_rec_name;
         }

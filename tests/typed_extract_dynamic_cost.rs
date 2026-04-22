@@ -41,7 +41,7 @@ impl eggplant::egglog::extract::CostModel<eggplant::egglog::extract::DefaultCost
 #[test]
 fn typed_extract_node_with_dynamic_cost_can_prefer_specific_leaf_instance() {
     let _ = env_logger::builder().is_test(true).try_init();
-    MyTxDynamicCost::sgl().reset_for_bench();
+    MyTxDynamicCost::reset_for_bench();
 
     let expensive_leaf = Leaf::<MyTxDynamicCost>::new(9);
     expensive_leaf.commit();

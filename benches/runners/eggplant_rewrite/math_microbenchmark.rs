@@ -527,7 +527,7 @@ pub fn run_and_collect_stats(breakdown: bool) -> MathMicrobenchmarkStats {
     let rewrite_callback_stats = breakdown.then(|| Arc::new(Mutex::new(BTreeMap::new())));
 
     let t = Instant::now();
-    MyTxMath::sgl().reset_for_bench();
+    MyTxMath::reset_for_bench();
     if breakdown {
         eprintln!(
             "[bench-breakdown] math-microbenchmark reset_for_bench: {:?}",

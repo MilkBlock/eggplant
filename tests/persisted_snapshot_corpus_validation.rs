@@ -48,20 +48,22 @@ tx_rx_vt_pr!(CorpusTx, CorpusPatRec);
 
 #[test]
 fn persisted_snapshot_corpus_common_path_round_trips() {
-    CorpusTx::sgl().reset_for_bench();
+    CorpusTx::reset_for_bench();
     let root = Root::<CorpusTx>::new(&Const::new(7));
     root.commit();
     CorpusEdge::<CorpusTx>::insert(1, 2);
 
     let snapshot = {
-        let egraph = CorpusTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = CorpusTx::egraph();
+        let egraph = egraph_handle.lock().unwrap();
         build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default())
     };
     let summary = persisted_snapshot_capability_summary(&snapshot);
 
-    CorpusTx::sgl().reset_for_bench();
+    CorpusTx::reset_for_bench();
     let report = {
-        let mut egraph = CorpusTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = CorpusTx::egraph();
+        let mut egraph = egraph_handle.lock().unwrap();
         restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap()
     };
 

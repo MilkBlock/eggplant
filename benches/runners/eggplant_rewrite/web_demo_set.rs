@@ -246,7 +246,7 @@ pub fn bench() {
     let t_total = Instant::now();
 
     let t = Instant::now();
-    MyTxSet::sgl().reset_for_bench();
+    MyTxSet::reset_for_bench();
     if breakdown {
         eprintln!(
             "[bench-breakdown] web-demo/set reset_for_bench (checks): {:?}",
@@ -427,7 +427,7 @@ pub fn bench() {
     // Isolate the reify portion from the builtin checks to match the egglog source structure
     // (the `let/run/check` block is independent of the earlier `check`s).
     let t = Instant::now();
-    MyTxSet::sgl().reset_for_bench();
+    MyTxSet::reset_for_bench();
     if breakdown {
         eprintln!(
             "[bench-breakdown] web-demo/set reset_for_bench (reify): {:?}",

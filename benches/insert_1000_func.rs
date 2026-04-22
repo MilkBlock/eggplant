@@ -10,7 +10,7 @@ struct f {
 
 #[divan::bench(sample_count = 10)]
 fn eggplant_insert_1000_func() {
-    MyTx::sgl().reset_for_bench();
+    MyTx::reset_for_bench();
 
     let seed = MyTx::new_ruleset("insert_1000_func_seed");
     MyTx::add_rule(

@@ -116,13 +116,14 @@ fn normalize_snapshot_for_fixture(snapshot: &mut PersistedSnapshot) {
 }
 
 fn build_common_path_snapshot() -> PersistedSnapshot {
-    FixtureTx::sgl().reset_for_bench();
+    FixtureTx::reset_for_bench();
     let root_a = Root::<FixtureTx>::new(&Const::new(7));
     let root_b = Root::<FixtureTx>::new(&Const::new(9));
     root_a.commit();
     root_b.commit();
     FixtureEdge::<FixtureTx>::insert(1, 2);
-    let egraph = FixtureTx::sgl().egraph.lock().unwrap();
+    let egraph_handle = FixtureTx::egraph();
+    let egraph = egraph_handle.lock().unwrap();
     build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default())
 }
 
@@ -133,13 +134,14 @@ fn build_common_path_fixture_snapshot() -> PersistedSnapshot {
 }
 
 fn build_common_path_v2_eqclass_snapshot() -> PersistedSnapshot {
-    FixtureTx::sgl().reset_for_bench();
+    FixtureTx::reset_for_bench();
     let root_a = Root::<FixtureTx>::new(&Const::new(7));
     let root_b = Root::<FixtureTx>::new(&Const::new(9));
     root_a.commit();
     root_b.commit();
     FixtureEdge::<FixtureTx>::insert(1, 2);
-    let egraph = FixtureTx::sgl().egraph.lock().unwrap();
+    let egraph_handle = FixtureTx::egraph();
+    let egraph = egraph_handle.lock().unwrap();
     build_persisted_snapshot_v2_eqclass(&egraph, eggplant::egglog::SerializeConfig::default())
 }
 
@@ -419,13 +421,15 @@ fn persisted_snapshot_common_path_fixture_restore_is_compatible() {
     fixture.source_schema = current.source_schema.clone();
     fixture.producer = current.producer.clone();
 
-    FixtureTx::sgl().reset_for_bench();
+    FixtureTx::reset_for_bench();
     let report = {
-        let mut egraph = FixtureTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = FixtureTx::egraph();
+        let mut egraph = egraph_handle.lock().unwrap();
         restore_persisted_snapshot_v1(&mut egraph, &fixture).unwrap()
     };
     let restored = {
-        let egraph = FixtureTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = FixtureTx::egraph();
+        let egraph = egraph_handle.lock().unwrap();
         build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default())
     };
 
@@ -482,13 +486,15 @@ fn persisted_snapshot_v2_common_path_fixture_restore_is_compatible() {
     fixture.source_schema = current.source_schema.clone();
     fixture.producer = current.producer.clone();
 
-    FixtureTx::sgl().reset_for_bench();
+    FixtureTx::reset_for_bench();
     let report = {
-        let mut egraph = FixtureTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = FixtureTx::egraph();
+        let mut egraph = egraph_handle.lock().unwrap();
         restore_persisted_snapshot_v1(&mut egraph, &fixture).unwrap()
     };
     let restored = {
-        let egraph = FixtureTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = FixtureTx::egraph();
+        let egraph = egraph_handle.lock().unwrap();
         build_persisted_snapshot_v1(&egraph, eggplant::egglog::SerializeConfig::default())
     };
 

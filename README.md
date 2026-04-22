@@ -141,15 +141,21 @@ fn main() {
 }
 ```
 
-If you want to study a "pseudo-singleton" design instead of the default true-global
-runtime style, see:
+`tx_rx_vt_pr!` now generates a session-aware `Tx` facade by default.
+
+- Calls like `MyTx::add_rule(...)`, `MyTx::run_ruleset(...)`, and `MyTx::canonical_raw(...)`
+  resolve against the current active session when one is bound.
+- If no explicit session is active, they fall back to a lazily created default session,
+  preserving the old singleton-style workflow.
+
+If you want to study the explicit session API in practice, see:
 
 - `examples/constant_prop_pseudo_singleton.rs`
 - `examples/constant_prop_pseudo_singleton_async.rs`
 
-These examples keep a singleton-looking facade API (`MyTx::...`), but route operations
-through an explicit session handle. The async version only supports explicit wrapper-based
-entry (`run_async` / `spawn_async`); it does not claim ambient async-task inheritance.
+These examples use the default session-aware `MyTx::...` API together with explicit
+session handles. The async version only supports explicit wrapper-based entry
+(`run_async` / `spawn_async`); it does not claim ambient async-task inheritance.
 
 Finally, the following EGraph is generated, and you can see that the root node value is directly derived.
 
@@ -277,9 +283,9 @@ cargo run --example action_sample_recorder
 
 ### Pseudo-Singleton Session Examples
 
-- **`examples/constant_prop_pseudo_singleton.rs`**: Demonstrates a pseudo-singleton session model for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
+- **`examples/constant_prop_pseudo_singleton.rs`**: Demonstrates the default session-aware `tx_rx_vt_pr!` facade for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
 
-- **`examples/constant_prop_pseudo_singleton_async.rs`**: Demonstrates the same pseudo-singleton idea for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
+- **`examples/constant_prop_pseudo_singleton_async.rs`**: Demonstrates the same session-aware model for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
 
 Run them with:
 

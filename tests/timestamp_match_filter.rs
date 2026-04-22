@@ -18,7 +18,7 @@ tx_rx_vt_pr!(TsTx, TsPatRec);
 #[test]
 fn add_rule_timestamp_constraint_filters_old_matches() {
     let _ = env_logger::builder().is_test(true).try_init();
-    TsTx::sgl().reset_for_bench();
+    TsTx::reset_for_bench();
 
     let old_leaf = Leaf::<TsTx>::new(1);
     old_leaf.commit();
@@ -83,7 +83,7 @@ tx_rx_vt_pr!(TsWindowTx, TsWindowPatRec);
 #[test]
 fn timestamp_constraint_uses_inclusive_lower_and_exclusive_upper_bounds() {
     let _ = env_logger::builder().is_test(true).try_init();
-    TsWindowTx::sgl().reset_for_bench();
+    TsWindowTx::reset_for_bench();
 
     let oldest_leaf = WindowNode::<TsWindowTx>::new(10);
     oldest_leaf.commit();

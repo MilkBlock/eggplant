@@ -1,3 +1,4 @@
+pub use crate::egglog;
 pub use derive_more;
 mod func;
 pub use func::*;

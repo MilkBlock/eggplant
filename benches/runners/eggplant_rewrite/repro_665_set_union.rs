@@ -32,7 +32,7 @@ fn step_pat<PR: PatRecSgl>() -> StepPat<PR> {
 }
 
 pub fn bench() {
-    MyTxRepro::sgl().reset_for_bench();
+    MyTxRepro::reset_for_bench();
 
     let seed = MyTxRepro::new_ruleset("repro_665_seed");
     MyTxRepro::add_rule(

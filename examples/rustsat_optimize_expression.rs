@@ -19,7 +19,7 @@ tx_rx_vt_pr!(RustsatDemoTx, RustsatDemoPatRec);
 
 fn main() {
     let _ = env_logger::try_init();
-    RustsatDemoTx::sgl().reset_for_bench();
+    RustsatDemoTx::reset_for_bench();
 
     let leaf = Leaf::<RustsatDemoTx>::new(7);
     let cheap = CheapWrap::<RustsatDemoTx>::new(&leaf);

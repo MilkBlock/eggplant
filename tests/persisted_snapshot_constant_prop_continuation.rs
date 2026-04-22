@@ -66,7 +66,8 @@ fn snapshot_path() -> PathBuf {
 
 fn dump_snapshot_to_disk(path: &PathBuf) {
     let snapshot = {
-        let egraph = ContTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = ContTx::egraph();
+        let egraph = egraph_handle.lock().unwrap();
         build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
     };
     fs::write(path, serde_json::to_string_pretty(&snapshot).unwrap()).unwrap();
@@ -105,7 +106,7 @@ fn canonical_eq(lhs: &Expr<ContTx>, rhs_const: i64) -> bool {
 fn persisted_snapshot_constant_prop_continues_after_restore() {
     let _guard = test_guard();
 
-    ContTx::sgl().reset_for_bench();
+    ContTx::reset_for_bench();
     let ruleset = register_constant_prop_rules();
 
     let mul: Expr<ContTx, MulTy> = Mul::new(&Const::new(3), &Const::new(2));
@@ -126,15 +127,17 @@ fn persisted_snapshot_constant_prop_continues_after_restore() {
     let path = snapshot_path();
     dump_snapshot_to_disk(&path);
 
-    ContTx::sgl().reset_for_bench();
+    ContTx::reset_for_bench();
     let ruleset = register_constant_prop_rules();
     let snapshot = load_snapshot_from_disk(&path);
     {
-        let mut egraph = ContTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = ContTx::egraph();
+        let mut egraph = egraph_handle.lock().unwrap();
         restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap();
     }
     let restored_snapshot = {
-        let egraph = ContTx::sgl().egraph.lock().unwrap();
+        let egraph_handle = ContTx::egraph();
+        let egraph = egraph_handle.lock().unwrap();
         build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
     };
     assert!(

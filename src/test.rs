@@ -577,11 +577,13 @@ mod tests {
     #[test]
     fn serialized_artifact_matches_current_schema() {
         let artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
         let report = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             compare_artifact_to_current(&artifact, &egraph)
         };
 
@@ -592,7 +594,8 @@ mod tests {
     #[test]
     fn changing_dsl_metadata_is_metadata_only_change() {
         let mut artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
 
@@ -619,7 +622,8 @@ mod tests {
         );
 
         let report = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             compare_artifact_to_current(&artifact, &egraph)
         };
         assert!(report.typed_continuation_allowed);
@@ -635,7 +639,8 @@ mod tests {
     #[test]
     fn changing_dsl_field_kind_blocks_typed_continuation() {
         let mut artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
 
@@ -648,7 +653,8 @@ mod tests {
         variant.fields[0].kind = ArtifactDslFieldKind::Container;
 
         let report = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             compare_artifact_to_current(&artifact, &egraph)
         };
         assert!(!report.typed_continuation_allowed);
@@ -683,7 +689,8 @@ mod tests {
     #[test]
     fn serialized_artifact_exposes_variant_precedence_and_typst_templates_without_expansion() {
         let artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
         let add = artifact
@@ -706,7 +713,8 @@ mod tests {
     #[test]
     fn serialized_artifact_json_keeps_variant_precedence_and_typst_template_fields() {
         let artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
         let json = serde_json::to_value(&artifact).unwrap();
@@ -785,7 +793,8 @@ mod tests {
     #[test]
     fn serialized_artifact_binary_round_trip_preserves_payload() {
         let artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
 
@@ -798,7 +807,8 @@ mod tests {
     #[test]
     fn serialized_artifact_binary_header_exposes_contract_fields() {
         let artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
 
@@ -828,7 +838,8 @@ mod tests {
     #[test]
     fn serialized_artifact_binary_file_io_round_trip_preserves_payload() {
         let artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
         let path = temp_binary_path("serialized_artifact_round_trip");
@@ -847,13 +858,14 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_binary_round_trip_preserves_payload() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(17));
         root.commit();
         RelEdge::<MyTx>::insert(4, 5);
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -865,12 +877,13 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_binary_header_exposes_contract_fields() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(19));
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -896,12 +909,13 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_binary_file_io_round_trip_preserves_payload() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(29));
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         let path = temp_binary_path("persisted_snapshot_round_trip");
@@ -920,12 +934,13 @@ mod tests {
 
     #[test]
     fn binary_codec_rejects_payload_kind_mismatch() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(23));
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         let bytes = snapshot.to_binary_vec().unwrap();
@@ -942,12 +957,13 @@ mod tests {
 
     #[test]
     fn binary_file_io_rejects_payload_kind_mismatch() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(31));
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         let path = temp_binary_path("binary_kind_mismatch");
@@ -968,13 +984,15 @@ mod tests {
     #[test]
     fn artifact_format_version_mismatch_blocks_typed_continuation() {
         let mut artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
         artifact.format_version += 1;
 
         let report = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             compare_artifact_to_current(&artifact, &egraph)
         };
 
@@ -995,7 +1013,8 @@ mod tests {
         root_b.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -1035,7 +1054,8 @@ mod tests {
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -1064,7 +1084,7 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_restore_replays_constructor_rows() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
 
         let root_a = Root::<MyTx>::new(&Const::new(7));
         let root_b = Root::<MyTx>::new(&Const::new(9));
@@ -1072,17 +1092,20 @@ mod tests {
         root_b.commit();
 
         let before = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let report = {
-            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let mut egraph = egraph_handle.lock().unwrap();
             restore_persisted_snapshot_v1(&mut egraph, &before).unwrap()
         };
         let after = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -1109,23 +1132,26 @@ mod tests {
     #[test]
     fn persisted_snapshot_v1_restore_replays_relation_facts() {
         tx_rx_vt_pr!(RelRestoreTx, RelRestorePatRec);
-        RelRestoreTx::sgl().reset_for_bench();
+        RelRestoreTx::reset_for_bench();
 
         RelEdge::<RelRestoreTx>::insert(1, 2);
         RelEdge::<RelRestoreTx>::insert(2, 3);
 
         let before = {
-            let egraph = RelRestoreTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = RelRestoreTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
-        RelRestoreTx::sgl().reset_for_bench();
+        RelRestoreTx::reset_for_bench();
         let report = {
-            let mut egraph = RelRestoreTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = RelRestoreTx::egraph();
+            let mut egraph = egraph_handle.lock().unwrap();
             restore_persisted_snapshot_v1(&mut egraph, &before).unwrap()
         };
         let after = {
-            let egraph = RelRestoreTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = RelRestoreTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -1165,12 +1191,13 @@ mod tests {
     #[test]
     fn persisted_snapshot_v1_classifies_eggplant_native_relations_as_facts() {
         tx_rx_vt_pr!(RelPolicyTx, RelPolicyPatRec);
-        RelPolicyTx::sgl().reset_for_bench();
+        RelPolicyTx::reset_for_bench();
 
         RelEdge::<RelPolicyTx>::insert(7, 8);
 
         let snapshot = {
-            let egraph = RelPolicyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = RelPolicyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -1386,10 +1413,11 @@ mod tests {
         );
 
         tx_rx_vt_pr!(PersistedMetaTx, PersistedMetaPatRec);
-        PersistedMetaTx::sgl().reset_for_bench();
+        PersistedMetaTx::reset_for_bench();
         RelEdge::<PersistedMetaTx>::insert(1, 2);
         let relation_snapshot = {
-            let egraph = PersistedMetaTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = PersistedMetaTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         let relation_decl = relation_snapshot
@@ -1507,10 +1535,11 @@ mod tests {
         );
 
         tx_rx_vt_pr!(PersistedMetaJsonTx, PersistedMetaJsonPatRec);
-        PersistedMetaJsonTx::sgl().reset_for_bench();
+        PersistedMetaJsonTx::reset_for_bench();
         RelEdge::<PersistedMetaJsonTx>::insert(1, 2);
         let relation_snapshot = {
-            let egraph = PersistedMetaJsonTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = PersistedMetaJsonTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         let relation_json = serde_json::to_value(&relation_snapshot).unwrap();
@@ -1617,12 +1646,13 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_restore_rejects_non_fresh_target() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(7));
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -1646,7 +1676,7 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_persists_ruleset_name_provenance_only() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let ruleset = MyTx::new_ruleset("persisted_snapshot_ruleset_name");
         MyTx::add_rule(
             "persisted_snapshot_ruleset_name_rule",
@@ -1663,7 +1693,8 @@ mod tests {
         );
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -1692,7 +1723,7 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_restore_ignores_ruleset_name_provenance() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let ruleset = MyTx::new_ruleset("persisted_snapshot_restore_ignores_ruleset_name");
         MyTx::add_rule(
             "persisted_snapshot_restore_ignores_ruleset_name_rule",
@@ -1711,13 +1742,15 @@ mod tests {
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
 
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let report = {
-            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let mut egraph = egraph_handle.lock().unwrap();
             restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap()
         };
 
@@ -1730,12 +1763,13 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_captures_source_schema_alignment_header() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(13));
         root.commit();
 
         let (snapshot, current_engine_fingerprint) = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             (
                 build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default()),
                 engine_schema_fingerprint(&crate::artifact::current_engine_schema_manifest(
@@ -1767,12 +1801,13 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_alignment_report_allows_metadata_only_drift() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(21));
         root.commit();
 
         let mut snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         snapshot
@@ -1782,7 +1817,8 @@ mod tests {
             .dsl_metadata_fingerprint = "metadata-mismatch".to_string();
 
         let report = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             compare_persisted_snapshot_to_current(&snapshot, &egraph)
         };
 
@@ -1797,12 +1833,13 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_restore_rejects_runtime_alignment_mismatch() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(34));
         root.commit();
 
         let mut snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         snapshot
@@ -1811,9 +1848,10 @@ mod tests {
             .unwrap()
             .dsl_runtime_fingerprint = "runtime-mismatch".to_string();
 
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let err = {
-            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let mut egraph = egraph_handle.lock().unwrap();
             restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap_err()
         };
 
@@ -2176,19 +2214,21 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v1_restore_rejects_missing_source_schema_header() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(55));
         root.commit();
 
         let mut snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
         };
         snapshot.source_schema = None;
 
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let err = {
-            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let mut egraph = egraph_handle.lock().unwrap();
             restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap_err()
         };
 
@@ -2201,12 +2241,13 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v2_eqclass_uses_distinct_profile_and_version() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(3));
         root.commit();
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
         };
 
@@ -2252,19 +2293,21 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v2_restore_ignores_eqclass_payload_for_semantic_replay() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(11));
         root.commit();
         RelEdge::<MyTx>::insert(1, 2);
 
         let snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
         };
 
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let report = {
-            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let mut egraph = egraph_handle.lock().unwrap();
             restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap()
         };
 
@@ -2277,19 +2320,21 @@ mod tests {
 
     #[test]
     fn persisted_snapshot_v2_restore_rejects_missing_eqclass_payload() {
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let root = Root::<MyTx>::new(&Const::new(12));
         root.commit();
 
         let mut snapshot = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_persisted_snapshot_v2_eqclass(&egraph, egglog::SerializeConfig::default())
         };
         snapshot.eq_class_payload = None;
 
-        MyTx::sgl().reset_for_bench();
+        MyTx::reset_for_bench();
         let err = {
-            let mut egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let mut egraph = egraph_handle.lock().unwrap();
             restore_persisted_snapshot_v1(&mut egraph, &snapshot).unwrap_err()
         };
 
@@ -2348,7 +2393,8 @@ mod tests {
     #[test]
     fn serialized_artifact_captures_function_flags() {
         let artifact = {
-            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            let egraph_handle = MyTx::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             build_serialized_eggplant_artifact(&egraph, egglog::SerializeConfig::default()).unwrap()
         };
         let func = artifact
@@ -3591,7 +3637,7 @@ mod proofs_api_tests {
 
     impl eggplant::wrap::NonPatRecSgl for MyTxProof {
         fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
-            Self::sgl().egraph.clone()
+            <Self as crate::wrap::NonPatRecSgl>::egraph()
         }
     }
 
@@ -3688,7 +3734,8 @@ mod proofs_api_tests {
 
         // 3) Regression: proof export should work for non-canonical values too (class-id/canon-rep keying).
         let (rep, non_rep) = {
-            let egraph = MyTxProof::sgl().egraph.lock().unwrap();
+            let egraph_handle = <MyTxProof as crate::wrap::NonPatRecSgl>::egraph();
+            let egraph = egraph_handle.lock().unwrap();
             let sort = egraph.get_sort_by_name("ProofExpr").unwrap().clone();
             let rep = egraph.get_canonical_value(mul_value, &sort);
             let non_rep = if mul_value != rep {

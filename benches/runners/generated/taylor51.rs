@@ -96,7 +96,7 @@ struct ToExtract {
 }
 
 pub fn bench() {
-    MyTxTaylor51::sgl().reset_for_bench();
+    MyTxTaylor51::reset_for_bench();
 
     let seed = MyTxTaylor51::new_ruleset("taylor51_seed");
     MyTxTaylor51::add_rule(

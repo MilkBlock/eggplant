@@ -12,7 +12,7 @@ tx_rx_vt_pr!(RustsatCseTx, RustsatCsePatRec);
 #[test]
 fn rustsat_backend_prefers_shared_subexpression_when_tree_cost_overcounts() {
     let _ = env_logger::builder().is_test(true).try_init();
-    RustsatCseTx::sgl().reset_for_bench();
+    RustsatCseTx::reset_for_bench();
 
     let shared_leaf = CLeaf::<RustsatCseTx>::new(0);
     let shared_l1 = CInc::<RustsatCseTx>::new(&shared_leaf);

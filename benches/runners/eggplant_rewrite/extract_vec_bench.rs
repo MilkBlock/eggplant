@@ -6,7 +6,7 @@ tx_rx_vt_pr!(MyTxExtract, MyPatRecExtract);
 include!("../generated/extract_vec_bench.rs");
 
 pub fn bench() {
-    MyTxExtract::sgl().reset_for_bench();
+    MyTxExtract::reset_for_bench();
 
     let large_expr = build_large_expr();
     large_expr.commit();

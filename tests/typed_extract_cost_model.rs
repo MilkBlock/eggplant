@@ -52,7 +52,7 @@ impl eggplant::egglog::extract::CostModel<eggplant::egglog::extract::DefaultCost
 #[test]
 fn typed_extract_value_with_cost_model_uses_custom_cost_model() {
     let _ = env_logger::builder().is_test(true).try_init();
-    MyTxExtractCost::sgl().reset_for_bench();
+    MyTxExtractCost::reset_for_bench();
 
     let leaf = Leaf::<MyTxExtractCost>::new(7);
     leaf.commit();
@@ -132,7 +132,7 @@ fn typed_extract_value_with_cost_model_uses_custom_cost_model() {
 #[test]
 fn typed_extract_backend_cost_model_matches_existing_cost_model_api() {
     let _ = env_logger::builder().is_test(true).try_init();
-    MyTxExtractCost::sgl().reset_for_bench();
+    MyTxExtractCost::reset_for_bench();
 
     let leaf = Leaf::<MyTxExtractCost>::new(7);
     leaf.commit();
@@ -179,7 +179,7 @@ fn typed_extract_backend_cost_model_matches_existing_cost_model_api() {
 #[test]
 fn typed_extract_backend_rustsat_uses_variant_costs_over_custom_cost_model_bias() {
     let _ = env_logger::builder().is_test(true).try_init();
-    MyTxExtractCost::sgl().reset_for_bench();
+    MyTxExtractCost::reset_for_bench();
 
     let leaf = Leaf::<MyTxExtractCost>::new(7);
     leaf.commit();

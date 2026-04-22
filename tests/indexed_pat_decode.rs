@@ -33,7 +33,7 @@ fn serialized_user_node_count() -> usize {
 #[test]
 fn indexed_pat_decode_preserves_node_growth_and_canonical_result() {
     let _ = env_logger::builder().is_test(true).try_init();
-    MyTxIndexedDecode::sgl().reset_for_bench();
+    MyTxIndexedDecode::reset_for_bench();
 
     let lhs = IxConst::<MyTxIndexedDecode>::new(1);
     let rhs = IxConst::<MyTxIndexedDecode>::new(2);

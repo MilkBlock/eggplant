@@ -55,7 +55,7 @@ fn lit_eq_mul_pat<PR: PatRecSgl>() -> LitEqMulPat<PR> {
 }
 
 pub fn bench() {
-    MyTxUnify::sgl().reset_for_bench();
+    MyTxUnify::reset_for_bench();
 
     let seed = MyTxUnify::new_ruleset("unify_seed");
     MyTxUnify::add_rule(

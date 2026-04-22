@@ -6602,7 +6602,7 @@ fn pat_pat0201<PR: PatRecSgl>() -> Pat0201<PR> {
 }
 
 pub fn bench() {
-    MyTxEggccExtraction::sgl().reset_for_bench();
+    MyTxEggccExtraction::reset_for_bench();
 
     let fast = MyTxEggccExtraction::new_ruleset("fast-analyses");
     let subst = MyTxEggccExtraction::new_ruleset("subst");

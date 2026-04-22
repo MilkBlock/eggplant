@@ -28,7 +28,7 @@ impl SingletonGetter for MyTxProof {
 
 impl eggplant::wrap::NonPatRecSgl for MyTxProof {
     fn egraph() -> std::sync::Arc<std::sync::Mutex<EGraph>> {
-        Self::sgl().egraph.clone()
+        <Self as eggplant::wrap::NonPatRecSgl>::egraph()
     }
 }
 

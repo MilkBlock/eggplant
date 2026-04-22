@@ -114,7 +114,7 @@ fn pat_vec_check_vec_set<PR: PatRecSgl>() -> CheckIVecPat<PR> {
 }
 
 pub fn bench() {
-    MyTxVec::sgl().reset_for_bench();
+    MyTxVec::reset_for_bench();
 
     let rs = MyTxVec::new_ruleset("vec_checks");
 

@@ -11,7 +11,7 @@ tx_rx_vt_pr!(RustsatCseTx, RustsatCsePatRec);
 
 fn main() {
     let _ = env_logger::try_init();
-    RustsatCseTx::sgl().reset_for_bench();
+    RustsatCseTx::reset_for_bench();
 
     let shared_leaf = CLeaf::<RustsatCseTx>::new(0);
     let shared_l1 = CInc::<RustsatCseTx>::new(&shared_leaf);

@@ -19,6 +19,7 @@ pub use crate::artifact::{
     read_binary_artifact_header_from_file, restore_persisted_snapshot_v1,
 };
 pub use crate::instances::pat_rec::*;
+pub use crate::instances::pseudo_singleton::{Session, SessionAwareTxSgl};
 pub use crate::instances::tx::*;
 pub use crate::instances::tx_minimal::*;
 pub use crate::instances::tx_rx_vt::*;
@@ -40,8 +41,8 @@ pub use crate::wrap::sorts::set::SetContainer;
 pub use crate::wrap::sorts::vec::VecContainer;
 pub use crate::wrap::{
     AsHandle, BaseVar, Commit, EgglogNode, ExtractBackend, ExtractNodeSgl, ExtractSgl, FromBase,
-    Insertable, LocateVersion, PEq, PatRecSgl, QuerySlot, RenderedTemplateField, RuleRunnerSgl,
-    RuleSetId, RunConfig, RustsatExtractConfig, RxSgl, SingletonGetter, SlotVarID,
+    Insertable, LocateVersion, NonPatRecSgl, PEq, PatRecSgl, QuerySlot, RenderedTemplateField,
+    RuleRunnerSgl, RuleSetId, RunConfig, RustsatExtractConfig, RxSgl, SingletonGetter, SlotVarID,
     SlottedPatRecSgl, ToDot, ToDotSgl, TxCommit, TxCommitSgl, TxSgl, Value,
     render_template_with_precedence, render_variant_display, render_variant_typst,
 };
