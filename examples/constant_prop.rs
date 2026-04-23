@@ -57,6 +57,10 @@ fn main() {
     expr.pull();
     MyTx::egraph_to_dot("egraph.dot");
     MyTx::wag_to_dot("wag.dot");
+    #[cfg(feature = "viewer")]
+    if std::env::var_os("EGGPLANT_VIEW").is_some() {
+        MyTx::view().unwrap();
+    }
     // paterns to dot
     MyPatRec::sgl().pats_to_dot("pats.dot");
 }

@@ -1,0 +1,672 @@
+use core::panic;
+
+use egui::{
+    Color32, FontFamily, FontId, Pos2, Shape, Stroke, Vec2,
+    epaint::{CubicBezierShape, TextShape},
+};
+use petgraph::{Directed, EdgeType};
+
+use crate::{
+    DefaultNodeShape, DisplayEdge, DisplayNode, Node,
+    draw::{DrawContext, displays::MaybeInner},
+    elements::EdgeProps,
+    node_size,
+};
+
+use super::edge_shape_builder::{EdgeShapeBuilder, TipProps};
+
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub struct DefaultEdgeShape {
+    pub order: usize,
+    pub selected: bool,
+
+    pub width: f32,
+    pub tip_size: f32,
+    pub tip_angle: f32,
+    pub curve_size: f32,
+    pub loop_size: f32,
+    pub label_text: String,
+}
+
+impl From<EdgeProps> for DefaultEdgeShape {
+    fn from(edge: EdgeProps) -> Self {
+        Self {
+            order: edge.order,
+            selected: edge.selected,
+            label_text: edge.label,
+
+            width: 1.,
+            tip_size: 15.,
+            tip_angle: std::f32::consts::TAU / 30.,
+            curve_size: 20.,
+            loop_size: 3.,
+        }
+    }
+}
+
+// impl DisplayEdge<(), (), Directed, DefaultIx, DefaultNodeShape> for DefaultEdgeShape {
+//     fn is_inside(
+//         &self,
+//         start: &Node<(), (), Directed, DefaultIx, DefaultNodeShape>,
+//         end: &Node<(), (), Directed, DefaultIx, DefaultNodeShape>,
+//         pos: egui::Pos2,
+//     ) -> bool {
+//         if start.id() == end.id() {
+//             return self.is_inside_loop(start, pos);
+//         }
+
+//         if self.order == 0 {
+//             return self.is_inside_line(start, end, pos);
+//         }
+
+//         self.is_inside_curve(start, end, pos)
+//     }
+
+//     fn shapes(
+//         &mut self,
+//         start: &Node<(), (), Directed, DefaultIx, DefaultNodeShape>,
+//         end: &Node<(), (), Directed, DefaultIx, DefaultNodeShape>,
+//         ctx: &DrawContext,
+//     ) -> Vec<egui::Shape> {
+//         let label_visible = ctx.style.labels_always || self.selected;
+//         let color = self.current_color(ctx);
+//         let stroke = self.current_stroke(ctx, color);
+
+//         if start.id() == end.id() {
+//             return self.loop_shapes(start, ctx, stroke, color, label_visible);
+//         }
+
+//         let dir = (end.location() - start.location()).normalized();
+//         if self.order == 0 {
+//             return self.straight_shapes(start, end, ctx, dir);
+//         }
+//         self.curved_shapes(start, end, ctx, dir)
+//     }
+
+//     fn update(&mut self, state: &EdgeProps<()>) {
+//         self.order = state.order;
+//         self.selected = state.selected;
+//         self.label_text = state.label.to_string();
+//     }
+// }
+
+impl<Nd: DisplayNode<Directed>> DisplayEdge<Directed, Nd> for DefaultEdgeShape {
+    fn is_inside(
+        &self,
+        start: &Node<Directed, Nd>,
+        end: &Node<Directed, Nd>,
+        pos: egui::Pos2,
+    ) -> bool {
+        if start.id() == end.id() {
+            return self.is_inside_loop(start, pos);
+        }
+
+        if self.order == 0 {
+            return self.is_inside_line(start, end, pos);
+        }
+
+        self.is_inside_curve(start, end, pos)
+    }
+
+    fn shapes(
+        &mut self,
+        start: &Node<Directed, Nd>,
+        _start_maybe_inner: MaybeInner,
+        end: &Node<Directed, Nd>,
+        ctx: &DrawContext,
+    ) -> Vec<egui::Shape> {
+        let label_visible = ctx.style.labels_always || self.selected;
+        let color = self.current_color(ctx);
+        let stroke = self.current_stroke(ctx, color);
+
+        if start.id() == end.id() {
+            return self.loop_shapes(start, ctx, stroke, color, label_visible);
+        }
+
+        // If oxdraw routing (Class/Full/Smooth) is active and a preplanned polyline exists, draw that.
+        if matches!(
+            ctx.style.edge_router_kind(),
+            crate::settings::EdgeRouterKind::OxdrawClass
+                | crate::settings::EdgeRouterKind::OxdrawFull
+                | crate::settings::EdgeRouterKind::OxdrawSmooth
+        ) {
+            if let Some(routes) = ctx.routes {
+                let key = ((start.id().index() as u128) << 64)
+                    ^ ((end.id().index() as u128) << 32)
+                    ^ (self.order as u128);
+                if let Some(screen_pts) = routes.get(&key) {
+                    let mut shapes = Vec::new();
+                    match ctx.style.edge_router_kind() {
+                        crate::settings::EdgeRouterKind::OxdrawSmooth => {
+                            // Catmull-Rom to cubic Bézier conversion; clamp for small polylines
+                            let pts = screen_pts;
+                            if pts.len() >= 2 {
+                                // For 2 points, just a line
+                                if pts.len() == 2 {
+                                    shapes
+                                        .push(egui::Shape::line_segment([pts[0], pts[1]], stroke));
+                                } else {
+                                    // Duplicate endpoints for tangents
+                                    let mut p = Vec::with_capacity(pts.len() + 2);
+                                    p.push(pts[0]);
+                                    p.extend_from_slice(pts);
+                                    p.push(*pts.last().unwrap());
+                                    for i in 0..(p.len() - 3) {
+                                        let p0 = p[i];
+                                        let p1 = p[i + 1];
+                                        let p2 = p[i + 2];
+                                        let p3 = p[i + 3];
+                                        // Catmull-Rom to cubic Bezier (uniform, alpha=0)
+                                        let c1 = p1 + (p2 - p0) * (1.0 / 6.0);
+                                        let c2 = p2 - (p3 - p1) * (1.0 / 6.0);
+                                        shapes.push(egui::Shape::CubicBezier(
+                                            egui::epaint::CubicBezierShape::from_points_stroke(
+                                                [p1, c1, c2, p2],
+                                                false,
+                                                egui::Color32::TRANSPARENT,
+                                                stroke,
+                                            ),
+                                        ));
+                                    }
+                                }
+                            }
+                        }
+                        _ => {
+                            for w in screen_pts.windows(2) {
+                                shapes.push(egui::Shape::line_segment([w[0], w[1]], stroke));
+                            }
+                        }
+                    }
+                    if ctx.is_directed && screen_pts.len() >= 2 {
+                        use egui::Vec2 as V2;
+                        let end = *screen_pts.last().unwrap();
+                        let prev = screen_pts[screen_pts.len() - 2];
+                        let dir = (end - prev).normalized();
+                        let tip_size = self.tip_size;
+                        let angle = self.tip_angle;
+                        let rot = |v: V2, a: f32| {
+                            V2::new(a.cos() * v.x - a.sin() * v.y, a.sin() * v.x + a.cos() * v.y)
+                        };
+                        let v1 = rot(dir, angle) * tip_size;
+                        let v2 = rot(dir, -angle) * tip_size;
+                        let p1 = end - v1;
+                        let p2 = end - v2;
+                        shapes.push(egui::Shape::convex_polygon(
+                            vec![end, p1, p2],
+                            stroke.color,
+                            egui::Stroke::NONE,
+                        ));
+                    }
+                    if label_visible {
+                        let anchor = screen_pts[screen_pts.len() / 2];
+                        let galley = ctx.ctx.fonts(|f| {
+                            f.layout_no_wrap(
+                                self.label_text.clone(),
+                                FontId::new(12.0, FontFamily::Monospace),
+                                color,
+                            )
+                        });
+                        shapes.push(Self::label_shape(galley, anchor, color));
+                    }
+                    return shapes;
+                }
+            }
+        }
+
+        let dir = (end.location() - start.location()).normalized();
+        if self.order == 0 {
+            return self.straight_shapes(start, end, ctx, dir);
+        }
+        self.curved_shapes(start, end, ctx, dir)
+    }
+
+    fn update(&mut self, state: &EdgeProps) {
+        self.order = state.order;
+        self.selected = state.selected;
+        self.label_text = state.label.to_string();
+    }
+
+    fn extra_bounds(
+        &self,
+        start: &Node<Directed, Nd>,
+        end: &Node<Directed, Nd>,
+    ) -> Option<(Pos2, Pos2)> {
+        use crate::helpers::node_size;
+        // self-loop: approximate loop rectangle
+        if start.id() == end.id() {
+            let node_radius = node_size(start, Vec2::new(-1., 0.));
+            let order = self.order as f32;
+            let loop_radius = node_radius * (self.loop_size + order);
+            let c = start.location();
+            let min = Pos2::new(c.x - loop_radius, c.y - loop_radius);
+            // bottom extent does not go below node center + radius, existing node bounds already include that
+            let max = Pos2::new(c.x + loop_radius, c.y + node_radius);
+            return Some((min, max));
+        }
+
+        // curved edges (order > 0): approximate cubic bezier hull from control points
+        if self.order > 0 {
+            let dir_vec = end.location() - start.location();
+            if dir_vec == Vec2::ZERO {
+                return None;
+            }
+            // connector points
+            let dir = dir_vec.normalized();
+            let start_p =
+                <Nd as DisplayNode<Directed>>::closest_boundary_point(start.display(), dir);
+            let end_p = <Nd as DisplayNode<Directed>>::closest_boundary_point(end.display(), -dir);
+            let dist = end_p - start_p;
+            if dist == Vec2::ZERO {
+                return None;
+            }
+            let dir_n = dist.normalized();
+            let dir_perp = Vec2::new(-dir_n.y, dir_n.x);
+            let center_point = start_p + dist / 2.0;
+            let param = self.order as f32;
+            let height = dir_perp * self.curve_size * param;
+            let cp_center = center_point + height;
+            // replicate control points logic approximately
+            // avoid division by zero in pathological cases
+            let denom = param * dist.length() * 0.5;
+            let mut adjust = Vec2::ZERO;
+            if denom != 0.0 {
+                adjust = dir_n * self.curve_size / denom;
+            }
+            let cp_start = cp_center - adjust;
+            let cp_end = cp_center + adjust;
+
+            let xs = [start_p.x, end_p.x, cp_start.x, cp_end.x, cp_center.x];
+            let ys = [start_p.y, end_p.y, cp_start.y, cp_end.y, cp_center.y];
+            let (min_x, max_x) = xs
+                .iter()
+                .fold((f32::MAX, f32::MIN), |(mi, ma), v| (mi.min(*v), ma.max(*v)));
+            let (min_y, max_y) = ys
+                .iter()
+                .fold((f32::MAX, f32::MIN), |(mi, ma), v| (mi.min(*v), ma.max(*v)));
+            return Some((Pos2::new(min_x, min_y), Pos2::new(max_x, max_y)));
+        }
+
+        None
+    }
+}
+
+impl DefaultEdgeShape {
+    fn current_color(&self, ctx: &DrawContext) -> Color32 {
+        let style = if self.selected {
+            ctx.ctx.style().visuals.widgets.active
+        } else {
+            ctx.ctx.style().visuals.widgets.inactive
+        };
+        style.fg_stroke.color
+    }
+
+    fn current_stroke(&self, ctx: &DrawContext, color: Color32) -> Stroke {
+        let base = Stroke::new(self.width, color);
+        if let Some(hook) = &ctx.style.edge_stroke_hook {
+            let style_ref: &egui::Style = &ctx.ctx.style();
+            (hook)(self.selected, self.order, base, style_ref)
+        } else {
+            base
+        }
+    }
+
+    fn loop_shapes<Ty: EdgeType, Nd: DisplayNode<Ty>>(
+        &mut self,
+        start: &Node<Ty, Nd>,
+        ctx: &DrawContext,
+        stroke: Stroke,
+        color: Color32,
+        label_visible: bool,
+    ) -> Vec<Shape>
+    where
+        DefaultNodeShape: DisplayNode<Ty>,
+    {
+        let mut res = vec![];
+        let size = node_size(start, Vec2::new(-1., 0.));
+        let mut line_looped_shapes = EdgeShapeBuilder::new(stroke)
+            .looped(start.location(), size, self.loop_size, self.order)
+            .with_scaler(ctx.meta)
+            .build();
+        let line_looped_shape = line_looped_shapes.clone().pop().unwrap();
+        res.push(line_looped_shape);
+        let Shape::CubicBezier(line_looped) = line_looped_shapes.pop().unwrap() else {
+            panic!("invalid shape type")
+        };
+        if label_visible {
+            let galley = ctx.ctx.fonts(|f| {
+                f.layout_no_wrap(
+                    self.label_text.clone(),
+                    FontId::new(ctx.meta.canvas_to_screen_size(size), FontFamily::Monospace),
+                    color,
+                )
+            });
+            let median = Self::median_point(&line_looped);
+            res.push(Self::label_shape(galley, median, color));
+        }
+        res
+    }
+
+    fn straight_shapes<Ty: EdgeType, Nd: DisplayNode<Ty>>(
+        &mut self,
+        start: &Node<Ty, Nd>,
+        end: &Node<Ty, Nd>,
+        ctx: &DrawContext,
+        dir: Vec2,
+    ) -> Vec<Shape>
+    where
+        DefaultNodeShape: DisplayNode<Ty>,
+    {
+        let mut res = vec![];
+        let color = self.current_color(ctx);
+        let stroke = self.current_stroke(ctx, color);
+        let label_visible = ctx.style.labels_always || self.selected;
+        let start_connector_point =
+            <Nd as DisplayNode<Ty>>::closest_boundary_point(start.display(), dir);
+        let end_connector_point =
+            <Nd as DisplayNode<Ty>>::closest_boundary_point(end.display(), -dir);
+        let mut builder = EdgeShapeBuilder::new(stroke)
+            .straight((start_connector_point, end_connector_point))
+            .with_scaler(ctx.meta);
+        let mut tip_store: Option<TipProps> = None;
+        if ctx.is_directed {
+            tip_store = Some(TipProps {
+                size: self.tip_size,
+                angle: self.tip_angle,
+            });
+        }
+        if let Some(ref tip) = tip_store {
+            builder = builder.with_tip(tip);
+        }
+        let straight_shapes = builder.build();
+        res.extend(straight_shapes);
+        if label_visible {
+            let size = f32::midpoint(node_size(start, dir), node_size(end, dir));
+            let galley = ctx.ctx.fonts(|f| {
+                f.layout_no_wrap(
+                    self.label_text.clone(),
+                    FontId::new(ctx.meta.canvas_to_screen_size(size), FontFamily::Monospace),
+                    color,
+                )
+            });
+            let dist = end_connector_point - start_connector_point;
+            let center = ctx
+                .meta
+                .canvas_to_screen_pos(start_connector_point + dist / 2.);
+            res.push(Self::label_shape(galley, center, color));
+        }
+        res
+    }
+
+    fn curved_shapes<Ty: EdgeType, Nd: DisplayNode<Ty>>(
+        &mut self,
+        start: &Node<Ty, Nd>,
+        end: &Node<Ty, Nd>,
+        ctx: &DrawContext,
+        dir: Vec2,
+    ) -> Vec<Shape> {
+        let mut res = vec![];
+        let color = self.current_color(ctx);
+        let stroke = self.current_stroke(ctx, color);
+        let label_visible = ctx.style.labels_always || self.selected;
+        let start_connector_point =
+            <Nd as DisplayNode<Ty>>::closest_boundary_point(start.display(), dir);
+        let end_connector_point =
+            <Nd as DisplayNode<Ty>>::closest_boundary_point(end.display(), -dir);
+        let mut builder = EdgeShapeBuilder::new(stroke)
+            .curved(
+                (start_connector_point, end_connector_point),
+                self.curve_size,
+                self.order,
+            )
+            .with_scaler(ctx.meta);
+        let mut tip_store: Option<TipProps> = None;
+        if ctx.is_directed {
+            tip_store = Some(TipProps {
+                size: self.tip_size,
+                angle: self.tip_angle,
+            });
+        }
+        if let Some(ref tip) = tip_store {
+            builder = builder.with_tip(tip);
+        }
+        let curved_shapes = builder.build();
+        // Use first shape for label anchor. It may be a cubic or a straight segment (degenerate case).
+        if let Some(first) = curved_shapes.first() {
+            res.extend(curved_shapes.clone());
+            if label_visible {
+                let size = f32::midpoint(node_size(start, dir), node_size(end, dir));
+                let galley = ctx.ctx.fonts(|f| {
+                    f.layout_no_wrap(
+                        self.label_text.clone(),
+                        FontId::new(ctx.meta.canvas_to_screen_size(size), FontFamily::Monospace),
+                        color,
+                    )
+                });
+                let anchor = match first {
+                    Shape::CubicBezier(cubic) => Self::median_point(cubic),
+                    Shape::LineSegment { points, .. } => {
+                        let mid =
+                            (*points.first().unwrap() + points.last().unwrap().to_vec2()) / 2.0;
+                        mid
+                    }
+                    _ => {
+                        // Fallback to midpoint between connectors in canvas coords transformed to screen
+                        let center_canvas = ((start_connector_point.to_vec2()
+                            + end_connector_point.to_vec2())
+                            / 2.0)
+                            .to_pos2();
+                        ctx.meta.canvas_to_screen_pos(center_canvas)
+                    }
+                };
+                res.push(Self::label_shape(galley, anchor, color));
+            }
+        }
+        res
+    }
+
+    fn label_shape(galley: std::sync::Arc<egui::Galley>, anchor: Pos2, color: Color32) -> Shape {
+        let label_width = galley.rect.width();
+        let label_height = galley.rect.height();
+        let pos = Pos2::new(anchor.x - label_width / 2., anchor.y - label_height);
+        TextShape::new(pos, galley, color).into()
+    }
+
+    fn median_point(curve: &CubicBezierShape) -> Pos2 {
+        // Ensure positive tolerance to avoid epaint panic on some platforms/configs.
+        let flattened = curve.flatten(Some(1.0_f32));
+        *flattened.get(flattened.len() / 2).unwrap()
+    }
+
+    fn is_inside_loop<E: EdgeType, Nd: DisplayNode<E>>(
+        &self,
+        node: &Node<E, Nd>,
+        pos: Pos2,
+    ) -> bool {
+        let node_size = node_size(node, Vec2::new(-1., 0.));
+
+        let loop_stroke = Stroke::new(self.width, Color32::default());
+        let shape = EdgeShapeBuilder::new(loop_stroke)
+            .looped(node.location(), node_size, self.loop_size, self.order)
+            .build();
+
+        match shape.first() {
+            Some(Shape::CubicBezier(cubic)) => is_point_on_curve(pos, cubic, self.width),
+            _ => panic!("invalid shape type"),
+        }
+    }
+
+    fn is_inside_line<Ty: EdgeType, Nd: DisplayNode<Ty>>(
+        &self,
+        start: &Node<Ty, Nd>,
+        end: &Node<Ty, Nd>,
+        pos: Pos2,
+    ) -> bool
+    where
+        DefaultNodeShape: DisplayNode<Ty>,
+    {
+        distance_segment_to_point(start.location(), end.location(), pos) <= self.width
+    }
+
+    fn is_inside_curve<Ty: EdgeType, Nd: DisplayNode<Ty>>(
+        &self,
+        node_start: &Node<Ty, Nd>,
+        node_end: &Node<Ty, Nd>,
+        pos: Pos2,
+    ) -> bool
+    where
+        DefaultNodeShape: DisplayNode<Ty>,
+    {
+        let dir = (node_end.location() - node_start.location()).normalized();
+        let start = node_start.display().closest_boundary_point(dir);
+        let end = node_end.display().closest_boundary_point(-dir);
+
+        let stroke = Stroke::new(self.width, Color32::default());
+        let curved_shapes = EdgeShapeBuilder::new(stroke)
+            .curved((start, end), self.curve_size, self.order)
+            .build();
+
+        let curved_shape = match curved_shapes.first() {
+            Some(Shape::CubicBezier(curve)) => curve.clone(),
+            _ => panic!("invalid shape type"),
+        };
+        is_point_on_curve(pos, &curved_shape, self.width)
+    }
+}
+
+/// Returns the distance from line segment [`a`, `b`] to point `c`.
+/// Adapted from <https://stackoverflow.com/questions/1073336/circle-line-segment-collision-detection-algorithm>
+fn distance_segment_to_point(a: Pos2, b: Pos2, point: Pos2) -> f32 {
+    let ac = point - a;
+    let ab = b - a;
+
+    let d = a + proj(ac, ab);
+
+    let ad = d - a;
+
+    let k = if ab.x.abs() > ab.y.abs() {
+        ad.x / ab.x
+    } else {
+        ad.y / ab.y
+    };
+
+    if k <= 0.0 {
+        return hypot2(point.to_vec2(), a.to_vec2()).sqrt();
+    } else if k >= 1.0 {
+        return hypot2(point.to_vec2(), b.to_vec2()).sqrt();
+    }
+
+    hypot2(point.to_vec2(), d.to_vec2()).sqrt()
+}
+
+/// Calculates the square of the Euclidean distance between vectors `a` and `b`.
+fn hypot2(a: Vec2, b: Vec2) -> f32 {
+    (a - b).dot(a - b)
+}
+
+/// Calculates the projection of vector `a` onto vector `b`.
+fn proj(a: Vec2, b: Vec2) -> Vec2 {
+    let k = a.dot(b) / b.dot(b);
+    Vec2::new(k * b.x, k * b.y)
+}
+
+fn is_point_on_curve(point: Pos2, curve: &CubicBezierShape, tolerance: f32) -> bool {
+    // Positive tessellation tolerance for robust flattening.
+    for p in curve.flatten(Some(1.0_f32)) {
+        if p.distance(point) < tolerance {
+            return true;
+        }
+    }
+    false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_distance_segment_to_point() {
+        let segment_1 = Pos2::new(2.0, 2.0);
+        let segment_2 = Pos2::new(2.0, 5.0);
+        let point = Pos2::new(4.0, 3.0);
+        assert_eq!(distance_segment_to_point(segment_1, segment_2, point), 2.0);
+    }
+
+    #[test]
+    fn test_distance_segment_to_point_on_segment() {
+        let segment_1 = Pos2::new(1.0, 2.0);
+        let segment_2 = Pos2::new(1.0, 5.0);
+        let point = Pos2::new(1.0, 3.0);
+        assert_eq!(distance_segment_to_point(segment_1, segment_2, point), 0.0);
+    }
+
+    #[test]
+    fn test_hypot2() {
+        let a = Vec2::new(0.0, 1.0);
+        let b = Vec2::new(0.0, 5.0);
+        assert_eq!(hypot2(a, b), 16.0);
+    }
+
+    #[test]
+    fn test_hypot2_no_distance() {
+        let a = Vec2::new(0.0, 1.0);
+        assert_eq!(hypot2(a, a), 0.0);
+    }
+
+    #[test]
+    fn test_proj() {
+        let a = Vec2::new(5.0, 8.0);
+        let b = Vec2::new(10.0, 0.0);
+        let result = proj(a, b);
+        assert_eq!(result.x, 5.0);
+        assert_eq!(result.y, 0.0);
+    }
+
+    #[test]
+    fn test_proj_orthogonal() {
+        let a = Vec2::new(5.0, 0.0);
+        let b = Vec2::new(0.0, 5.0);
+        let result = proj(a, b);
+        assert_eq!(result.x, 0.0);
+        assert_eq!(result.y, 0.0);
+    }
+
+    #[test]
+    fn test_proj_same_vector() {
+        let a = Vec2::new(5.3, 4.9);
+        assert_eq!(proj(a, a), a);
+    }
+
+    #[test]
+    fn test_median_point_no_panic() {
+        let stroke = Stroke::new(1.0, Color32::WHITE);
+        let curve = CubicBezierShape::from_points_stroke(
+            [
+                Pos2::new(0.0, 0.0),
+                Pos2::new(5.0, 10.0),
+                Pos2::new(10.0, 10.0),
+                Pos2::new(10.0, 0.0),
+            ],
+            false,
+            Color32::TRANSPARENT,
+            stroke,
+        );
+        let _ = DefaultEdgeShape::median_point(&curve);
+    }
+
+    #[test]
+    fn test_is_point_on_curve_positive_tolerance() {
+        let stroke = Stroke::new(1.0, Color32::WHITE);
+        let curve = CubicBezierShape::from_points_stroke(
+            [
+                Pos2::new(0.0, 0.0),
+                Pos2::new(5.0, 10.0),
+                Pos2::new(10.0, 10.0),
+                Pos2::new(10.0, 0.0),
+            ],
+            false,
+            Color32::TRANSPARENT,
+            stroke,
+        );
+        let _ = is_point_on_curve(Pos2::new(5.0, 5.0), &curve, 2.0);
+    }
+}

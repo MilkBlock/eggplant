@@ -1,13 +1,15 @@
-use crate::wrap::{
-    EgglogFunc, EgglogFuncInputs, EgglogFuncOutput,
+#[cfg(feature = "viewer")]
+use crate::prelude::SlottedPatRecorder;
+use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
+use crate::{
     etc::{Escape, quote, topo_sort},
+    prelude::{SlotMeta, SlotWorkAreaNode},
+    wrap::*,
 };
-
-use super::*;
 use core::panic;
 use dashmap::DashMap;
 use egglog::{
-    EGraph, RunReport, SerializeConfig,
+    EGraph, SerializeConfig,
     ast::Facts,
     prelude::{add_ruleset, run_ruleset},
     span,
@@ -17,6 +19,7 @@ use egglog::{
     ast::{RustSpan, Span},
     prelude::rust_rule,
 };
+use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
 use petgraph::prelude::StableDiGraph;
 use std::{
@@ -31,12 +34,15 @@ use std::{
 /// 3. VersionCtl: version control for nodes
 /// 4. PR: Pattern recorder
 /// 5. generate proof (opt.)
-pub struct TxRxVTPR {
+pub struct SlottedTxRxVTPR {
     pub egraph: Arc<Mutex<EGraph>>,
-    map: DashMap<Sym, WorkAreaNode>,
+    map: DashMap<Sym, SlotWorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
     staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
     staged_new_map: Mutex<IndexMap<Sym, Box<dyn EgglogNode>>>,
+
+    sym2meta: DashMap<Sym, SlotMeta>,
+
     checkpoints: Mutex<Vec<CommitCheckPoint>>,
     registry: EgglogTypeRegistry,
     /// mapping from sym to value, used to query [`Value`] in EGraph of specified [`Sym`]
@@ -47,14 +53,14 @@ pub struct TxRxVTPR {
 
 #[allow(unused)]
 #[derive(Debug)]
-pub struct CommitCheckPoint {
+struct CommitCheckPoint {
     committed_node_root: Sym,
     staged_set_nodes: Vec<Sym>,
     staged_new_nodes: Vec<Sym>,
 }
 
 /// Tx with version ctl feature
-impl TxRxVTPR {
+impl SlottedTxRxVTPR {
     pub fn clear_egraph(&self) {
         let mut egraph = self.egraph.lock().unwrap();
         self.sym2value_map.clear();
@@ -116,9 +122,11 @@ impl TxRxVTPR {
         for (i, (in_degree, out_degree)) in ins.iter_mut().zip(outs.iter_mut()).enumerate() {
             let sym = index_set[i];
             let node = self.map.get(&sym).unwrap();
-            *in_degree =
-                TxRxVTPR::degree_in_subgraph(node.preds().into_iter().map(|x| *x), index_set);
-            *out_degree = TxRxVTPR::degree_in_subgraph(node.succs().into_iter(), index_set);
+            *in_degree = SlottedTxRxVTPR::degree_in_subgraph(
+                node.preds().into_iter().map(|x| *x),
+                index_set,
+            );
+            *out_degree = SlottedTxRxVTPR::degree_in_subgraph(node.succs().into_iter(), index_set);
         }
         let (mut _ins, mut outs) = match direction {
             TopoDirection::Up => (ins, outs),
@@ -168,6 +176,32 @@ impl TxRxVTPR {
             egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 Self::add_eggplant_sorts(&mut e);
+                // turn off semi naive
+                e.seminaive = false;
+                e
+            })),
+            registry: EgglogTypeRegistry::new_with_inventory(),
+            map: DashMap::new(),
+            staged_set_map: DashMap::new(),
+            staged_new_map: Mutex::new(IndexMap::default()),
+            checkpoints: Mutex::new(vec![]),
+            sym2value_map: Arc::new(DashMap::new()),
+            commit_counter: Mutex::new(0),
+            sym2meta: Default::default(),
+        };
+        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        for def in type_defs {
+            tx.send(TxCommand::NativeCommand { command: def });
+        }
+        tx
+    }
+    pub fn new_with_proof() -> Self {
+        let tx = Self {
+            egraph: Arc::new(Mutex::new({
+                let mut e = EGraph::new_with_proofs();
+                Self::add_eggplant_sorts(&mut e);
+                // turn off semi naive
+                e.seminaive = false;
                 e
             })),
             registry: EgglogTypeRegistry::new_with_inventory(),
@@ -178,6 +212,7 @@ impl TxRxVTPR {
             sym2value_map: Arc::new(DashMap::new()),
             // proof_store: Mutex::new(ProofStore::default()),
             commit_counter: Mutex::new(0),
+            sym2meta: Default::default(),
         };
         let type_defs = EgglogTypeRegistry::collect_type_defs();
         for def in type_defs {
@@ -239,7 +274,7 @@ impl TxRxVTPR {
     //     tx
     // }
     // if auto_latest is true, it will locate the latest version of the node and add it to the map
-    fn add_node(&self, mut node: WorkAreaNode, auto_latest: bool) {
+    fn add_node(&self, mut node: SlotWorkAreaNode, auto_latest: bool) {
         let sym = node.cur_sym();
         for node in node.succs_mut() {
             log::debug!("succ is {}", node);
@@ -330,7 +365,7 @@ impl TxRxVTPR {
                 let mut staged_node = staged_latest_sym_map.get(&ancestor).unwrap().clone_dyn();
                 *staged_node.cur_sym_mut() = next_sym;
 
-                let mut staged_node = WorkAreaNode::new(staged_node);
+                let mut staged_node = SlotWorkAreaNode::new(staged_node);
                 // set prev, chain next latest version to latest version
                 staged_node.prev = Some(latest_sym);
                 staged_node.preds = self.map.get(&ancestor).unwrap().preds.clone();
@@ -378,7 +413,7 @@ impl TxRxVTPR {
         log::debug!("after update_nodes:{:#?}", self.map);
         next_syms
     }
-    pub fn wag_build_petgraph(&self) -> StableDiGraph<WorkAreaNode, ()> {
+    pub fn wag_build_petgraph(&self) -> StableDiGraph<SlotWorkAreaNode, ()> {
         // 1. collect all nodes
         let v = self
             .map
@@ -414,9 +449,9 @@ impl TxRxVTPR {
     }
 }
 
-unsafe impl Send for TxRxVTPR {}
-unsafe impl Sync for TxRxVTPR {}
-impl VersionCtl for TxRxVTPR {
+unsafe impl Send for SlottedTxRxVTPR {}
+unsafe impl Sync for SlottedTxRxVTPR {}
+impl VersionCtl for SlottedTxRxVTPR {
     /// locate the lastest version of the symbol
     fn locate_latest(&self, old: Sym) -> Sym {
         let map = &self.map;
@@ -462,7 +497,7 @@ impl VersionCtl for TxRxVTPR {
 }
 
 // MARK: Tx
-impl Tx for TxRxVTPR {
+impl Tx for SlottedTxRxVTPR {
     fn send(&self, transmitted: TxCommand) {
         let mut egraph = self.egraph.lock().unwrap();
         match transmitted {
@@ -482,6 +517,14 @@ impl Tx for TxRxVTPR {
             .lock()
             .unwrap()
             .insert(node.cur_sym(), node.clone_dyn());
+
+        let merged = SlotMeta::from_metas(node.succs().iter().map(|succ| {
+            self.sym2meta
+                .get(succ)
+                .expect("meta of succ sym should added ")
+                .clone()
+        }));
+        self.sym2meta.insert(node.cur_sym(), merged);
     }
 
     #[track_caller]
@@ -518,8 +561,28 @@ impl Tx for TxRxVTPR {
         egraph.get_canonical_value(val, egraph.get_sort_by_name(node1.ty_name()).unwrap())
     }
 }
+impl NodeDropper for SlottedTxRxVTPR {
+    fn meta_of(&self, sym: Sym) -> Box<dyn std::any::Any> {
+        match self.sym2meta.get(&sym) {
+            Some(meta) => Box::new(meta.clone()),
+            None => {
+                panic!("shoud not get meta before node is added")
+            }
+        }
+    }
 
-impl TxCommit for TxRxVTPR {
+    fn replace_meta(&self, sym: Sym, meta: Box<dyn std::any::Any>) {
+        let committed_found = self.map.get(&sym).is_some();
+        let staged_found = self.staged_new_map.lock().unwrap().get(&sym).is_some();
+        if !committed_found && !staged_found {
+            panic!("node should be added before replace_meta");
+        }
+        let meta: Box<SlotMeta> = meta.downcast().unwrap();
+        self.sym2meta.entry(sym).insert(*meta);
+    }
+}
+
+impl TxCommit for SlottedTxRxVTPR {
     /// commit behavior:
     /// 1. commit all descendants (if you also call set fn on subnodes they will also be committed)
     /// 2. commit basing on the latest ersion of the working graph (working graph records all versions)
@@ -555,7 +618,7 @@ impl TxCommit for TxRxVTPR {
         let mut backup_staged_new_syms = IndexSet::default();
         let len = news.len();
         for (new, new_node) in news.drain(0..len) {
-            self.add_node(WorkAreaNode::new(new_node.clone_dyn()), false);
+            self.add_node(SlotWorkAreaNode::new(new_node.clone_dyn()), false);
             backup_staged_new_syms.insert(new);
         }
         // collect all staged ndoes
@@ -600,7 +663,7 @@ impl TxCommit for TxRxVTPR {
         // sue add_rule API to create rule
         let mut egraph = self.egraph.lock().unwrap();
         egglog::prelude::add_ruleset(&mut egraph, &ruleset_name).unwrap();
-        let hook = RuleCtxObj(ctx_hook);
+        let hook = RuleHookObj(ctx_hook);
         let rule_rst = rust_rule(
             &mut egraph,
             format!("commit{}", self.commit_counter.lock().unwrap()).as_str(),
@@ -653,7 +716,7 @@ impl TxCommit for TxRxVTPR {
 }
 
 // MARK: Rx
-impl Rx for TxRxVTPR {
+impl Rx for SlottedTxRxVTPR {
     fn on_func_get<'a, 'b, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -700,7 +763,7 @@ impl Rx for TxRxVTPR {
             .unwrap();
         log::debug!("pulled dag: {:?}", term_dag);
 
-        let root_idx = term_dag.lookup(&start_term);
+        let root_idx = start_term;
         log::debug!("term_dag:{:?}, {:?}", term_dag, start_term);
         let mut ret_sym = None;
 
@@ -715,7 +778,10 @@ impl Rx for TxRxVTPR {
                 ret_sym = Some(boxed_node.cur_sym())
             }
             log::info!("pulled add node: {:?}", boxed_node);
-            self.add_node(WorkAreaNode::new_pulled(boxed_node, value.erase()), false);
+            self.add_node(
+                SlotWorkAreaNode::new_pulled(boxed_node, value.erase()),
+                false,
+            );
         }
         log::debug!(
             "term:{:?}, term_dag:{:?}, cost:{}",
@@ -732,10 +798,10 @@ impl Rx for TxRxVTPR {
             None => {
                 // situtaion 2
                 // func ret a BaseTy
-                SymLit::Lit(match term_dag.get(0) {
+                SymLit::Lit(match term_dag.get(root_idx) {
                     egglog::Term::Lit(literal) => literal.clone(),
                     _ => {
-                        panic!("termdag[0] should be a literal")
+                        panic!("root term should be a literal")
                     }
                 })
             }
@@ -748,18 +814,13 @@ impl Rx for TxRxVTPR {
             panic!("{}'s value not found in sym2value_map", sym)
         }
     }
-
-    fn egraph(&self) -> Arc<Mutex<EGraph>> {
-        self.egraph.clone()
-    }
 }
 
-impl NodeDropper for TxRxVTPR {}
-impl NodeOwner for TxRxVTPR {
+impl NodeOwner for SlottedTxRxVTPR {
     type OwnerSpecDataInNode<T: EgglogTy, V: EgglogEnumVariantTy> = ();
 }
 
-impl NodeSetter for TxRxVTPR {
+impl NodeSetter for SlottedTxRxVTPR {
     fn on_set(&self, _node: &mut (impl EgglogNode + 'static)) {
         // do nothing
         // the node may be set but we don't care
@@ -767,26 +828,35 @@ impl NodeSetter for TxRxVTPR {
     }
 }
 
-impl RuleRunner for TxRxVTPR {
-    fn add_rule<PR: PatRecSgl, P: PatVars<PR>>(
+impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
+    fn add_rule<P: PatVars<PR>>(
         &self,
         rule_name: &str,
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
-        action: impl Fn(&RuleCtx, &P::Valued) + Send + Sync + 'static + Clone,
+        action: impl Fn(&PRRuleCtx<PR>, &P::Valued) + Send + Sync + 'static + Clone,
         ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
         let mut egraph = self.egraph.lock().unwrap();
         PR::on_record_start();
         let pat_vars = pat();
         let pat_id = PR::on_record_end(&pat_vars);
+        let metas = pat_vars.metas_iter().collect::<Vec<_>>();
+        println!("metas got {:#?}", metas);
 
         let facts = PR::pat2fact_builder(pat_id).build(&egraph);
         let vars = pat_vars.to_str_arcsort(&egraph);
         log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);
 
-        let hook = RuleCtxObj(ctx_hook);
+        let proofs_enabled = egraph.are_proofs_enabled();
+        let binding_var_slots: HashMap<Arc<str>, usize> = vars
+            .iter()
+            .enumerate()
+            .map(|(idx, (name, _))| (Arc::<str>::from(name.as_str()), idx))
+            .collect();
+        let decode_plan = Arc::new(pat_vars.build_decode_plan(&binding_var_slots));
+        let hook = RuleHookObj(ctx_hook);
         let rst = rust_rule(
             &mut egraph,
             rule_name,
@@ -796,9 +866,14 @@ impl RuleRunner for TxRxVTPR {
                 .map(|x| (x.0.as_str(), x.1.clone()))
                 .collect::<Vec<_>>(),
             Facts(facts),
-            move |ctx, values| {
-                let mut ctx = RuleCtx::new(ctx, hook.clone());
-                let valued_pat_vars = P::Valued::from_plain_values(&mut values.iter().cloned());
+            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>, values| {
+                let mut ctx = PRRuleCtx::new(ctx, hook.clone());
+                let _premise_scope = if proofs_enabled {
+                    Some(PremiseProofScope::enter(empty_premise_proofs()))
+                } else {
+                    None
+                };
+                let valued_pat_vars = P::decode_with_plan(values, &metas, decode_plan.as_ref());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
             },
@@ -814,29 +889,67 @@ impl RuleRunner for TxRxVTPR {
 
     #[track_caller]
     fn run_ruleset(&self, ruleset_id: RuleSetId, until: RunConfig) -> RunReport {
-        let mut egraph = self.egraph.lock().unwrap();
         match until {
             RunConfig::Sat => {
+                let mut egraph = self.egraph.lock().unwrap();
                 let mut run_report = RunReport::default();
                 loop {
-                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
+                    let iter_report = if egraph.are_proofs_enabled() {
+                        let outputs =
+                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        outputs
+                            .into_iter()
+                            .find_map(|o| match o {
+                                egglog::CommandOutput::RunSchedule(report) => Some(report),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        egraph.step_rules(ruleset_id.0).unwrap()
+                    };
                     let updated = iter_report.updated;
                     run_report.union(iter_report);
-                    if !updated {
+                    if !updated && !PR::flush_pending(&egraph) {
                         break run_report;
                     }
                 }
             }
             RunConfig::Times(times) => {
+                let mut egraph = self.egraph.lock().unwrap();
                 let mut run_report = RunReport::default();
                 for _ in 0..times {
-                    let iter_report = egraph.step_rules(ruleset_id.0).unwrap();
+                    let iter_report = if egraph.are_proofs_enabled() {
+                        let outputs =
+                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        outputs
+                            .into_iter()
+                            .find_map(|o| match o {
+                                egglog::CommandOutput::RunSchedule(report) => Some(report),
+                                _ => None,
+                            })
+                            .unwrap_or_default()
+                    } else {
+                        egraph.step_rules(ruleset_id.0).unwrap()
+                    };
                     run_report.union(iter_report);
                 }
                 run_report
             }
             RunConfig::Once => {
-                let run_report = egraph.step_rules(ruleset_id.0).unwrap();
+                let mut egraph = self.egraph.lock().unwrap();
+                let run_report = if egraph.are_proofs_enabled() {
+                    let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                    outputs
+                        .into_iter()
+                        .find_map(|o| match o {
+                            egglog::CommandOutput::RunSchedule(report) => Some(report),
+                            _ => None,
+                        })
+                        .unwrap_or_default()
+                } else {
+                    egraph.step_rules(ruleset_id.0).unwrap()
+                };
+                PR::flush_pending(&egraph);
                 run_report
             }
         }
@@ -892,7 +1005,7 @@ impl RuleRunner for TxRxVTPR {
     // }
 }
 
-impl ToDot for TxRxVTPR {
+impl ToDot for SlottedTxRxVTPR {
     /// transform EGraph into dot file
     fn egraph_to_dot(&self, path: impl AsRef<Path>) {
         let egraph = self.egraph.lock().unwrap();
@@ -1144,5 +1257,53 @@ impl ToDot for TxRxVTPR {
 
     fn wag_to_petgraph(&self) -> SerializedPetGraph {
         todo!()
+    }
+}
+
+#[cfg(feature = "viewer")]
+impl EGraphView for (SlottedTxRxVTPR, SlottedPatRecorder) {
+    fn egraph(&self) -> std::sync::Arc<std::sync::Mutex<EGraph>> {
+        self.0.egraph.clone()
+    }
+
+    fn view(&self) -> Result<(), eframe::Error> {
+        use eggplant_viewer::*;
+        // let map: Arc<DashMap<Sym, SlotWorkAreaNode>> = Arc::new(self.0.map.clone());
+        #[derive(Clone)]
+        struct SlotEventHandler {
+            // map: Arc<DashMap<Sym, SlotWorkAreaNode>>,
+        }
+        impl EventHandle for SlotEventHandler {
+            fn dyn_clone(&self) -> Box<dyn EventHandle> {
+                Box::new(self.clone())
+            }
+
+            fn on_drag(&self, cano_value: u32) {
+                println!("{cano_value} dragged")
+            }
+
+            fn on_hover(&self, cano_value: u32) {
+                println!("{cano_value} hovered")
+            }
+
+            fn on_selected(&self, cano_value: u32) {
+                println!("{cano_value} selected")
+            }
+        }
+
+        let native_options = eframe::NativeOptions::default();
+        let egraph = self.0.egraph.lock().unwrap();
+        eframe::run_native(
+            "eggplant_egui_graphs demo",
+            native_options,
+            Box::new(|cc| {
+                Ok(Box::new(EGraphApp::new(
+                    cc,
+                    DemoLayout::Hierarchical,
+                    &egraph,
+                    SlotEventHandler {}.dyn_clone(),
+                )))
+            }),
+        )
     }
 }

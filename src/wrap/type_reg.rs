@@ -3,14 +3,16 @@ use std::collections::HashMap;
 use derive_more::Deref;
 use egglog::{
     EGraph, Term, TermDag, TermId,
-    ast::{Command, GenericExpr, Literal, RustSpan, Schema, Span, Subdatatypes, Variant},
+    ast::{Command, Literal, Parser, RustSpan, Schema, Span, Subdatatypes, Variant},
     prelude::BaseSort,
-    sort::Q,
+    sort::{Q, Z},
     span, var,
 };
+use serde::{Deserialize, Serialize};
 
 use crate::wrap::{
-    EgglogEnumVariantTy, FromPlainValues, PatRecSgl, PatVars, TermToNode, ToStrArcSort, Value,
+    BindingNames, EgglogEnumVariantTy, FromIndexedValues, FromPlainValues, PatRecSgl, PatVars,
+    TermToNode, ToStrArcSort, Value,
 };
 
 pub trait EgglogContainerTy: EgglogTy {
@@ -54,7 +56,7 @@ impl EgglogTy for &'static str {
 pub trait EgglogTy: 'static {
     const TY_NAME: &'static str;
     const TY_NAME_LOWER: &'static str;
-    type Valued: FromPlainValues;
+    type Valued: FromPlainValues + FromIndexedValues;
     type EnumVariantMarker: EgglogEnumVariantTy;
     fn get_arc_sort(egraph: &EGraph) -> egglog::ArcSort {
         egraph
@@ -63,8 +65,14 @@ pub trait EgglogTy: 'static {
             .clone()
     }
 }
-impl<T: EgglogTy + ToStrArcSort, PR: PatRecSgl> PatVars<PR> for T {
+impl<T: EgglogTy + ToStrArcSort + BindingNames, PR: PatRecSgl> PatVars<PR> for T
+where
+    T::Valued: crate::wrap::DecodeWithPlanMetas<PR>,
+{
     type Valued = T::Valued;
+    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
+        std::iter::empty()
+    }
 }
 impl<T: EgglogTy> ToStrArcSort for T {
     fn to_str_arcsort(&self, _egraph: &egglog::EGraph) -> Vec<(super::VarName, egglog::ArcSort)> {
@@ -72,8 +80,16 @@ impl<T: EgglogTy> ToStrArcSort for T {
     }
 }
 impl EgglogTy for Q {
-    const TY_NAME: &'static str = "BigRational";
+    // egglog base sort name (see `egglog::sort::BigRatSort`).
+    const TY_NAME: &'static str = "BigRat";
     const TY_NAME_LOWER: &'static str = "big_rational";
+    type Valued = Value<Self>;
+    type EnumVariantMarker = ();
+}
+impl EgglogTy for Z {
+    // egglog base sort name (see `egglog::sort::BigIntSort`).
+    const TY_NAME: &'static str = "BigInt";
+    const TY_NAME_LOWER: &'static str = "big_int";
     type Valued = Value<Self>;
     type EnumVariantMarker = ();
 }
@@ -82,16 +98,28 @@ impl EgglogTy for Q {
 pub struct TyConstructors(pub &'static [TyConstructor]);
 pub struct TySortString(pub &'static str);
 pub struct FuncSortString(pub &'static str);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum SchemaFieldKind {
+    Base,
+    Complex,
+    Container,
+}
 #[derive(Debug)]
 pub struct TyConstructor {
     pub cons_name: &'static str,
     pub input: &'static [&'static str],
+    pub input_field_names: &'static [&'static str],
+    pub input_field_kinds: &'static [SchemaFieldKind],
     pub output: &'static str,
     pub cost: Option<u64>,
     pub unextractable: bool,
+    pub display_template: Option<&'static str>,
+    pub typst_template: Option<&'static str>,
+    pub precedence: u16,
     pub term_to_node: TermToNode,
 }
 pub struct UserBaseSort {
+    pub name: &'static str,
     pub sort_insert_fn: fn(&mut EGraph),
 }
 pub struct UserContainerSort {
@@ -120,6 +148,14 @@ pub enum Decl {
         name: &'static str,
         input: &'static [&'static str],
         output: &'static str,
+        /// `None` means `:no-merge`. Otherwise this is the merge function name (e.g. `"new"`).
+        merge: Option<&'static str>,
+        hidden: bool,
+        let_binding: bool,
+    },
+    EgglogRelationTy {
+        name: &'static str,
+        input: &'static [&'static str],
     },
     EgglogRule {
         name: &'static str,
@@ -135,6 +171,14 @@ pub struct EgglogTypeRegistry {
     container_node_fns_map: HashMap<(&'static str, &'static str), TermToNode>,
 }
 impl EgglogTypeRegistry {
+    fn normalize_ty_name(ty: &str) -> String {
+        match ty {
+            "Q" => <Q as EgglogTy>::TY_NAME.to_string(),
+            "Z" => <Z as EgglogTy>::TY_NAME.to_string(),
+            _ => ty.to_string(),
+        }
+    }
+
     pub fn new_with_inventory() -> Self {
         let (enum_node_fns_map, variant2type_map) = Self::collect_enum_fns();
         let container_node_fns_map = Self::collect_container_fns();
@@ -195,7 +239,11 @@ impl EgglogTypeRegistry {
                                 .map(|x| Variant {
                                     span: span!(),
                                     name: x.cons_name.to_string(),
-                                    types: x.input.iter().map(|y| y.to_string()).collect(),
+                                    types: x
+                                        .input
+                                        .iter()
+                                        .map(|ty| Self::normalize_ty_name(ty))
+                                        .collect(),
                                     cost: x.cost,
                                     unextractable: x.unextractable,
                                 })
@@ -227,27 +275,48 @@ impl EgglogTypeRegistry {
             span: span!(),
             datatypes: types,
         });
+        let mut parser = Parser::default();
         for decl in inventory::iter::<Decl> {
             match decl {
                 Decl::EgglogFuncTy {
                     name,
                     input,
                     output,
+                    merge,
+                    hidden,
+                    let_binding,
                 } => {
                     commands.push(Command::Function {
                         span: span!(),
                         name: name.to_string(),
                         schema: Schema {
-                            input: input.iter().map(<&str>::to_string).collect(),
-                            output: output.to_string(),
+                            input: input.iter().map(|ty| Self::normalize_ty_name(ty)).collect(),
+                            output: Self::normalize_ty_name(output),
                         },
-                        merge: Some(GenericExpr::Var(span!(), "new".to_owned())),
+                        merge: merge.map(|m| {
+                            parser.get_expr_from_string(None, m).unwrap_or_else(|err| {
+                                panic!("failed to parse :merge expr for `{name}`: {err}")
+                            })
+                        }),
+                        hidden: *hidden,
+                        let_binding: *let_binding,
+                    });
+                }
+                Decl::EgglogRelationTy { name, input } => {
+                    commands.push(Command::Relation {
+                        span: span!(),
+                        name: name.to_string(),
+                        inputs: input.iter().map(|ty| Self::normalize_ty_name(ty)).collect(),
                     });
                 }
                 _ => {}
             }
         }
         commands
+    }
+
+    pub fn variant_to_type_name(&self, variant_name: &str) -> Option<&'static str> {
+        self.variant2type_map.get(variant_name).copied()
     }
     /// warnning: This funciton returns things like Expr<(),Num> which means you should reform
     /// it into () after
@@ -290,13 +359,21 @@ impl<T> FromPlainValues for Value<T> {
     }
 }
 
+impl<T> FromIndexedValues for Value<T> {
+    fn from_indexed_values(values: &[egglog::Value], value_idx: &mut usize) -> Self {
+        let value = values.get(*value_idx).copied().unwrap();
+        *value_idx += 1;
+        Value::new(value)
+    }
+}
+
 #[derive(Debug)]
 pub struct StaticStrSort;
 impl BaseSort for StaticStrSort {
     type Base = &'static str;
 
     fn name(&self) -> &str {
-        "& 'static str"
+        "StaticStr"
     }
 
     fn reconstruct_termdag(
@@ -304,9 +381,8 @@ impl BaseSort for StaticStrSort {
         base_values: &egglog::sort::BaseValues,
         value: egglog::Value,
         term_dag: &mut TermDag,
-    ) -> Term {
+    ) -> TermId {
         let str: &'static str = base_values.unwrap(value);
-        let term = term_dag.lit(Literal::String(str.to_string()));
-        term
+        term_dag.lit(Literal::String(str.to_string()))
     }
 }

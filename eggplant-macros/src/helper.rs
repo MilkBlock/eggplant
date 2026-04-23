@@ -2,22 +2,39 @@ use core::panic;
 use proc_macro_crate::{FoundCrate, crate_name};
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{ToTokens, format_ident, quote};
+use std::collections::HashSet;
 use std::{
     marker::PhantomData,
     sync::{LazyLock, Mutex, MutexGuard},
 };
 use syn::{
-    DataEnum, Expr, Fields, GenericArgument, Path, PathArguments, Type, Variant, parse::Parse,
-    parse_str,
+    Attribute, DataEnum, Expr, Fields, GenericArgument, LitStr, Path, PathArguments, Type, Variant,
+    parse::Parse, parse_str,
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
-pub const EGGLOG_BASE_TY_LIST: [&'static str; 4] = ["String", "i64", "f64", "& 'static str"];
-pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 4] = [
+pub const EGGLOG_BASE_TY_LIST: [&'static str; 7] =
+    ["String", "i64", "f64", "bool", "StaticStr", "Q", "Z"];
+fn default_bigrat() -> String {
+    format!(
+        "{}::egglog::sort::Q::new(Default::default())",
+        eggplant_path()
+    )
+}
+fn default_bigint() -> String {
+    format!(
+        "{}::egglog::sort::Z::new(Default::default())",
+        eggplant_path()
+    )
+}
+pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 7] = [
     LazyTokenStream::new(|| "String::new()".to_owned()),
     LazyTokenStream::new(|| "0".to_owned()),
     LazyTokenStream::new(|| "0.".to_owned()),
+    LazyTokenStream::new(|| "false".to_owned()),
     LazyTokenStream::new(|| r#""""#.to_owned()),
+    LazyTokenStream::new(default_bigrat),
+    LazyTokenStream::new(default_bigint),
 ];
 pub struct EgglogUserDefined {
     user_defined: Mutex<UserDefined>,
@@ -40,29 +57,47 @@ impl EgglogUserDefined {
             .lock()
             .unwrap()
     }
-    pub fn set(containers: Vec<Ident>, base_types: Vec<Ident>) {
-        Self::sgl().containers = containers;
-        Self::sgl().base_types = base_types;
+    pub fn extend(containers: Vec<Ident>, base_types: Vec<Ident>) {
+        // Never store `proc_macro`-backed symbols (e.g. Ident/Span) in globals across macro
+        // invocations: they may outlive the compiler session objects and trigger
+        // "use-after-free of `proc_macro` symbol".
+        //
+        // Also: proc-macro expansion order across items is not stable enough to rely on a
+        // "set/overwrite" model. We accumulate user-defined base/container names so later macros
+        // (e.g. `#[eggplant::func]`) can classify types robustly.
+        let user_defined = &mut *Self::sgl();
+        for c in containers {
+            let s = c.to_string();
+            if !user_defined.containers.iter().any(|x| x == &s) {
+                user_defined.containers.push(s);
+            }
+        }
+        for b in base_types {
+            let s = b.to_string();
+            if !user_defined.base_types.iter().any(|x| x == &s) {
+                user_defined.base_types.push(s);
+            }
+        }
     }
     pub fn contain_container(ty: &str) -> bool {
         Self::sgl()
             .containers
             .iter()
-            .position(|x| x.to_string() == ty)
+            .position(|x| x.as_str() == ty)
             .is_some()
     }
     pub fn contain_base_type(ty: &str) -> bool {
         Self::sgl()
             .base_types
             .iter()
-            .position(|x| x.to_string() == ty)
+            .position(|x| x.as_str() == ty)
             .is_some()
     }
 }
 
 pub struct UserDefined {
-    containers: Vec<Ident>,
-    base_types: Vec<Ident>,
+    containers: Vec<String>,
+    base_types: Vec<String>,
 }
 
 pub static E: LazyTokenStream = LazyTokenStream::new(|| format!("{}::egglog", *EP.s));
@@ -295,7 +330,17 @@ impl From<&proc_macro2::TokenStream> for BasicOrComplex {
 }
 impl From<&str> for BasicOrComplex {
     fn from(ty: &str) -> Self {
-        if EGGLOG_BASE_TY_LIST.contains(&ty) {
+        // `TokenStream::to_string()` includes spaces and generics; normalize so we can reliably
+        // match "Foo<T, ()>" against a stored "Foo".
+        let mut ty = ty.replace(' ', "");
+        if let Some((head, _)) = ty.split_once('<') {
+            ty = head.to_owned();
+        }
+        if let Some((_, tail)) = ty.rsplit_once("::") {
+            ty = tail.to_owned();
+        }
+
+        if EGGLOG_BASE_TY_LIST.contains(&ty.as_str()) {
             return BasicOrComplex::BaseType;
         }
         if EgglogUserDefined::contain_base_type(&ty) {
@@ -359,7 +404,24 @@ pub fn variant2valued_ref_node_list(variant: &Variant) -> Vec<proc_macro2::Token
     variant2mapped_ident_type_list_view_container_as_complex(
         variant,
         |ident, ty| Some(quote! {#ident:#ty}),
-        |ident, ty| Some(quote! {#ident: impl #W::Insertable<#ty<(), ()>>}),
+        |ident, ty| {
+            Some({
+                let variant = format_ident!("V_{}", ident);
+                quote! {#ident: impl #W::Insertable<#ty<(), #variant>>}
+            })
+        },
+    )
+}
+pub fn variant2valued_ref_node_meta_list(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
+    variant2mapped_ident_type_list_view_container_as_complex(
+        variant,
+        |ident, ty| Some(quote! {#ident:#ty}),
+        |ident, ty| {
+            Some({
+                let variant = format_ident!("V_{}", ident);
+                quote! {#ident: impl #W::Insertable<#ty<(), #variant>, MetaTy = PR::MetaTy>}
+            })
+        },
     )
 }
 pub fn variant2ref_node_list_without_type(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
@@ -435,6 +497,191 @@ pub fn variant2field_ident(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
         |ident, _| Some(quote! {#ident}),
         |ident, _| Some(quote! {#ident}),
     )
+}
+
+fn is_eggplant_template_attr(attr: &Attribute, attr_name: &str) -> bool {
+    let segments = attr
+        .path()
+        .segments
+        .iter()
+        .map(|seg| seg.ident.to_string())
+        .collect::<Vec<_>>();
+    matches!(segments.as_slice(), [single] if single == attr_name)
+        || matches!(segments.as_slice(), [first, second] if first == "eggplant" && second == attr_name)
+}
+
+fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Result<Vec<String>> {
+    let raw = template.value();
+    let chars = raw.chars().collect::<Vec<_>>();
+    let mut idx = 0usize;
+    let mut placeholders = Vec::new();
+
+    while idx < chars.len() {
+        match chars[idx] {
+            '{' => {
+                if chars.get(idx + 1) == Some(&'{') {
+                    idx += 2;
+                    continue;
+                }
+
+                let start = idx + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end] != '}' {
+                    if chars[end] == '{' {
+                        return Err(syn::Error::new_spanned(
+                            template,
+                            format!(
+                                "nested `{{` inside #[eggplant::{attr_name}(\"...\")] placeholder is not supported"
+                            ),
+                        ));
+                    }
+                    end += 1;
+                }
+
+                if end >= chars.len() {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!("unclosed `{{` in #[eggplant::{attr_name}(\"...\")] template"),
+                    ));
+                }
+
+                let placeholder = chars[start..end].iter().collect::<String>();
+                if placeholder.is_empty() {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!(
+                            "empty `{{}}` placeholder is not allowed in #[eggplant::{attr_name}(\"...\")]"
+                        ),
+                    ));
+                }
+                let valid_ident = placeholder
+                    .chars()
+                    .next()
+                    .is_some_and(|ch| ch == '_' || ch.is_ascii_alphabetic())
+                    && placeholder
+                        .chars()
+                        .all(|ch| ch == '_' || ch.is_ascii_alphanumeric());
+                if !valid_ident {
+                    return Err(syn::Error::new_spanned(
+                        template,
+                        format!(
+                            "invalid placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")]; only simple field names like `x` or `lhs_1` are supported"
+                        ),
+                    ));
+                }
+                placeholders.push(placeholder);
+                idx = end + 1;
+            }
+            '}' => {
+                if chars.get(idx + 1) == Some(&'}') {
+                    idx += 2;
+                    continue;
+                }
+                return Err(syn::Error::new_spanned(
+                    template,
+                    format!("unmatched `}}` in #[eggplant::{attr_name}(\"...\")] template"),
+                ));
+            }
+            _ => idx += 1,
+        }
+    }
+
+    Ok(placeholders)
+}
+
+fn variant_template_tokens(variant: &Variant, attr_name: &str) -> syn::Result<TokenStream> {
+    let attrs = variant
+        .attrs
+        .iter()
+        .filter(|attr| is_eggplant_template_attr(attr, attr_name))
+        .collect::<Vec<_>>();
+
+    if attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            variant,
+            format!("only one #[eggplant::{attr_name}(\"...\")] attribute is allowed per variant"),
+        ));
+    }
+
+    let Some(attr) = attrs.first() else {
+        return Ok(quote!(None));
+    };
+
+    let template = attr.parse_args::<LitStr>()?;
+    let placeholders = extract_template_placeholders(&template, attr_name)?;
+
+    match &variant.fields {
+        Fields::Named(fields) => {
+            let field_names = fields
+                .named
+                .iter()
+                .filter_map(|field| field.ident.as_ref().map(ToString::to_string))
+                .collect::<HashSet<_>>();
+            for placeholder in placeholders {
+                if !field_names.contains(&placeholder) {
+                    return Err(syn::Error::new_spanned(
+                        &template,
+                        format!(
+                            "unknown placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")] for variant `{}`",
+                            variant.ident
+                        ),
+                    ));
+                }
+            }
+        }
+        Fields::Unit => {
+            if let Some(placeholder) = placeholders.first() {
+                return Err(syn::Error::new_spanned(
+                    &template,
+                    format!(
+                        "unit variant `{}` has no fields, but {attr_name} template references `{placeholder}`",
+                        variant.ident
+                    ),
+                ));
+            }
+        }
+        Fields::Unnamed(_) => {
+            return Err(syn::Error::new_spanned(
+                variant,
+                format!(
+                    "#[eggplant::{attr_name}(\"...\")] currently supports only named-field or unit variants"
+                ),
+            ));
+        }
+    }
+
+    Ok(quote!(Some(#template)))
+}
+
+pub fn variant_display_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    variant_template_tokens(variant, "display")
+}
+
+pub fn variant_typst_template_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    variant_template_tokens(variant, "typst")
+}
+
+pub fn variant_precedence_tokens(variant: &Variant) -> syn::Result<TokenStream> {
+    let attrs = variant
+        .attrs
+        .iter()
+        .filter(|attr| is_eggplant_template_attr(attr, "precedence"))
+        .collect::<Vec<_>>();
+
+    if attrs.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            variant,
+            "only one #[eggplant::precedence(...)] attribute is allowed per variant",
+        ));
+    }
+
+    let Some(attr) = attrs.first() else {
+        return Ok(quote!(u16::MAX));
+    };
+
+    let precedence = attr.parse_args::<syn::LitInt>()?;
+    let precedence = precedence.base10_parse::<u16>()?;
+    Ok(quote!(#precedence))
 }
 // pub fn _variant2field_ident_with_all_default(variant: &Variant) -> Vec<proc_macro2::TokenStream> {
 //     variant2mapped_ident_type_list(
@@ -558,6 +805,103 @@ pub fn variant2valued_struct_fields(variant: &Variant) -> Vec<TokenStream> {
             BasicOrComplex::ComplexType => None,
         }
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        variant_display_template_tokens, variant_precedence_tokens, variant_typst_template_tokens,
+    };
+    use quote::quote;
+    use syn::{Variant, parse_quote};
+
+    #[test]
+    fn display_template_accepts_named_placeholders() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{x} + {f}")]
+            MDiff { x: Math, f: Math }
+        };
+        let tokens = variant_display_template_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("{x} + {f}")).to_string());
+    }
+
+    #[test]
+    fn display_template_rejects_unknown_placeholder() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{x} + {missing}")]
+            MDiff { x: Math, f: Math }
+        };
+        let err = variant_display_template_tokens(&variant).unwrap_err();
+        assert!(err.to_string().contains("unknown placeholder `missing`"));
+    }
+
+    #[test]
+    fn display_template_rejects_tuple_variant() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{value}")]
+            Wrap(Math)
+        };
+        let err = variant_display_template_tokens(&variant).unwrap_err();
+        assert!(
+            err.to_string()
+                .contains("currently supports only named-field or unit variants")
+        );
+    }
+
+    #[test]
+    fn display_template_allows_escaped_braces() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::display("{{x}} -> {x}")]
+            Wrap { x: Math }
+        };
+        let tokens = variant_display_template_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(Some("{{x}} -> {x}")).to_string());
+    }
+
+    #[test]
+    fn typst_template_rejects_duplicate_attrs() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::typst("$x + $f$")]
+            #[eggplant::typst("diff({x}, {f})")]
+            MDiff { x: Math, f: Math }
+        };
+        let err = variant_typst_template_tokens(&variant).unwrap_err();
+        assert!(err.to_string().contains("only one #[eggplant::typst"));
+    }
+
+    #[test]
+    fn typst_template_accepts_valid_single_attr() {
+        let variant: Variant = parse_quote! {
+            #[typst("diff({x}, {f})")]
+            MDiff { x: Math, f: Math }
+        };
+        let tokens = variant_typst_template_tokens(&variant).unwrap();
+        assert_eq!(
+            tokens.to_string(),
+            quote!(Some("diff({x}, {f})")).to_string()
+        );
+    }
+
+    #[test]
+    fn precedence_accepts_valid_integer() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::precedence(40)]
+            Add { lhs: Expr, rhs: Expr }
+        };
+        let tokens = variant_precedence_tokens(&variant).unwrap();
+        assert_eq!(tokens.to_string(), quote!(40u16).to_string());
+    }
+
+    #[test]
+    fn precedence_rejects_duplicate_attrs() {
+        let variant: Variant = parse_quote! {
+            #[eggplant::precedence(10)]
+            #[precedence(20)]
+            Add { lhs: Expr, rhs: Expr }
+        };
+        let err = variant_precedence_tokens(&variant).unwrap_err();
+        assert!(err.to_string().contains("only one #[eggplant::precedence"));
+    }
 }
 
 pub fn variant2mapped_ident_type_list_view_container_as_complex(

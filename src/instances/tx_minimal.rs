@@ -1,10 +1,12 @@
-use super::*;
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
+use crate::wrap::*;
 use egglog::{EGraph, SerializeConfig, ast::Command};
-use std::{path::Path, sync::Mutex};
+use std::{
+    path::Path,
+    sync::{Arc, Mutex},
+};
 
 pub struct TxMinimal {
-    egraph: Mutex<EGraph>,
+    pub egraph: Arc<Mutex<EGraph>>,
 }
 
 /// tx with miminal feature (only new function is supported)
@@ -12,11 +14,11 @@ pub struct TxMinimal {
 impl TxMinimal {
     pub fn new_with_type_defs(commands: Vec<Command>) -> Self {
         Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 e.run_program(commands).unwrap();
                 e
-            }),
+            })),
         }
     }
     pub fn new() -> Self {

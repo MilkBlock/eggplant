@@ -1,0 +1,1730 @@
+// use core::panic;
+use darling::{Error, FromMeta, ast::NestedMeta};
+
+use crate::enum_slot_related::{ctx_insert_fn_ts_with_pr_without_meta, new_fn_without_meta_ts};
+use crate::helper::*;
+use crate::helper::{E, INVE, W};
+use crate::vanilla::ensure_PR_contained;
+use heck::ToSnakeCase;
+use proc_macro2::{Ident, TokenStream};
+use quote::{ToTokens, format_ident, quote};
+use syn::{Data, DeriveInput, Field, Type, Visibility, parse_macro_input, parse_quote};
+
+use crate::{EgglogUserDefined, enum_related::*};
+
+/// generate `egglog` language from `rust native structure`   
+///
+/// # Example:  
+///     
+/// ```
+/// #[allow(unused)]
+/// #[derive(Debug, Clone, EgglogTy)]
+/// enum Duration {
+///     DurationBySecs {
+///         seconds: f64,
+///     },
+///     DurationByMili {
+///         milliseconds: f64,
+///     },
+/// }
+/// ```
+/// is transformed to
+///
+///
+/// ```
+/// #[derive(Debug, Clone)]
+/// pub struct DurationNode {
+///     ty: _DurationNode,
+///     #[deref]
+///     sym: DurationSym,
+/// }
+///
+/// fn to_egglog(&self) -> String {
+///     match &self.ty {
+///         _DurationNode::DurationBySecs { seconds } => {
+///             format!("(let {} (DurationBySecs  {:.3}))", self.sym, seconds)
+///         }
+///         _DurationNode::DurationByMili { milliseconds } => {
+///             format!("(let {} (DurationByMili  {:.3}))", self.sym, milliseconds)
+///         }
+///     }
+/// }
+/// impl crate::EgglogTy for Duration {
+///     const SORT_DEF: crate::TySort =
+///         crate::TySort(stringify!((Duration()(DurationByMili f64))));
+/// }
+/// ```
+/// so that you can directly use to_egglog to generate let statement in eggglog
+///
+/// also there is a type def statement generated and specialized new function
+///
+///
+pub fn slotted_dsl(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    #[derive(Debug, FromMeta)]
+    struct TyMeta {
+        /// user defined base types
+        #[darling(multiple)]
+        base: Vec<Ident>,
+        #[darling(multiple)]
+        container: Vec<Ident>,
+    }
+    let attr_args = match NestedMeta::parse_meta_list(attr.into()) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+    };
+    let args = match TyMeta::from_list(&attr_args) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(e.write_errors()),
+    };
+    EgglogUserDefined::extend(args.container, args.base);
+
+    let input = parse_macro_input!(item as DeriveInput);
+    let name = &input.ident;
+
+    if matches!(input.data, Data::Struct(_)) {
+        EgglogUserDefined::extend(vec![name.clone()], vec![]);
+    }
+
+    let name_snake_case = format_ident!("{}", name.to_string().to_snake_case());
+    let name_egglogty_impl = format_ident!("{}", name);
+
+    let type_def_expanded = match &input.data {
+        Data::Enum(data_enum) => {
+            let constructors = data_enum
+                .variants
+                .iter()
+                .map(|variant| -> syn::Result<TokenStream> {
+                    let tys = variant2tys(&variant);
+                    let (_variant_marker, variant_name) = variant2marker_name(variant);
+                    let new_from_term_dyn_fn_name = format_ident!(
+                        "new_{}_from_term_dyn",
+                        variant_name.to_string().to_snake_case()
+                    );
+                    let field_names = variant
+                        .fields
+                        .iter()
+                        .map(|field| {
+                            field
+                                .ident
+                                .as_ref()
+                                .expect("dsl variants require named fields")
+                        })
+                        .collect::<Vec<_>>();
+                    let field_kinds = variant
+                        .fields
+                        .iter()
+                        .map(
+                            |field| match BasicOrComplex::from(&field.ty.to_token_stream()) {
+                                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                                    quote!(#W::SchemaFieldKind::Base)
+                                }
+                                BasicOrComplex::UserDefinedContainerType => {
+                                    quote!(#W::SchemaFieldKind::Container)
+                                }
+                                BasicOrComplex::ComplexType => {
+                                    quote!(#W::SchemaFieldKind::Complex)
+                                }
+                            },
+                        )
+                        .collect::<Vec<_>>();
+                    let display_template = variant_display_template_tokens(variant)?;
+                    let typst_template = variant_typst_template_tokens(variant)?;
+                    let precedence = variant_precedence_tokens(variant)?;
+                    // Parse cost attribute
+                    let cost_value = variant
+                        .attrs
+                        .iter()
+                        .find(|attr| attr.path().is_ident("cost"))
+                        .and_then(|attr| {
+                            attr.parse_args::<syn::LitInt>()
+                                .ok()
+                                .and_then(|lit| lit.base10_parse::<u64>().ok())
+                        });
+                    let cost_value = cost_value
+                        .map(|v| quote! { Some(#v) })
+                        .unwrap_or(quote! { None });
+
+                    Ok(quote! {  #W::TyConstructor {
+                        cons_name: stringify!(#variant_name),
+                        input:&[ #(stringify!(#tys)),* ] ,
+                        input_field_names: &[ #(stringify!(#field_names)),* ],
+                        input_field_kinds: &[ #(#field_kinds),* ],
+                        output:stringify!(#name),
+                        cost :#cost_value,
+                        display_template: #display_template,
+                        typst_template: #typst_template,
+                        precedence: #precedence,
+                        term_to_node: #name::<(),()>::#new_from_term_dyn_fn_name,
+                        unextractable :false,
+                    } })
+                })
+                .collect::<syn::Result<Vec<_>>>();
+            let constructors = match constructors {
+                Ok(v) => v,
+                Err(err) => return err.to_compile_error().into(),
+            };
+            let expanded = quote! {
+                impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
+                    const TY_NAME:&'static str = stringify!(#name);
+                    const TY_NAME_LOWER:&'static str = stringify!(#name_snake_case);
+                    type Valued = V::ValuedWithDefault<Self>;
+                    type EnumVariantMarker = V;
+                }
+                impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogMultiConTy for #name_egglogty_impl<T,V> {
+                    const CONSTRUCTORS : #W::TyConstructors= #W::TyConstructors(&[
+                        #(#constructors),*
+                    ]);
+                }
+                const _:() = {
+                    use #INVE;
+                    #INVE::submit!{
+                        #W::Decl::EgglogMultiConTy {
+                            name: <#name_egglogty_impl::<()> as #W::EgglogTy>::TY_NAME,
+                            cons: &<#name_egglogty_impl::<()> as #W::EgglogMultiConTy>::CONSTRUCTORS
+                        }
+                    }
+                };
+            };
+            expanded
+        }
+        Data::Struct(data_struct) => {
+            // process (sort A (Vec M))  such things ..
+            let f = data_struct
+                .fields
+                .iter()
+                .nth(0)
+                .expect("Struct should only have one container field");
+            let container_full_ty = &f.ty;
+            let first_generic = get_first_generic(&f.ty);
+            let first_generic_ty = format_ident!("{}", first_generic.to_token_stream().to_string());
+            let (is_container, container_ty) = is_container_type(&f.ty);
+            if is_container {
+                let container_expanded = quote! {
+                    impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogTy for #name_egglogty_impl<T,V> {
+                        const TY_NAME:&'static str = stringify!(#name);
+                        const TY_NAME_LOWER:&'static str = stringify!(#name_snake_case);
+                        type Valued = V::ValuedWithDefault<Self>;
+                        type EnumVariantMarker = V;
+                    }
+                    impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy> #W::EgglogContainerTy for #name_egglogty_impl<T,V> {
+                        type EleTy = #first_generic_ty;
+                    }
+                    #INVE::submit!{
+                        #W::Decl::EgglogContainerTy {
+                            name: <#name_egglogty_impl::<()> as #W::EgglogTy>::TY_NAME,
+                            ele_ty_name: <<#name_egglogty_impl as #W::EgglogContainerTy>::EleTy as #W::EgglogTy>::TY_NAME,
+                            constructor_str:<#container_full_ty as #W::BoxedContainer>::CONSTRUCTOR_STR,
+                            ty_str:<#container_full_ty as #W::BoxedContainer>::TY_STR,
+                            term_to_node: #name::<(),()>::new_from_term_dyn
+                        }
+                    }
+                    // #INVE::submit! { #W::UserContainerSort{ sort_insert_fn: |e| egglog::prelude::add_leaf_sort(e, #sort, #E::span!()).unwrap() }}
+                };
+                container_expanded
+            } else {
+                panic!(
+                    "only support VecContainer or SetContainer for Container, {} is not supported",
+                    container_ty
+                )
+            }
+        }
+        _ => panic!("only support enum"),
+    };
+    let struct_def_expanded = match &input.data {
+        Data::Struct(data_struct) => {
+            // process (sort A (Vec M))  such things ..
+            let name_node_alias = format_ident!("{}NodeAlias", name);
+            let name_node = format_ident!("{}", name);
+            let name_inner = format_ident!("{}Inner", name);
+            let name_counter = format_ident!("{}_COUNTER", name.to_string().to_uppercase());
+            let f = data_struct
+                .fields
+                .iter()
+                .nth(0)
+                .expect("Struct should only have one Vec field");
+            let field_name = &f.ident.as_ref().unwrap();
+            let (_is_container, container_ty) = is_container_type(&f.ty);
+            let first_generic = get_first_generic(&f.ty);
+            // let field_sym_ty = get_sym_type(first_generic);
+            let (field_node, is_basic_ty) =
+                match first_generic.to_token_stream().to_string().as_str() {
+                    x if PANIC_TY_LIST.contains(&x) => {
+                        panic!("{} not supported", x)
+                    }
+                    x if EGGLOG_BASE_TY_LIST.contains(&x) => {
+                        (first_generic.to_token_stream(), true)
+                    }
+                    _ => {
+                        let first_generic_ident = match &first_generic {
+                            syn::Type::Path(type_path) => {
+                                type_path
+                                    .path
+                                    .segments
+                                    .last()
+                                    .expect("impossible")
+                                    .clone()
+                                    .ident
+                            }
+                            _ => panic!(
+                                "{} type should be simple path",
+                                first_generic.to_token_stream().to_string()
+                            ),
+                        };
+                        let _first_generic = format_ident!("{}", first_generic_ident);
+                        // postfix_type(&first_generic,"Node",Some("T")
+                        (quote!(dyn AsRef<#_first_generic<T, ()>>), false)
+                    }
+                };
+            let to_egglog_impl = if is_basic_ty {
+                quote! {
+                    impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V>
+                    {
+                        fn to_egglog_string(&self) -> Option<String>{
+                            Some(format!("(let {} (vec-of {}))",self.node.sym,
+                            if let #W::TyPH::Ty(ty) = &self.node.ty{
+                                ty.iter_mut().fold("".to_owned(), |s,item| s+ item.as_str()+" " )
+                            }else {
+                                "".to_string()
+                            }))
+                        }
+                        fn to_egglog(&self) -> #W::EgglogAction{
+                            #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
+                                #E::ast::GenericExpr::Call(self.node.span.to_span(),"vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
+                            )
+                        }
+                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &#EP::dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                            let vec = if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
+                                inner.into_iter().map(|x| ctx.intern_base(x)).collect()
+                            }else {
+                                panic!()
+                            };
+                            ctx.intern_container::<Self, #W::#container_ty<#name_node<(),()>>>(
+                                    vec.into()
+                            ).val
+                        }
+                    }
+                }
+            } else {
+                quote! {
+                    impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
+                        fn to_egglog_string(&self) -> Option<String>{
+                            Some(format!("(let {} (vec-of {}))",self.cur_sym(),
+                            if let #W::TyPH::Ty(ty) = &self.node.ty{
+                                ty.iter().fold("".to_owned(), |s,item| s+ item.as_str()+" " )
+                            }else {"".to_string()}))
+                        }
+                        fn to_egglog(&self) -> #W::EgglogAction{
+                            #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
+                                #E::ast::GenericExpr::Call(self.node.span.to_span(), "vec-of", self.node.ty.unwrap_ref().iter().map(|x| x.to_var()).collect()).to_owned_str()
+                            )
+                        }
+                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                            // use ctx.insert to insert
+                            ctx.intern_container::<Self, #W::#container_ty<#name_node<(),()>>>(
+                                if let #name_inner::Inner{inner} =  self.node.ty.unwrap_ref() {
+                                inner.into_iter().map(|sym|
+                                    if let Some(value) = sym_to_value_map.get(&sym.erase()) {
+                                        value.clone()
+                                    } else {
+                                        panic!("{}'s value not found, maybe haven't committed", sym)
+                                    }).collect()
+                                }else {
+                                    panic!()
+                                }
+                            ).val
+                        }
+                    }
+                    impl<T:#W::TxSgl + #W::VersionCtlSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
+                        fn locate_latest(&mut self){
+                            T::set_latest(self.cur_sym_mut());
+                            self.node.ty.unwrap_mut().iter_mut().for_each(|item| {T::set_latest(item.erase_mut())});
+                        }
+                        fn locate_next(&mut self){
+                            T::set_next(self.cur_sym_mut());
+                            self.node.ty.unwrap_mut().iter_mut().for_each(|item| {T::set_next(item.erase_mut())});
+                        }
+                        fn locate_prev(&mut self){
+                            T::set_prev(self.cur_sym_mut());
+                            self.node.ty.unwrap_mut().iter_mut().for_each(|item| {T::set_next(item.erase_mut())});
+                        }
+                    }
+                }
+            };
+            let field_assignment = if is_basic_ty {
+                quote! {
+                    children.map(|x| match term_dag.get(x) {
+                        #E::Term::Lit(lit) => lit.deliteral(),
+                        #E::Term::Var(v) => panic!(),
+                        #E::Term::App(app,v) => panic!(),
+                    }).collect()
+                }
+            } else {
+                quote! {
+                    children.iter().map(|x| term2sym.get(x).unwrap().typed()).collect()
+                }
+            };
+            let rule_ctx_trait_and_impl = {
+                let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
+                let insert_fn_name =
+                    format_ident!("insert_{}", name_node.to_string().to_snake_case());
+                quote! {
+                    pub trait #ctx_trait_name {
+                        #[track_caller]
+                        fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>;
+                    }
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_,'_> {
+                        #[track_caller]
+                        fn #insert_fn_name(&self, #field_name: #W::#container_ty<#first_generic>) -> #W::Value<self::#name_node<(),()>>{
+                            use #W::Value;
+                            use #W::Insertable;
+                            self.intern_container(#field_name)
+                        }
+                    }
+                }
+            };
+
+            let field_ty = match first_generic.to_token_stream().to_string().as_str() {
+                x if PANIC_TY_LIST.contains(&x) => {
+                    panic!("{} not supported", x)
+                }
+                x if EGGLOG_BASE_TY_LIST.contains(&x) => first_generic.to_token_stream(),
+                _ => {
+                    let first_generic = match &first_generic {
+                        Type::Path(type_path) => {
+                            type_path
+                                .path
+                                .segments
+                                .last()
+                                .expect("impossible")
+                                .clone()
+                                .ident
+                        }
+                        _ => panic!(
+                            "{} keep the type simple!",
+                            first_generic.to_token_stream().to_string()
+                        ),
+                    };
+                    format_ident!("{}", first_generic).to_token_stream()
+                }
+            };
+            let (is_container, container_ty) = is_container_type(&f.ty);
+            let container_expanded = match (is_container, is_basic_ty) {
+                (true, false) => {
+                    // MARK: Struct Expanded
+                    quote! {
+                        pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
+                        #[allow(unused)]
+                        pub struct #name_node<T: #W::NodeDropperSgl =(), V: #W::EgglogEnumVariantTy=()>
+                        where Self: #W::EgglogNode + #W::EgglogTy {
+                            node:#name_node_alias<T,V>
+                        }
+                        #[allow(unused)]
+                        #[derive(Clone, #ENM::EnumDiscriminants)]
+                        pub enum #name_inner {
+                            Inner {inner:#W::Syms<#field_ty> },
+                        }
+                        const _:() = {
+                            use #E::prelude::*;
+                            use #E::*;
+                            use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr};
+                            use #INVE;
+                            impl #W::NodeInner for #name_inner{
+                                fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
+                                    self.iter_mut().map(|s| s.erase_mut()).collect()
+                                }
+                                fn succs(&self) -> Vec<#W::Sym>{
+                                    self.iter().map(|s| s.erase()).collect()
+                                }
+                            }
+                            impl std::ops::Deref for #name_inner { type Target = #W::Syms<#field_ty> ; fn deref(&self) -> &Self::Target { let #name_inner::Inner { inner } = self; inner } }
+                            impl std::ops::DerefMut for #name_inner { fn deref_mut(&mut self) -> &mut Self::Target { let #name_inner::Inner { inner } = self; inner } }
+                            use std::marker::PhantomData;
+                            static #name_counter: #W::TyCounter<#name_egglogty_impl> = #W::TyCounter::new();
+                            impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                                #[track_caller]
+                                pub fn query_leaf() -> self::#name_node<T,()>{
+                                    let node = #W::Node{
+                                        ty: #W::TyPH::PH,
+                                        span:Some(std::panic::Location::caller()),
+                                        sym: #name_counter.next_sym(),
+                                        _p: PhantomData, _s: PhantomData,
+                                        sgl_specific: T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    T::on_new(&node);
+                                    node
+                                }
+                                #[track_caller]
+                                pub fn query(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
+                                    let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
+                                    let node = #W::Node{
+                                        ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
+                                        span:Some(std::panic::Location::caller()),
+                                        sym: #name_counter.next_sym(),
+                                        _p: PhantomData, _s: PhantomData,
+                                        sgl_specific: T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    T::on_new(&node);
+                                    node
+                                }
+                            }
+                            impl<T:#W::TxSgl + #W::NonPatRecSgl> self::#name_node<T,()> {
+                                #[track_caller]
+                                pub fn new(#field_name:Vec<&#field_node>) -> self::#name_node<T,()>{
+                                    let #field_name = #field_name.into_iter().map(|r| r.as_ref().node.sym).collect();
+                                    let node = #W::Node{
+                                        ty: #W::TyPH::Ty(#name_inner::Inner{inner:#field_name}),
+                                        span:Some(std::panic::Location::caller()),
+                                        sym: #name_counter.next_sym(),
+                                        _p: PhantomData, _s: PhantomData,
+                                        sgl_specific: T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    T::on_new(&node);
+                                    node
+                                }
+                                // /// with no side-effect (will not send command to EGraph or change node in WorkAreaGraph)
+                                // #[track_caller]
+                                // pub fn _new(#field_name:Vec<&#field_node>) -> #name_node<T,()>{
+                                //     let ty = #name_inner{ v: #field_name.into() };
+                                //     use std::panic::Location;
+                                //     let node = Node { ty, sym: #name_counter.next_sym(),span:Some(Location::caller()), _p:PhantomData, _s:PhantomData::<()>};
+                                //     let node = #name_node {node};
+                                //     node
+                                // }
+                                #[track_caller]
+                                pub fn new_from_term(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> self::#name_node<T,()>{
+                                    let children = match term_dag.get(term_id){
+                                        #E::Term::App(app,v) => v,
+                                        _=> panic!()
+                                    };
+                                    let ty = #W::TyPH::Ty(#name_inner::Inner{inner:#field_assignment });
+                                    let node = #W::Node {
+                                        ty,
+                                        sym: #name_counter.next_sym(),
+                                        span:Some(std::panic::Location::caller()),
+                                        _p:PhantomData,
+                                        _s:PhantomData,
+                                        sgl_specific:T::OwnerSpecDataInNode::default()
+                                    };
+                                    let node = self::#name_node {node};
+                                    term2sym.insert(term_id, node.cur_sym());
+                                    node
+                                }
+                                #[track_caller]
+                                pub fn new_from_term_dyn(term_id:#E::TermId, term_dag: &#E::TermDag, term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>) -> Box<dyn #W::EgglogNode>{
+                                    Box::new(Self::new_from_term(term_id, term_dag, term2sym))
+                                }
+                            }
+                            impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::EgglogNode for self::#name_node<T,V> {
+                                fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{ use #W::NodeInner;
+                                    self.node.ty.map_ty_mut_or_else(||vec![],|_,x|x.iter_mut().collect(),|ty|ty.succs_mut())
+                                }
+                                fn succs(&self) -> Vec<#W::Sym>{ use #W::NodeInner;
+                                    self.node.ty.map_ty_ref_or_else(||vec![],|_,x|x.clone(),|ty|ty.succs())
+                                }
+                                fn roll_sym(&mut self) -> #W::Sym{
+                                    let next_sym = #name_counter.next_sym();
+                                    self.node.sym = next_sym;
+                                    next_sym.erase()
+                                }
+                                fn cur_sym(&self) -> #W::Sym{ self.node.sym.erase() }
+                                fn cur_sym_mut(&mut self) -> &mut #W::Sym{ self.node.sym.erase_mut() } fn clone_dyn(&self) -> Box<dyn #W::EgglogNode>{ Box::new(self.clone()) }
+                                fn ty_name(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME }
+                                fn ty_name_lower(&self) -> &'static str{ <#name_node::<(),()> as #W::EgglogTy>::TY_NAME_LOWER }
+                                fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
+                                fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
+                                fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
+                                fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
+                                fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
+                                fn precedence(&self) -> u16 { V::PRECEDENCE }
+                                #[track_caller]
+                                fn to_term(&self,term_dag: &mut #E::TermDag,
+                                    sym2term: &mut std::collections::HashMap< #W::Sym, #E::TermId>,
+                                    sym2ph_name: & std::collections::HashMap<#W::Sym, &'static str>) -> #E::TermId{
+                                    panic!()
+                                }
+                                #[track_caller]
+                                fn add_table_fact( &self, query_builder:&mut #W::FactsBuilder) {
+                                    use #W::EgglogTy;
+
+                                }
+                            }
+                            impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
+                                #[track_caller] fn collect_vars( &self, vars:&mut Vec<(#W::VarName, #W::SortName)>
+                                ) {
+                                    use #W::EgglogTy;
+                                    match &self.node.ty{
+                                        #W::TyPH::Ty(_) => {
+                                            panic!("can't call collect_var on non-pattern-def EgglogNode")
+                                        },
+                                        // with basic fields
+                                        #W::TyPH::VarPH(dis, succs) => {
+                                            // vars.push((self.cur_sym().to_string(), Self::TY_NAME.to_string()));
+                                            // match dis{
+                                            //     #(#collect_var_match_arms),*
+                                            // }
+                                            panic!("vec should not be VarPH")
+                                        },
+                                        // only itself as complex field
+                                        #W::TyPH::PH => {
+                                            vars.push((self.cur_sym().to_string(), <Self as #W::EgglogTy>::TY_NAME.to_string()));
+                                        }
+                                    };
+                                }
+                            }
+                            impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::BindingNames for self::#name_node<T,V> {
+                                #[track_caller]
+                                fn collect_binding_names(&self, names:&mut Vec<#W::VarName>) {
+                                    use #W::EgglogTy;
+                                    match &self.node.ty{
+                                        #W::TyPH::Ty(_) => {
+                                            panic!("can't call collect_binding_names on non-pattern-def EgglogNode")
+                                        },
+                                        #W::TyPH::VarPH(_, _) => {
+                                            panic!("vec should not be VarPH")
+                                        },
+                                        #W::TyPH::PH => {
+                                            names.push(self.cur_sym().to_string());
+                                        }
+                                    };
+                                }
+                            }
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
+                                fn as_ref(&self) -> &self::#name_node<T, ()> {
+                                    unsafe {
+                                        &*(self as *const self::#name_node<T,V> as *const self::#name_node<T,()>)
+                                    }
+                                }
+                            }
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
+                                type MetaTy = ();
+                                fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
+                                    #W::Value::new(self.erase())
+                                }
+                                fn meta(&self) -> Option<Self::MetaTy>{
+                                    None
+                                }
+                            }
+                            impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
+                                fn clone(&self) -> Self {
+                                    Self {
+                                        node:
+                                            #W::Node {
+                                                ty: self.node.ty.clone(),
+                                                span: self.node.span,
+                                                sym: self.node.sym.clone(),
+                                                _p:PhantomData,
+                                                _s:PhantomData,
+                                                sgl_specific: T::OwnerSpecDataInNode::default()
+                                            }
+                                    }
+                                }
+                            }
+
+                            impl<T:#W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,V>
+                            {
+                                fn drop(&mut self) {
+                                    T::on_drop(self);
+                                }
+                            }
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
+                                type Target = #W::#container_ty<#first_generic>;
+                                fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
+                                    #W::Value::new(val)
+                                }
+                            }
+                            #to_egglog_impl
+                        };
+                        #rule_ctx_trait_and_impl
+                    }
+                }
+                (true, true) => {
+                    // Container over a base sort (e.g. `(Vec i64)` / `(Set i64)`).
+                    //
+                    // We currently support this as a *value-only* sort wrapper:
+                    // - It participates in type registration via `Decl::EgglogContainerTy`.
+                    // - It can be inserted/devalued via `RuleCtx::{intern_container,devalue}`.
+                    // - Term reconstruction (`term_to_node`) is not supported yet (will panic if used).
+                    quote! {
+                        #[allow(unused)]
+                        pub struct #name_node<T: #W::NodeDropperSgl =(), V: #W::EgglogEnumVariantTy=()>
+                        where Self: #W::EgglogTy {
+                            _p: std::marker::PhantomData<(T, V)>,
+                        }
+
+                        const _:() = {
+                            use #E::*;
+                            use #INVE;
+
+                            impl<T:#W::NodeDropperSgl> #name_node<T,()> {
+                                #[track_caller]
+                                pub fn new_from_term_dyn(
+                                    _term_id:#E::TermId,
+                                    _term_dag: &#E::TermDag,
+                                    _term2sym:&mut std::collections::HashMap<#E::TermId, #W::Sym>,
+                                ) -> Box<dyn #W::EgglogNode> {
+                                    panic!("container term reconstruction is not supported for base containers yet")
+                                }
+                            }
+
+                            impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
+                                type Target = #W::#container_ty<#first_generic>;
+                                fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
+                                    #W::Value::new(val)
+                                }
+                            }
+                        };
+
+                        #rule_ctx_trait_and_impl
+                    }
+                }
+                _ => {
+                    panic!("only support complex type container");
+                }
+            };
+            container_expanded
+        }
+        Data::Enum(data_enum) => {
+            let name_node_alias = format_ident!("{}NodeAlias", name);
+            let name_node = format_ident!("{}", name);
+            let _name_node = format_ident!("_{}", name);
+            let name_inner = format_ident!("{}Inner", name);
+            let name_counter = format_ident!("{}_COUNTER", name.to_string().to_uppercase());
+
+            let variants_def_of_node_with_syms = data_enum
+                .variants
+                .iter()
+                .map(|variant| {
+                    let types_and_idents = variant2sym_typed_ident_list(variant);
+                    let (_variant_marker, variant_name) = variant2marker_name(variant);
+                    quote! {#variant_name {#( #types_and_idents ),*  }}
+                })
+                .collect::<Vec<_>>();
+
+            let to_egglog_string_match_arms = data_enum.variants.iter().map(|variant| {
+                let variant_idents = variant2field_ident(variant);
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
+                let s = " {:.3}".repeat(variant_idents.len());
+                let format_str = format!("(let {{}} ({} {}))", variant_name, s);
+                quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
+                    Some(format!(#format_str ,self.node.sym, #(#variant_idents),*))
+                }}
+            });
+            let succs_match_arms = data_enum.variants.iter().map(|variant| {
+                let variant_idents = variant2field_ident(variant);
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
+                let vec_needed_syms: Vec<_> = variant2field_list_complex_ident_only(variant);
+                quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
+                    vec![#(#vec_needed_syms.erase()),*]
+                }}
+            });
+            let succs_mut_match_arms = data_enum.variants.iter().map(|variant| {
+                let variant_idents = variant2field_ident(variant);
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
+                let vec_needed_syms: Vec<_> = variant2field_list_complex_ident_only(variant);
+                quote! {#name_inner::#variant_name {#( #variant_idents ),*  } => {
+                    vec![#(#vec_needed_syms.erase_mut()),*]
+                }}
+            });
+            let to_egglog_match_arms = data_enum.variants.iter().map(|variant| {
+                let variant_fields = variant2field_ident(variant);
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
+                quote! {#name_inner::#variant_name {#( #variant_fields ),*  } => {
+                    #E::ast::GenericAction::Let(span!(), self.cur_sym().to_string(),
+                        #E::ast::GenericExpr::Call(span!(),
+                            stringify!(#variant_name),
+                            vec![#(#variant_fields.to_var()),*]).to_owned_str()
+                    )
+                }}
+            });
+            let locate_latest_match_arms = data_enum.variants.iter().map(|variant| {
+                let variant_idents = variant2field_ident(variant);
+                let mapped_variant_idents = variant2mapped_ident_type_list(
+                    variant,
+                    |_, _| Some(quote! {}),
+                    |x, _| Some(quote! { T::set_latest(#x.erase_mut());}),
+                );
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
+                quote! {
+                    #name_inner::#variant_name {#(#variant_idents),* } => {
+                        T::set_latest(self.node.sym.erase_mut());
+                        #(#mapped_variant_idents)*
+                    }
+                }
+            });
+
+            let locate_next_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| locate_next_match_arms_ts(x, &name_inner));
+            let locate_prev_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| locate_prev_match_arms_ts(x, &name_inner));
+
+            let to_term_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| to_term_match_arms_ts(x, &name_inner));
+            let add_table_fact_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| add_table_fact_match_arms_ts(x, &name_inner))
+                .collect::<Vec<_>>();
+            let collect_var_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| collect_var_match_arms_ts(x, &name_inner))
+                .collect::<Vec<_>>();
+            let collect_binding_name_match_arms = data_enum
+                .variants
+                .iter()
+                .map(|x| collect_binding_name_match_arms_ts(x, &name_inner))
+                .collect::<Vec<_>>();
+
+            let native_egglog_match_arms = data_enum.variants.iter().map(|variant| {
+                let variant_idents = variant2field_ident(variant);
+                let (_variant_marker, variant_name) = variant2marker_name(variant);
+                let insert_fn_name =
+                    format_ident!("insert_{}", variant_name.to_string().to_snake_case());
+
+                // Use variant2mapped_ident_type_list to handle field mapping
+                let get_value_calls = variant2mapped_ident_type_list_view_container_as_complex(
+                    variant,
+                    |ident, _| {
+                        // for basic type use source value
+                        Some(quote! {
+                            let #ident = #ident.clone();
+                        })
+                    },
+                    |complex_ident, complex_ty| {
+                        // for complex type，fetch value from sym_to_value_map 
+                        // transform Sym<Expr> into Sym as key
+                        Some(quote! {
+                            let #complex_ident: (#W::Value<#complex_ty<(),()>> , SlotMeta)= (#W::Value::new(sym_to_value_map.get(&#complex_ident.erase()).unwrap().clone()),
+                            *T::meta_of(#complex_ident.erase()).downcast().expect("meta type mismatched")
+                        );
+                        })
+                    },
+                );
+
+                let field_args = variant2mapped_ident_type_list(
+                    variant,
+                    |ident, _| Some(quote! { #ident }),
+                    |ident, _| Some(quote! { #ident }),
+                );
+
+                quote! {
+                    #name_inner::#variant_name { #(#variant_idents),* } => {
+                        use eggplant::prelude::SlotMeta;
+                        #(#get_value_calls)*
+                        let value = ctx.#insert_fn_name(#(#field_args),*).to_value(&ctx.ctx);
+                        sym_to_value_map.insert(sym, value.erase());
+                        value.erase()
+                    }
+                }
+            });
+
+            let (new_fns, new_fn_names, new_fn_args, new_fn_arg_idents): (
+                Vec<proc_macro2::TokenStream>,
+                Vec<Ident>,
+                Vec<Vec<TokenStream>>,
+                Vec<Vec<TokenStream>>,
+            ) = data_enum
+                .variants
+                .iter()
+                .map(|x| new_fn_without_meta_ts(x, &name_node, &name_inner, &name_counter))
+                .collect();
+
+            let (query_fns, query_fn_names, query_fn_args, query_fn_arg_idents): (
+                Vec<proc_macro2::TokenStream>,
+                Vec<Ident>,
+                Vec<Vec<TokenStream>>,
+                Vec<Vec<TokenStream>>,
+            ) = data_enum
+                .variants
+                .iter()
+                .map(|x| query_fn_ts(x, &name_node, &name_inner, &name_counter))
+                .collect();
+
+            let (
+                query_leaf_fns,
+                _query_leaf_fn_names,
+                _query_leaf_fn_args,
+                _query_leaf_fn_arg_idents,
+            ): (
+                Vec<proc_macro2::TokenStream>,
+                Vec<Ident>,
+                Vec<Vec<TokenStream>>,
+                Vec<Vec<TokenStream>>,
+            ) = data_enum
+                .variants
+                .iter()
+                .map(|x| query_leaf_fns_tt(x, &name_node, &name_inner, &name_counter))
+                .collect();
+            let placeholder_query_leaf_fn_name = if data_enum
+                .variants
+                .iter()
+                .any(|v| v.ident.to_string().to_snake_case() == "leaf")
+            {
+                format_ident!("query_any_leaf")
+            } else {
+                format_ident!("query_leaf")
+            };
+            let enum_variant_tys_def = data_enum.variants.iter().map(|variant| {
+                let (variant_marker, variant_name) = variant2marker_name(variant);
+                let display_template = variant_display_template_tokens(variant)?;
+                let typst_template = variant_typst_template_tokens(variant)?;
+                let precedence = variant_precedence_tokens(variant)?;
+
+                let valued_variant_name = format_ident!("Valued{}", variant_name);
+                let values_with_types = variant2valued_struct_fields(variant);
+                let basic_field_idents = variant2mapped_ident_type_list(
+                    variant,
+                    |basic, _| Some(quote!(#basic)),
+                    |_, _| None,
+                );
+                let complex_field_idents = variant2mapped_ident_type_list(
+                    variant,
+                    |_, _| None,
+                    |complex, _| Some(quote!(#complex)),
+                );
+                let basic_field_types = variant2mapped_ident_type_list(
+                    variant,
+                    |_, basic_type| Some(quote!(#basic_type)),
+                    |_, _| None,
+                );
+                let basic_valued_field_types = variant2mapped_ident_type_list(
+                    variant,
+                    |_, basic_type| Some(quote!(#W::Value<#basic_type>)),
+                    |_, _| None,
+                );
+                let complex_field_types = variant2mapped_ident_type_list(
+                    variant,
+                    |_, _| None,
+                    |_, complex_type| Some(quote!(#complex_type)),
+                );
+                let itself_valued_ty = quote!(#W::Value<#name_node<(), #variant_marker>>);
+                let decode_plan_tys = std::iter::once(itself_valued_ty.clone())
+                    .chain(basic_valued_field_types.iter().cloned())
+                    .collect::<Vec<_>>();
+                let decode_plan_indices = (0..decode_plan_tys.len())
+                    .map(syn::Index::from)
+                    .collect::<Vec<_>>();
+                let itself_plan_idx = &decode_plan_indices[0];
+                let basic_plan_indices = &decode_plan_indices[1..];
+                let decode_plan_defs = decode_plan_tys
+                    .iter()
+                    .map(|ty| quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::DecodePlan))
+                    .collect::<Vec<_>>();
+                let build_plan_calls = decode_plan_tys
+                    .iter()
+                    .map(|ty| {
+                        quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::build_decode_plan(
+                            binding_slots,
+                            value_idx,
+                        ))
+                    })
+                    .collect::<Vec<_>>();
+                let itself_decode_call = quote!(#W::Value::new(values[plan.#itself_plan_idx]));
+                let decode_field_calls = basic_valued_field_types
+                    .iter()
+                    .zip(basic_plan_indices.iter())
+                    .map(|(_, idx)| {
+                        quote!(
+                            #W::Value::new(values[plan.#idx])
+                        )
+                    })
+                    .collect::<Vec<_>>();
+                let value_iter = variant2mapped_ident_type_list(
+                    variant,
+                    |basic, _| Some(quote!(#basic: #W::Value::new(vals.next().unwrap()))),
+                    |_, _| None,
+                );
+
+                Ok(quote! {
+                    #[derive(Clone)]
+                    pub struct #variant_marker;
+                    #[derive(Debug,Clone,Copy)]
+                    pub struct #valued_variant_name{
+                        _itself: #W::Value<#name_node<(), #variant_marker>>,
+                        #(pub #values_with_types),*
+                    }
+                    impl #valued_variant_name{
+                        pub fn new(_itself : #W::Value<#name_node<(), #variant_marker>>, #(#values_with_types),*) -> Self{
+                            Self {
+                                _itself,
+                                #(#basic_field_idents),*
+                            }
+                        }
+                    }
+                    impl #W::FromPlainValues for #valued_variant_name {
+                        fn from_plain_values(vals: &mut impl Iterator<Item=#E::Value>) -> Self{
+                            Self {
+                                _itself: #W::Value::new(vals.next().unwrap()),
+                                #(#value_iter),*
+                            }
+                        }
+                    }
+                    impl #W::FromIndexedValues for #valued_variant_name {
+                        fn from_indexed_values(values: &[#E::Value], value_idx: &mut usize) -> Self {
+                            use #W::FromIndexedValues;
+                            let _itself = #W::Value::new(*values.get(*value_idx).unwrap());
+                            *value_idx += 1;
+                            Self {
+                                _itself,
+                                #(#basic_field_idents: <#basic_valued_field_types>::from_indexed_values(values, value_idx),)*
+                            }
+                        }
+                    }
+                    impl<PR: #W::PatRecSgl> #W::DecodeWithPlanMetas<PR> for #valued_variant_name {
+                        type DecodePlan = (
+                            #(#decode_plan_defs,)*
+                        );
+
+                        fn build_decode_plan(
+                            binding_slots: &[usize],
+                            value_idx: &mut usize,
+                        ) -> Self::DecodePlan {
+                            (
+                                #(#build_plan_calls,)*
+                            )
+                        }
+
+                        fn decode_with_plan(
+                            values: &[#E::Value],
+                            _metas: &[PR::MetaTy],
+                            _meta_idx: &mut usize,
+                            plan: &Self::DecodePlan,
+                        ) -> Self {
+                            Self {
+                                _itself: #itself_decode_call,
+                                #(#basic_field_idents: #decode_field_calls,)*
+                            }
+                        }
+                    }
+                    // impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
+                    //     fn to_value(&self, rule_ctx: &mut #W::RuleCtx<'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                    //         self._itself
+                    //     }
+                    // }
+                    impl #W::Insertable<#name_node<(),#variant_marker>> for #valued_variant_name {
+                        type MetaTy = ();
+                        fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<#name_node<(),#variant_marker>> {
+                            #W::Value::new(self._itself.val)
+                        }
+                        fn meta(&self) -> Self::MetaTy{
+                            panic!("pure value don't have any meta")
+                        }
+                    }
+                    impl #W::EgglogEnumVariantTy for #variant_marker {
+                        const TY_NAME:&'static str = stringify!(#variant_name);
+                        const DISPLAY_TEMPLATE: Option<&'static str> = #display_template;
+                        const TYPST_TEMPLATE: Option<&'static str> = #typst_template;
+                        const PRECEDENCE: u16 = #precedence;
+                        const BASIC_FIELD_NAMES:&[&'static str] = &[#(stringify!(#basic_field_idents)),* ];
+                        const BASIC_FIELD_TYPES:&[&'static str] = &[#(stringify!(#basic_field_types)),* ];
+                        const COMPLEX_FIELD_NAMES:&[&'static str] = &[#(stringify!(#complex_field_idents)),* ];
+                        const COMPLEX_FIELD_TYPES:&[&'static str] = &[#(stringify!(#complex_field_types)),* ];
+                        type ValuedWithDefault<T> = #valued_variant_name;
+                    }
+                })
+            }).collect::<syn::Result<Vec<_>>>();
+            let enum_variant_tys_def = match enum_variant_tys_def {
+                Ok(v) => v,
+                Err(err) => return err.to_compile_error().into(),
+            };
+
+            let set_fns = data_enum
+                .variants
+                .iter()
+                .map(|x| set_fns_tt(x, &name_inner, &name_node));
+            let handle_getter_fns = data_enum
+                .variants
+                .iter()
+                .map(|x| handle_getter_fns_tt(x, &name_inner, &name_node));
+            let constraint_fns = data_enum
+                .variants
+                .iter()
+                .map(|x| query_constrain_fns_tt(x, &name_inner, &name_node));
+
+            let (variant_markers, variant_names) = variant_marker_names(data_enum);
+            let rule_ctx_trait_and_impl = {
+                let (insert_fns, insert_fn_decls, pr_insert_fns, pr_insert_fn_decls): (
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                ) = data_enum
+                    .variants
+                    .iter()
+                    .map(|x| ctx_insert_fn_ts_with_pr_without_meta(x, &name_node))
+                    .collect();
+                let (
+                    subsume_remove_fns,
+                    subsume_remove_fn_decls,
+                    pr_subsume_remove_fns,
+                    pr_subsume_remove_fn_decls,
+                ): (
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                    Vec<TokenStream>,
+                ) = data_enum
+                    .variants
+                    .iter()
+                    .map(|x| ctx_subsume_remove_fn_ts_with_pr(x, &name_node))
+                    .collect();
+                let ctx_trait_name = format_ident!("{}RuleCtx", name_node);
+                let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_node);
+                quote! {
+                    pub trait #ctx_trait_name {
+                        #(#insert_fn_decls)*
+                        #(#subsume_remove_fn_decls)*
+                    }
+                    impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_,'_> {
+                        #(#insert_fns)*
+                        #(#subsume_remove_fns)*
+                    }
+                    pub trait #pr_ctx_trait_name<PR: #W::PatRecSgl> {
+                        #(#pr_insert_fn_decls)*
+                        #(#pr_subsume_remove_fn_decls)*
+                    }
+                    impl<PR: PatRecSgl> #pr_ctx_trait_name<PR> for #W::PRRuleCtx<'_,'_,'_,'_,PR> {
+                        #(#pr_insert_fns)*
+                        #(#pr_subsume_remove_fns)*
+                    }
+                }
+            };
+            // MARK: Enum Expanded
+            let expanded = quote! {
+                pub type #name_node_alias<T,V> = #W::Node<#name_egglogty_impl,T,#name_inner,V>;
+                #(pub type #variant_names<T> = self::#name_node<T, #variant_markers>;)*
+                #(#enum_variant_tys_def)*
+                #[allow(unused)]
+                // #[derive(#DE::Deref)]
+                pub struct #name_node<T: #W::NodeDropperSgl = (),V:#W::EgglogEnumVariantTy=()>
+                where Self: #W::EgglogNode + #W::EgglogTy {
+                    node:#name_node_alias<T,V>
+                }
+                #[allow(unused)]
+                #[derive(Clone, #ENM::EnumIs, #ENM::EnumDiscriminants)]
+                pub enum #name_inner {
+                    #(#variants_def_of_node_with_syms),*
+                }
+                #[allow(unused_variables)]
+                const _:() = {
+                    use #W::{EgglogNode, ToSpan, ToVar, ToOwnedStr, DeLiteral};
+                    use std::marker::PhantomData;
+                    use std::collections::HashMap;
+                    use #E::prelude::*;
+                    use #E::ast::{GenericAction, GenericExpr};
+                    use #INVE;
+                    impl<T:#W::TxSgl + #W::NonPatRecSgl> self::#name_node<T,()> {
+                        #(#new_fns)*
+                    }
+                    impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                        #(#query_fns)*
+                    }
+                    impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                        #(#query_leaf_fns)*
+                        #[track_caller]
+                        pub fn #placeholder_query_leaf_fn_name() -> self::#name_node<T,()> {
+                            let node = #W::Node {
+                                ty: #W::TyPH::PH,
+                                sym: #name_counter.next_sym(),
+                                span:Some(std::panic::Location::caller()),
+                                _p:PhantomData,
+                                _s:PhantomData,
+                                sgl_specific: T::OwnerSpecDataInNode::default()
+                            };
+                            let node = #name_node {node};
+                            T::on_new_query_leaf(&node);
+                            node
+                        }
+                    }
+                    // impl<T:#W::TxSgl + #W::PatRecSgl> self::#name_node<T,()> {
+                    //     #(#query_leaf_fns)*
+                    //     #[track_caller]
+                    //     pub fn query_leaf() -> self::#name_node<T,()> {
+                    //         let node = #W::Node {
+                    //             ty: #W::TyPH::PH,
+                    //             sym: #name_counter.next_sym(),
+                    //             span:Some(std::panic::Location::caller()),
+                    //             _p:PhantomData,
+                    //             _s:PhantomData,
+                    //             sgl_specific: T::OwnerSpecDataInNode::default()
+                    //         };
+                    //         let node = #name_node {node};
+                    //         T::on_new_query_leaf(&node);
+                    //         node
+                    //     }
+                    // }
+                    use #W::TxSgl;
+                    use #W::NonPatRecSgl;
+                    use #W::PatRecSgl;
+                    use #W::HandleToConstrain;
+                    use #W::HandleTy;
+                    #(
+                        impl<T:TxSgl + NonPatRecSgl> self::#name_node<T, #variant_markers> {
+                            pub fn new(#(#new_fn_args),*) -> Self{
+                                #name_node::<T,()>::#new_fn_names(#(#new_fn_arg_idents),*)
+                            }
+                        }
+                        impl<T:TxSgl + PatRecSgl> self::#name_node<T, #variant_markers> {
+                            pub fn query(#(#query_fn_args),*) -> Self{
+                                #name_node::<T,()>::#query_fn_names(#(#query_fn_arg_idents),*)
+                            }
+                        }
+                        impl<T:TxSgl> std::ops::Deref for self::#name_node<T, #variant_markers> {
+                            type Target = #name_node<T>;
+
+                            fn deref(&self) -> &Self::Target {
+                                unsafe { std::mem::transmute(self) }
+                            }
+                        }
+                    )*
+                    impl<T:#W::RxSgl + #W::NonPatRecSgl, S: #W::EgglogEnumVariantTy> self::#name_node<T,S>{
+                        pub fn pull(&self){
+                            T::on_pull::<#name_egglogty_impl<T>>(self)
+                        }
+                    }
+                    impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::EgglogNode for self::#name_node<T,V> {
+                        fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
+                            use #W::NodeInner;
+                            self.node.ty.map_ty_mut_or_else(||vec![],|_,x|x.iter_mut().collect(),|ty|ty.succs_mut())
+                        }
+                        fn succs(&self) -> Vec<#W::Sym>{ use #W::NodeInner;
+                            self.node.ty.map_ty_ref_or_else(||vec![],|_,x|x.clone(),|ty|ty.succs())
+                        }
+                        fn roll_sym(&mut self) -> #W::Sym{
+                            let next_sym = #name_counter.next_sym();
+                            self.node.sym = next_sym;
+                            next_sym.erase()
+                        }
+                        fn cur_sym(&self) -> #W::Sym{ self.node.sym.erase() }
+                        fn cur_sym_mut(&mut self) -> &mut #W::Sym{ self.node.sym.erase_mut() }
+                        fn clone_dyn(&self) -> Box<dyn #W::EgglogNode>{ Box::new(self.clone()) }
+                        fn ty_name(&self) -> &'static str{ <#name_node::<()> as #W::EgglogTy>::TY_NAME }
+                        fn ty_name_lower(&self) -> &'static str{ <#name_node::<()> as #W::EgglogTy>::TY_NAME_LOWER }
+                        fn variant_name(&self) -> Option<&'static str>{ if V::TY_NAME==""{None}else{ Some(V::TY_NAME)} }
+                        fn basic_field_names(&self) -> &[&'static str]{ V::BASIC_FIELD_NAMES }
+                        fn basic_field_types(&self) -> &[&'static str]{ V::BASIC_FIELD_TYPES }
+                        fn complex_field_names(&self) -> &[&'static str]{ V::COMPLEX_FIELD_NAMES }
+                        fn complex_field_types(&self) -> &[&'static str]{ V::COMPLEX_FIELD_TYPES }
+                        fn precedence(&self) -> u16 { V::PRECEDENCE }
+                        #[track_caller]
+                        fn to_term(&self,term_dag: &mut #E::TermDag,
+                            sym2term: &mut HashMap< #W::Sym, #E::TermId>,
+                            sym2ph_name:& HashMap<#W::Sym, &'static str>) -> #E::TermId{
+                            use #W::{FromBase,EgglogTy,EgglogNode};
+                            if let #W::TyPH::Ty(ty) = &self.node.ty{
+                                match ty{
+                                    #(#to_term_match_arms)*,
+                                }
+                            }else{
+                                let term_id = term_dag.var(sym2ph_name.get(&self.cur_sym()).unwrap().to_string());
+                                sym2term.insert(self.cur_sym(), term_id);
+                                term_id
+                            }
+                        }
+                        #[track_caller]
+                        fn add_table_fact(
+                            &self,
+                            query_builder:&mut #W::FactsBuilder
+                        ) {
+                            use #W::EgglogTy;
+                            match &self.node.ty{
+                                #W::TyPH::Ty(_) => {
+                                        panic!("can't call add_fact on non-pattern-def EgglogNode")
+                                },
+                                #W::TyPH::VarPH(dis, succs) => {
+                                    let mut succs = succs.iter().cloned();
+                                    match dis{
+                                        #(#add_table_fact_match_arms),*
+                                    }
+                                },
+                                #W::TyPH::PH => {
+                                    // do nothing because you can't add entry for EgglogNode of unknown variant
+                                }
+                            }
+                        }
+                    }
+                    impl<T:#W::NodeDropperSgl , V:#W::EgglogEnumVariantTy> #W::VarsCollector for self::#name_node<T,V> {
+                        #[track_caller]
+                        fn collect_vars(
+                            &self,
+                            vars: &mut Vec<(#W::VarName, #W::SortName)>
+                        ) {
+                            use #W::EgglogTy;
+                            match &self.node.ty{
+                                #W::TyPH::Ty(_) => {
+                                        panic!("can't call collect_var on non-pattern-def EgglogNode")
+                                },
+                                // with basic fields
+                                #W::TyPH::VarPH(dis, succs) => {
+                                    vars.push((self.cur_sym().to_string(), Self::TY_NAME.to_string()));
+                                    match dis{
+                                        #(#collect_var_match_arms),*
+                                    }
+                                },
+                                // only itself as complex field
+                                #W::TyPH::PH => {
+                                    vars.push((self.cur_sym().to_string(), <Self as #W::EgglogTy>::TY_NAME.to_string()));
+                                }
+                            }
+                        }
+                    }
+                    impl<T:#W::NodeDropperSgl , V:#W::EgglogEnumVariantTy> #W::BindingNames for self::#name_node<T,V> {
+                        #[track_caller]
+                        fn collect_binding_names(
+                            &self,
+                            names: &mut Vec<#W::VarName>
+                        ) {
+                            use #W::EgglogTy;
+                            match &self.node.ty{
+                                #W::TyPH::Ty(_) => {
+                                        panic!("can't call collect_binding_names on non-pattern-def EgglogNode")
+                                },
+                                #W::TyPH::VarPH(dis, succs) => {
+                                    names.push(self.cur_sym().to_string());
+                                    let mut succs = succs.iter().cloned();
+                                    match dis{
+                                        #(#collect_binding_name_match_arms),*
+                                    }
+                                },
+                                #W::TyPH::PH => {
+                                    names.push((self.cur_sym().to_string()));
+                                }
+                            }
+                        }
+                    }
+                    impl<T:#W::NodeDropperSgl, V:#W::EgglogEnumVariantTy> #W::ToEgglog for self::#name_node<T,V> {
+                        fn to_egglog_string(&self) -> Option<String>{
+                            match self.node.ty.ty_ref()?{
+                                #(#to_egglog_string_match_arms),*
+                            }
+                        }
+                        fn to_egglog(&self) -> Action{
+                            match self.node.ty.unwrap_ref(){
+                                #(#to_egglog_match_arms),*
+                            }
+                        }
+                        fn native_egglog(&self, ctx: &#W::RuleCtx, sym_to_value_map: &dashmap::DashMap<#W::Sym, egglog::Value>) -> egglog::Value {
+                            // Use ctx.insert to insert nodes into egraph
+                            // Here we can query existing values based on sym_to_value_map
+                            let sym = self.cur_sym();
+                            if let Some(value) = sym_to_value_map.get(&sym) {
+                                // If sym is already in map, return corresponding value
+                                value.clone()
+                            } else {
+                                // Otherwise, use ctx.insert to insert new node
+                                // Call corresponding insert method based on node type
+                                //TODO
+                                let ctx: &#W::PRRuleCtx<'_, '_, '_, '_, MyPatRec> = unsafe { std::mem::transmute(ctx) };
+                                match &*self.node.ty.unwrap_ref() {
+                                    inner =>
+                                        // Dynamically call corresponding insert method
+                                        match inner {
+                                            #(#native_egglog_match_arms),*
+                                        }
+                                }
+
+                            }
+                        }
+                    }
+                    #[allow(unused_variables)]
+                    impl<T:#W::TxSgl + #W::VersionCtlSgl + #W::NonPatRecSgl, V:#W::EgglogEnumVariantTy> #W::LocateVersion for self::#name_node<T,V> {
+                        fn locate_latest(&mut self) {
+                            match self.node.ty.unwrap_mut(){
+                                #(#locate_latest_match_arms),*
+                            }
+                        }
+                        fn locate_next(&mut self) {
+                            match self.node.ty.unwrap_mut(){
+                                #(#locate_next_match_arms),*
+                            }
+                        }
+                        fn locate_prev(&mut self) {
+                            match self.node.ty.unwrap_mut(){
+                                #(#locate_prev_match_arms),*
+                            }
+                        }
+                    }
+                    impl<T: #W::NodeDropperSgl,  V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for self::#name_node<T, V> {
+                        fn as_ref(&self) -> &self::#name_node<T, ()> {
+                            unsafe {
+                                &*(self as *const self::#name_node<T,V> as *const self::#name_node<T,()>)
+                            }
+                        }
+                    }
+                    impl<T: #W::NodeDropperSgl,  V: #W::EgglogEnumVariantTy> AsRef<self::#name_node<T, ()>> for #W::PH<self::#name_node<T, V>> {
+                        fn as_ref(&self) -> &self::#name_node<T, ()> {
+                            self.node.as_ref()
+                        }
+                    }
+
+                    impl<T:#W::NodeDropperSgl,V:#W::EgglogEnumVariantTy > Clone for self::#name_node<T,V> {
+                        fn clone(&self) -> Self {
+                            Self {
+                                node:
+                                    #W::Node {
+                                        ty: self.node.ty.clone(),
+                                        span: self.node.span ,
+                                        sym: self.node.sym.clone(),
+                                        _p: PhantomData,
+                                        _s: PhantomData,
+                                        sgl_specific : T::OwnerSpecDataInNode::default(),
+                                    }
+                            }
+                        }
+                    }
+
+                    impl<T:#W::TxSgl+ #W::VersionCtlSgl + #W::TxCommitSgl + #W::NonPatRecSgl + #W::WithPatRecSgl,S: #W::EgglogEnumVariantTy> #W::Commit for self::#name_node<T,S>
+                    {
+                        fn commit(&self) {
+                            T::on_commit(self);
+                            <T as #W::WithPatRecSgl>::PatRecSgl::flush_pending(&T::egraph().lock().unwrap());
+                        }
+                        fn commit_with_hook(&self, hook:Box<dyn #W::RuleCtxHook>) {
+                            T::on_commit_with_hook(self, hook);
+                        }
+                        fn stage(&self) {
+                            T::on_stage(self);
+                        }
+                    }
+
+                    impl<T:#W::NodeDropperSgl, S: #W::EgglogEnumVariantTy> Drop for self::#name_node<T,S> {
+                        fn drop(&mut self) {
+                            T::on_drop(self);
+                        }
+                    }
+
+                    impl #W::NodeInner for #name_inner {
+                        fn succs_mut(&mut self) -> Vec<&mut #W::Sym>{
+                            match self {
+                                #(#succs_mut_match_arms),*
+                            }
+                        }
+                        fn succs(&self) -> Vec<#W::Sym>{
+                            match self{
+                                #(#succs_match_arms),*
+                            }
+                        }
+                    }
+                    static #name_counter: #W::TyCounter<#name_egglogty_impl<()>> = #W::TyCounter::new();
+                    #(#set_fns)*
+                    #(#handle_getter_fns)*
+                    #(#constraint_fns)*
+                };
+                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::Insertable<self::#name_node<(), V>> for #W::Value<self::#name_node<T, V>> {
+                    type MetaTy = ();
+                    fn to_value(&self, rule_ctx: &#W::RuleCtx<'_,'_,'_,'_>) -> #W::Value<self::#name_node<(), V>> {
+                        #W::Value::new(self.erase())
+                    }
+                    fn meta(&self) -> Self::MetaTy{
+                        panic!("pure value don't have any meta")
+                    }
+                }
+                impl<T: #W::NodeDropperSgl, V: #W::EgglogEnumVariantTy> #W::RetypeValue for #name_node<T,V> {
+                    type Target = #name_node<T,()>;
+                    fn retype_value(val: #E::Value) -> #W::Value<Self::Target> {
+                        #W::Value::new(val)
+                    }
+                }
+                impl<T: #W::NodeDropperSgl + #W::PatRecSgl, V: #W::EgglogEnumVariantTy> #name_node<T,V> {
+                    #[track_caller]
+                    pub fn handle(&self) -> #W::HandleToConstrain<Self>{
+                        #W::HandleToConstrain{
+                            handle: #W::HandleTy::Complex {
+                                sym: self.node.sym.erase()
+                            },
+                            _p: std::marker::PhantomData::<Self>
+                        }
+                    }
+                }
+                #rule_ctx_trait_and_impl
+            };
+            expanded
+        }
+        Data::Union(_) => todo!(),
+    };
+
+    quote! {
+    #type_def_expanded
+    #struct_def_expanded
+    }
+    .into()
+}
+
+pub fn slotted_pat_vars(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let input = parse_macro_input!(item as DeriveInput);
+
+    let mut out = input.clone();
+    // append <PR> if it donesn't exist
+    if out.generics.params.is_empty() {
+        out.generics.params.push(parse_quote!(PR: PatRecSgl));
+    } else {
+        // check whether PR is contained
+        let has_pr = out.generics.params.iter().any(|param| {
+            if let syn::GenericParam::Type(type_param) = param {
+                type_param.ident == "PR"
+            } else {
+                false
+            }
+        });
+
+        if !has_pr {
+            // append PR: PatRecSgl
+            out.generics.params.insert(0, parse_quote!(PR: PatRecSgl));
+        }
+    }
+
+    let mut src_field_types_with_generic = vec![];
+    // append <PR> to struct fields' generic
+    if let Data::Struct(data_struct) = &mut out.data {
+        for field in &mut data_struct.fields {
+            ensure_PR_contained(field);
+            let ty = &field.ty;
+            src_field_types_with_generic.push(ty.clone());
+            let ty: Type = syn::parse_quote!((#ty,<PR as #W::PatRecSgl>::MetaTy));
+            field.ty = ty;
+        }
+    }
+
+    let expanded = match &out.data {
+        Data::Struct(data_struct) => {
+            let members = data_struct.fields.members();
+            let field_idents = data_struct
+                .fields
+                .iter()
+                .map(|f| f.ident.as_ref().unwrap())
+                .collect::<Vec<_>>();
+            let field_types = data_struct
+                .fields
+                .iter()
+                .map(|f| {
+                    if let Type::Tuple(tuple) = &f.ty {
+                        tuple.elems.first().unwrap()
+                    } else {
+                        panic!("shoud contain 2 elements")
+                    }
+                })
+                .collect::<Vec<_>>();
+            let tuple_field_types = data_struct
+                .fields
+                .iter()
+                .map(|f| f.ty.clone())
+                .collect::<Vec<_>>();
+            let (impl_generics, ty_generics, where_clause) = out.generics.split_for_impl();
+
+            let ident = &out.ident;
+            let indexed_members = members.clone();
+
+            let mut valued_input_struct = out.clone();
+            let valued_ident = format_ident!("Valued{}", valued_input_struct.ident);
+            valued_input_struct.ident = valued_ident.clone();
+            let mut valued_tys = Vec::new();
+            match &mut valued_input_struct.data {
+                Data::Struct(valued_struct) => {
+                    valued_struct.fields.iter_mut().zip(src_field_types_with_generic).for_each(|(x,src_ty)| {
+                        x.ty = parse_quote!((<#src_ty as #W::PatVars<PR>>::Valued, <PR as #W::PatRecSgl>::MetaTy));
+                        valued_tys.push(x.ty.clone())
+                    });
+                }
+                _ => panic!(),
+            };
+            let decode_plan_indices = (0..valued_tys.len())
+                .map(syn::Index::from)
+                .collect::<Vec<_>>();
+            let decode_plan_defs = valued_tys
+                .iter()
+                .map(|ty| quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::DecodePlan))
+                .collect::<Vec<_>>();
+            let build_plan_calls = valued_tys
+                .iter()
+                .map(|ty| {
+                    quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::build_decode_plan(
+                        binding_slots,
+                        value_idx,
+                    ))
+                })
+                .collect::<Vec<_>>();
+            let decode_members = indexed_members.clone();
+            let decode_member_calls = valued_tys
+                .iter()
+                .zip(decode_plan_indices.iter())
+                .map(|(ty, idx)| {
+                    quote!(<#ty as #W::DecodeWithPlanMetas<PR>>::decode_with_plan(
+                        values,
+                        metas,
+                        meta_idx,
+                        &plan.#idx,
+                    ))
+                })
+                .collect::<Vec<_>>();
+            // add PhantomData<PR> to struct
+            if let Data::Struct(data_struct) = &mut valued_input_struct.data
+                && let syn::Fields::Named(named_fields) = &mut data_struct.fields
+            {
+                let fields = &mut named_fields.named;
+                fields.push(Field {
+                    attrs: vec![parse_quote!(#[doc(hidden)])],
+                    vis: Visibility::Inherited,
+                    ident: Some(format_ident!("_p")),
+                    colon_token: None,
+                    ty: parse_quote!(std::marker::PhantomData<PR>),
+                    mutability: syn::FieldMutability::None,
+                });
+            }
+            quote! {
+                #[derive(Debug)]
+                #valued_input_struct
+                impl #impl_generics #W::FromPlainValuesMetas<PR> for #valued_ident #ty_generics #where_clause {
+                    fn from_plain_values_metas(
+                        values:&mut impl Iterator<Item=#E::Value>,
+                        metas:&mut impl Iterator<Item=<PR as #W::PatRecSgl>::MetaTy>
+                    ) -> Self {
+                        use #W::Value;
+                        use #W::FromPlainValuesMetas;
+                        Self {
+                            #(#members: <#valued_tys as FromPlainValuesMetas<PR>>::from_plain_values_metas(values,metas),)*
+                            _p: std::marker::PhantomData
+                        }
+                    }
+                }
+                impl #impl_generics #W::FromIndexedValuesMetas<PR> for #valued_ident #ty_generics #where_clause {
+                    fn from_indexed_values_metas(
+                        values:&[#E::Value],
+                        value_idx:&mut usize,
+                        metas:&[<PR as #W::PatRecSgl>::MetaTy],
+                        meta_idx:&mut usize
+                    ) -> Self {
+                        use #W::FromIndexedValuesMetas;
+                        Self {
+                            #(#indexed_members: <#valued_tys>::from_indexed_values_metas(values,value_idx,metas,meta_idx),)*
+                            _p: std::marker::PhantomData
+                        }
+                    }
+                }
+                impl #impl_generics #W::DecodeWithPlanMetas<PR> for #valued_ident #ty_generics #where_clause {
+                    type DecodePlan = (
+                        #(#decode_plan_defs,)*
+                    );
+
+                    fn build_decode_plan(
+                        binding_slots: &[usize],
+                        value_idx: &mut usize,
+                    ) -> Self::DecodePlan {
+                        (
+                            #(#build_plan_calls,)*
+                        )
+                    }
+
+                    fn decode_with_plan(
+                        values: &[#E::Value],
+                        metas: &[<PR as #W::PatRecSgl>::MetaTy],
+                        meta_idx: &mut usize,
+                        plan: &Self::DecodePlan,
+                    ) -> Self {
+                        Self {
+                            #(#decode_members: #decode_member_calls,)*
+                            _p: std::marker::PhantomData
+                        }
+                    }
+                }
+                impl #impl_generics #W::PatVars<PR> for #ident #ty_generics #where_clause {
+                    type Valued = #valued_ident<PR>;
+                    fn metas_iter(&self) -> impl Iterator<Item = <PR as #W::PatRecSgl>::MetaTy>{
+                        use #W::PatVars;
+                        let mut acc = std::iter::empty();
+                        #(
+                            let acc = acc.chain(<#tuple_field_types as PatVars<PR>>::metas_iter(&self.#field_idents));
+                        )*
+                        acc
+                    }
+                }
+                impl #impl_generics #W::ToStrArcSort for #ident #ty_generics #where_clause{
+                    fn to_str_arcsort(&self, egraph: &#E::EGraph) -> Vec<(#W::VarName, #E::ArcSort)> {
+                        let mut v = Vec::new();
+                        use #W::{EgglogNode, EgglogTy, VarsCollector};
+                        let mut vars = Vec::new();
+                        self.collect_vars(&mut vars);
+                        for (basic_field_name,basic_field_type) in vars{
+                            v.push(( basic_field_name, egraph
+                                .get_sort_by_name(basic_field_type.as_str())
+                                .unwrap()
+                                .clone()));
+                        }
+                        v.into()
+                    }
+                }
+                impl #impl_generics #W::VarsCollector for #ident #ty_generics #where_clause{
+                    #[track_caller]
+                    fn collect_vars(&self, vars:&mut Vec<(#W::VarName, #W::SortName)>){
+                        #(
+                            self.#field_idents.collect_vars(vars);
+                        )*
+                    }
+                }
+                impl #impl_generics #W::BindingNames for #ident #ty_generics #where_clause{
+                    #[track_caller]
+                    fn collect_binding_names(&self, names:&mut Vec<#W::VarName>){
+                        #(
+                            self.#field_idents.collect_binding_names(names);
+                        )*
+                    }
+                }
+                impl #impl_generics #ident #ty_generics #where_clause{
+                    fn new( #(#field_idents:#field_types,)* ) -> Self{
+                        #(
+                            let #field_idents = {
+                                let meta = *PR::meta_of(#field_idents.cur_sym()).downcast::<PR::MetaTy>().unwrap();
+                                (#field_idents, meta)
+                            };
+                        )*
+                        Self {
+                            #( #field_idents, )*
+                            _p: std::marker::PhantomData
+                        }
+                    }
+                }
+                impl #impl_generics #ident #ty_generics #where_clause{
+                    fn assert(self, constraint: impl #W::IntoConstraintFact) -> Self {
+                        PR::on_new_constraint(constraint);
+                        self
+                    }
+                }
+            }
+        }
+        _ => panic!("pattern_extracted's input can only be struct"),
+    };
+
+    // add PhantomData<PR> to struct
+    if let Data::Struct(data_struct) = &mut out.data
+        && let syn::Fields::Named(named_fields) = &mut data_struct.fields
+    {
+        let fields = &mut named_fields.named;
+        fields.push(Field {
+            attrs: vec![parse_quote!(#[doc(hidden)])],
+            vis: Visibility::Inherited,
+            ident: Some(format_ident!("_p")),
+            colon_token: None,
+            ty: parse_quote!(std::marker::PhantomData<PR>),
+            mutability: syn::FieldMutability::None,
+        });
+    }
+    quote! {
+        #out
+        #expanded
+    }
+    .into()
+}

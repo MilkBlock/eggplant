@@ -1,9 +1,4 @@
-use crate::wrap::{
-    EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, constraint::IntoConstraintFact,
-    etc::generate_dot_by_graph,
-};
-
-use super::*;
+use crate::{etc::generate_dot_by_graph, wrap::*};
 use dashmap::DashMap;
 use derive_more::Debug;
 use egglog::util::IndexSet;
@@ -25,6 +20,8 @@ pub struct PatRecorder {
     pub root_table: DashMap<PatId, Vec<Sym>>,
     #[debug(skip)]
     pub constraint_table: DashMap<PatId, Vec<Box<dyn IntoConstraintFact>>>,
+    #[debug(skip)]
+    pub table_fact_table: DashMap<PatId, Vec<TableFactSpec>>,
     _registry: EgglogTypeRegistry,
     /// next_pat_id increment when on_record_end is called
     next_pat_id: AtomicU32,
@@ -78,6 +75,7 @@ impl PatRecorder {
             next_pat_id: AtomicU32::new(0),
             root_table: DashMap::default(),
             constraint_table: DashMap::default(),
+            table_fact_table: DashMap::default(),
         }
     }
     // collect all ancestors of cur_sym, without cur_sym
@@ -255,6 +253,7 @@ impl NodeSetter for PatRecorder {
 }
 
 impl PatRec for PatRecorder {
+    type MetaTy = ();
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
         self.add_node(node);
     }
@@ -264,6 +263,26 @@ impl PatRec for PatRecorder {
             .entry(self.current_pat_id())
             .or_default()
             .push(Box::new(constraint));
+    }
+    fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Function,
+            });
+    }
+    fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        self.table_fact_table
+            .entry(self.current_pat_id())
+            .or_default()
+            .push(TableFactSpec {
+                table: query_table,
+                vars,
+                kind: TableFactKind::Relation,
+            });
     }
 
     fn on_record_start(&self) {
@@ -308,6 +327,19 @@ impl PatRec for PatRecorder {
             node.add_table_fact(&mut facts_builder);
         }
         log::debug!("topo:{:?}", topo_syms);
+
+        if let Some(table_facts) = self.table_fact_table.remove(&pat_id) {
+            for table_fact in table_facts.1 {
+                match table_fact.kind {
+                    TableFactKind::Function => {
+                        facts_builder.add_table_fact(table_fact.table, table_fact.vars);
+                    }
+                    TableFactKind::Relation => {
+                        facts_builder.add_relation_fact(table_fact.table, table_fact.vars);
+                    }
+                }
+            }
+        }
 
         match self.constraint_table.remove(&pat_id) {
             Some(constraint_facts) => {

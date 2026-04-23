@@ -2,7 +2,6 @@ use eggplant::prelude::*;
 // use eggplant::tx_rx_vt_pr;
 use eggplant::tx_rx_vt_pr;
 use eggplant::wrap::G;
-use eggplant::wrap::Rx;
 #[eggplant::dsl]
 pub enum Math {
     MNum { num: i64 },

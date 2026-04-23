@@ -1,18 +1,16 @@
-use egglog::ast::Command;
-
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput};
-
-use super::*;
+use crate::wrap::*;
 use dashmap::DashMap;
+use egglog::ast::Command;
 use egglog::{
     EGraph, SerializeConfig,
     util::{IndexMap, IndexSet},
 };
+use std::sync::Arc;
 use std::{collections::HashMap, path::Path, sync::Mutex};
 
 #[derive(Default)]
 pub struct TxVT {
-    pub egraph: Mutex<EGraph>,
+    pub egraph: Arc<Mutex<EGraph>>,
     map: DashMap<Sym, WorkAreaNode>,
     /// used to store newly staged node among committed nodes (Not only the currently latest node but also nodes of old versions)
     staged_set_map: DashMap<Sym, Box<dyn EgglogNode>>,
@@ -147,12 +145,12 @@ impl TxVT {
     }
     pub fn new_with_type_defs(type_defs: Vec<Command>) -> Self {
         Self {
-            egraph: Mutex::new({
+            egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 log::info!("{:?}", type_defs);
                 e.run_program(type_defs).unwrap();
                 e
-            }),
+            })),
             map: DashMap::default(),
             staged_set_map: DashMap::default(),
             staged_new_map: Mutex::new(IndexMap::default()),

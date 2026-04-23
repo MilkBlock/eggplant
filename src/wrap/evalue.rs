@@ -46,7 +46,7 @@ impl EValue for Sym {
         egraph.eval_expr(&self.get_egglog_expr()).unwrap().1
     }
     fn get_egglog_expr(&self) -> Expr {
-        Expr::Call(span!(), self.to_string(), vec![])
+        Expr::Var(span!(), self.to_string())
     }
     fn get_symlit(&self) -> SymLit {
         SymLit::Sym(*self)
@@ -96,6 +96,21 @@ impl EValue for bool {
     }
     fn get_symlit(&self) -> SymLit {
         SymLit::Lit(Literal::Bool(*self))
+    }
+}
+impl EValue for f64 {
+    fn get_value_by_eval_string(&self, egraph: &mut EGraph) -> Value {
+        // egglog stores float64 as `Boxed<OrderedFloat<f64>>` (`egglog::sort::F`).
+        egraph.base_to_value(egglog::sort::F::new(egglog::sort::OrderedFloat(*self)))
+    }
+    fn get_egglog_expr(&self) -> GenericExpr<String, String> {
+        GenericExpr::Lit(
+            span!(),
+            egglog::ast::Literal::Float(egglog::sort::OrderedFloat(*self)),
+        )
+    }
+    fn get_symlit(&self) -> SymLit {
+        SymLit::Lit(Literal::Float(egglog::sort::OrderedFloat(*self)))
     }
 }
 // !todo!

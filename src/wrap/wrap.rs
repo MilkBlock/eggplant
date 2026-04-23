@@ -1,9 +1,11 @@
+use crate::prelude::slotted::{_FuncValueMeta, FuncName, FuncValueMeta};
+use crate::prelude::{SlotMeta, TxRxVT};
 use crate::wrap::constraint::IntoConstraintFact;
 use crate::wrap::{
-    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogTy, FactsBuilder, FromBase,
-    RuleCtx, SortName, SymLit, VarName, tx_rx_vt::TxRxVT,
+    EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncInputsRef, EgglogFuncOutput, EgglogRelation,
+    EgglogTy, FactsBuilder, FromBase, SortName, SymLit, TableName, VarName,
 };
-use crate::wrap::{RuleCtxHook, RuleRunnerSgl};
+use crate::wrap::{RuleCtx, RuleCtxHook, RuleRunnerSgl};
 use dashmap::DashMap;
 use derive_more::{Debug, Deref, DerefMut, IntoIterator};
 use egglog::ast::{RustSpan, Span};
@@ -13,11 +15,13 @@ use egglog::{
     ast::{Command, GenericAction, GenericExpr},
 };
 use egglog::{TermDag, TermId, ast::Literal};
+use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
 use std::sync::Mutex;
 use std::{
     any::Any,
     borrow::Borrow,
+    borrow::Cow,
     collections::HashMap,
     fmt,
     hash::Hash,
@@ -44,6 +48,14 @@ pub trait NodeDropper: NodeOwner + 'static {
     fn on_drop(&self, _dropped: &mut (impl EgglogNode + 'static)) {
         // do nothing as default
     }
+
+    #[track_caller]
+    fn replace_meta(&self, _sym: Sym, _meta: Box<dyn Any>) {
+        panic!("no meta suppoerted")
+    }
+    fn meta_of(&self, _sym: Sym) -> Box<dyn std::any::Any> {
+        panic!("no meta supported")
+    }
 }
 pub trait Tx: 'static + NodeOwner + NodeDropper {
     /// receive is guaranteed to not be called in proc macro
@@ -57,6 +69,23 @@ pub trait Tx: 'static + NodeOwner + NodeDropper {
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     );
+    #[track_caller]
+    fn on_relation_insert<'a, R: EgglogRelation>(
+        &self,
+        input: <R::Input as EgglogFuncInputs>::Ref<'a>,
+    ) {
+        let input_exprs = input
+            .as_evalues()
+            .iter()
+            .map(|value| (*value).get_egglog_expr())
+            .collect::<Vec<_>>();
+        self.send(TxCommand::NativeCommand {
+            command: Command::Action(GenericAction::Expr(
+                span!(),
+                GenericExpr::Call(span!(), R::REL_NAME.to_string(), input_exprs),
+            )),
+        });
+    }
     #[track_caller]
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(&self, node1: &(impl EgglogNode + 'static)) -> egglog::Value;
@@ -84,7 +113,6 @@ pub trait Rx: 'static {
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit;
     #[track_caller]
     fn on_pull_value<T: EgglogTy>(&self, value: Value<T>) -> SymLit;
-    fn egraph(&self) -> Arc<Mutex<EGraph>>;
 }
 
 pub trait SingletonGetter: 'static {
@@ -109,6 +137,9 @@ where
 }
 pub trait NodeDropperSgl: 'static + Sized + SingletonGetter + NodeOwnerSgl {
     fn on_drop(dropped: &mut (impl EgglogNode + 'static));
+
+    fn replace_meta(sym: Sym, meta: Box<dyn Any>);
+    fn meta_of(sym: Sym) -> Box<dyn std::any::Any>;
 }
 
 pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
@@ -121,6 +152,8 @@ pub trait TxSgl: 'static + Sized + NodeDropperSgl + NodeOwnerSgl {
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     );
+    #[track_caller]
+    fn on_relation_insert<'a, R: EgglogRelation>(input: <R::Input as EgglogFuncInputs>::Ref<'a>);
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static));
     fn canonical_raw(node1: &(impl EgglogNode + 'static)) -> egglog::Value;
 }
@@ -139,7 +172,6 @@ pub trait RxSgl: 'static + Sized + SingletonGetter + NodeDropperSgl + NodeOwnerS
     )>;
     #[track_caller]
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static));
-    fn egraph() -> Arc<std::sync::Mutex<EGraph>>;
 }
 
 impl<S: SingletonGetter> NodeDropperSgl for S
@@ -149,6 +181,12 @@ where
     fn on_drop(_dropped: &mut (impl EgglogNode + 'static)) {
         // do nothing as default
         // Self::sgl().on_drop(dropped);
+    }
+    fn replace_meta(sym: Sym, meta: Box<dyn Any>) {
+        Self::sgl().replace_meta(sym, meta)
+    }
+    fn meta_of(sym: Sym) -> Box<dyn std::any::Any> {
+        Self::sgl().meta_of(sym)
     }
 }
 
@@ -168,6 +206,10 @@ where
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
         Self::sgl().on_func_set::<F>(input, output);
+    }
+
+    fn on_relation_insert<'a, R: EgglogRelation>(input: <R::Input as EgglogFuncInputs>::Ref<'a>) {
+        Self::sgl().on_relation_insert::<R>(input);
     }
 
     fn on_union(node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
@@ -214,10 +256,6 @@ where
     fn on_pull<T: EgglogTy>(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_pull::<T>(node)
     }
-
-    fn egraph() -> Arc<std::sync::Mutex<EGraph>> {
-        Self::sgl().egraph()
-    }
 }
 
 /// version control triat
@@ -231,39 +269,100 @@ pub trait VersionCtl {
     fn set_prev(&self, node: &mut Sym);
 }
 
+pub trait Meta:
+    Default
+    + Clone
+    + Send
+    + Sync
+    + fmt::Debug
+    + Serialize
+    + Deserialize<'static>
+    + Hash
+    + PartialEq
+    + Eq
+{
+    fn merge(metas: &mut impl Iterator<Item = Self>) -> Self;
+}
+impl Meta for () {
+    fn merge(_metas: &mut impl Iterator<Item = Self>) -> Self {
+        ()
+    }
+}
 /// pattern recorder triat
 /// it's neccessary to impl NodeDropper for PatternCombine feature
 /// and also should be implemented by Tx
 pub trait PatRec: NodeDropper + Tx {
+    type MetaTy: Meta;
     #[track_caller]
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static));
     #[track_caller]
     fn on_new_constraint(&self, constraint: impl IntoConstraintFact);
+    #[track_caller]
+    fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        let _ = (query_table, vars);
+    }
+    #[track_caller]
+    fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        let _ = (query_table, vars);
+    }
     fn on_record_start(&self);
     fn on_record_end<T: PatRecSgl>(&self, pat_vars: &impl PatVars<T>) -> PatId;
     fn pat2fact_builder(&self, pat_id: PatId) -> FactsBuilder;
+
+    #[allow(unused)]
+    fn on_ctx_insert<PR: PatRecSgl>(
+        &self,
+        inputs: Vec<FuncValueMeta<Self>>,
+        output: (FuncName, egglog::Value, Option<Self::MetaTy>),
+    ) {
+    }
+    #[allow(unused)]
+    fn on_ctx_union(&self, combo1: FuncValueMeta<Self>, combo2: FuncValueMeta<Self>) {}
+
+    /// return whether updated
+    fn flush_pending(&self, _egraph: &EGraph) -> bool {
+        false
+    }
 }
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub struct PatId(pub u32);
 
 pub trait PatRecSgl: NodeDropperSgl + TxSgl {
+    type MetaTy: Meta;
     #[track_caller]
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static));
     #[track_caller]
     fn on_new_constraint(constraint: impl IntoConstraintFact);
+    #[track_caller]
+    fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>);
+    #[track_caller]
+    fn on_new_relation_fact(query_table: TableName, vars: Vec<(VarName, SortName)>);
     fn on_record_start();
     fn on_record_end(pat_vars: &impl PatVars<Self>) -> PatId;
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder;
+
+    fn on_ctx_insert(inputs: Vec<_FuncValueMeta<Self>>, output: _FuncValueMeta<Self>);
+    fn on_ctx_union(combo1: _FuncValueMeta<Self>, combo2: _FuncValueMeta<Self>);
+
+    /// flush pending and return whether updated
+    fn flush_pending(egraph: &EGraph) -> bool;
 }
-impl<T: SingletonGetter> PatRecSgl for T
+impl<T: WithRxSgl + SingletonGetter> PatRecSgl for T
 where
     T::RetTy: PatRec + NodeSetter,
 {
+    type MetaTy = <T::RetTy as PatRec>::MetaTy;
     fn on_new_query_leaf(node: &(impl EgglogNode + 'static)) {
         Self::sgl().on_new_query_leaf(node);
     }
     fn on_new_constraint(constraint: impl IntoConstraintFact) {
         Self::sgl().on_new_constraint(constraint);
+    }
+    fn on_new_table_fact(query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        Self::sgl().on_new_table_fact(query_table, vars);
+    }
+    fn on_new_relation_fact(query_table: TableName, vars: Vec<(VarName, SortName)>) {
+        Self::sgl().on_new_relation_fact(query_table, vars);
     }
     fn on_record_start() {
         Self::sgl().on_record_start();
@@ -276,10 +375,23 @@ where
     fn pat2fact_builder(pat_id: PatId) -> FactsBuilder {
         Self::sgl().pat2fact_builder(pat_id)
     }
+
+    fn on_ctx_insert(_inputs: Vec<_FuncValueMeta<Self>>, _output: _FuncValueMeta<Self>) {}
+
+    fn on_ctx_union(combo1: _FuncValueMeta<Self>, combo2: _FuncValueMeta<Self>) {
+        Self::sgl().on_ctx_union(combo1, combo2)
+    }
+
+    fn flush_pending(egraph: &EGraph) -> bool {
+        Self::sgl().flush_pending(egraph)
+    }
 }
 
-pub trait WithPatRecSgl {
+pub trait WithPatRecSgl: SingletonGetter {
     type PatRecSgl: PatRecSgl;
+}
+pub trait WithRxSgl {
+    type RxSgl: RxSgl;
 }
 
 // pub trait WithPatternRecorderSgl
@@ -381,6 +493,7 @@ pub trait EgglogNode: ToEgglog + Any + EValue + Send + Sync {
     fn basic_field_types(&self) -> &[&'static str];
     fn complex_field_names(&self) -> &[&'static str];
     fn complex_field_types(&self) -> &[&'static str];
+    fn precedence(&self) -> u16;
 
     #[track_caller]
     fn to_term(
@@ -399,12 +512,36 @@ pub trait VarsCollector {
     /// 3. if self is a [`PatVars`] collect recursively
     fn collect_vars(&self, vars: &mut Vec<(VarName, SortName)>);
 }
+impl<T: VarsCollector, M> VarsCollector for (T, M) {
+    fn collect_vars(&self, vars: &mut Vec<(VarName, SortName)>) {
+        self.0.collect_vars(vars);
+    }
+}
+
+pub trait BindingNames {
+    fn collect_binding_names(&self, names: &mut Vec<VarName>);
+
+    fn binding_names(&self) -> Vec<VarName> {
+        let mut names = Vec::new();
+        self.collect_binding_names(&mut names);
+        names
+    }
+}
+
+impl<T: BindingNames, M> BindingNames for (T, M) {
+    fn collect_binding_names(&self, names: &mut Vec<VarName>) {
+        self.0.collect_binding_names(names);
+    }
+}
 
 pub trait EgglogEnumVariantTy: Clone + 'static + Send + Sync {
     const TY_NAME: &'static str;
     /// T represent the type call that call this type
     /// This is useful when we want to specify default for a type
-    type ValuedWithDefault<T>: FromPlainValues;
+    type ValuedWithDefault<T>: FromPlainValues + FromIndexedValues;
+    const DISPLAY_TEMPLATE: Option<&'static str>;
+    const TYPST_TEMPLATE: Option<&'static str>;
+    const PRECEDENCE: u16;
     /// fields names of valued variant struct
     const BASIC_FIELD_NAMES: &[&'static str];
     const COMPLEX_FIELD_NAMES: &[&'static str];
@@ -534,12 +671,105 @@ impl<T: EgglogTy> TyCounter<T> {
 }
 
 impl EgglogEnumVariantTy for () {
-    const TY_NAME: &'static str = "Unknown";
+    const TY_NAME: &'static str = "Unknown Func";
     type ValuedWithDefault<T> = Value<T>;
+    const DISPLAY_TEMPLATE: Option<&'static str> = None;
+    const TYPST_TEMPLATE: Option<&'static str> = None;
+    const PRECEDENCE: u16 = u16::MAX;
     const BASIC_FIELD_NAMES: &[&'static str] = &[];
     const BASIC_FIELD_TYPES: &[&'static str] = &[];
     const COMPLEX_FIELD_NAMES: &[&'static str] = &[];
     const COMPLEX_FIELD_TYPES: &[&'static str] = &[];
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RenderedTemplateField<'a> {
+    pub text: Cow<'a, str>,
+    pub precedence: u16,
+}
+
+impl<'a> RenderedTemplateField<'a> {
+    pub fn new(text: impl Into<Cow<'a, str>>, precedence: u16) -> Self {
+        Self {
+            text: text.into(),
+            precedence,
+        }
+    }
+
+    pub fn atom(text: impl Into<Cow<'a, str>>) -> Self {
+        Self::new(text, u16::MAX)
+    }
+}
+
+pub fn render_template_with_precedence(
+    template: &str,
+    parent_precedence: u16,
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> String {
+    let chars = template.chars().collect::<Vec<_>>();
+    let mut rendered = String::new();
+    let mut idx = 0usize;
+
+    while idx < chars.len() {
+        match chars[idx] {
+            '{' => {
+                if chars.get(idx + 1) == Some(&'{') {
+                    rendered.push('{');
+                    idx += 2;
+                    continue;
+                }
+
+                let start = idx + 1;
+                let mut end = start;
+                while end < chars.len() && chars[end] != '}' {
+                    end += 1;
+                }
+                let placeholder = chars[start..end].iter().collect::<String>();
+                let field = fields
+                    .iter()
+                    .find(|(name, _)| *name == placeholder)
+                    .unwrap_or_else(|| panic!("missing render field `{placeholder}`"));
+
+                if field.1.precedence < parent_precedence {
+                    rendered.push('(');
+                    rendered.push_str(field.1.text.as_ref());
+                    rendered.push(')');
+                } else {
+                    rendered.push_str(field.1.text.as_ref());
+                }
+                idx = end + 1;
+            }
+            '}' => {
+                if chars.get(idx + 1) == Some(&'}') {
+                    rendered.push('}');
+                    idx += 2;
+                } else {
+                    rendered.push('}');
+                    idx += 1;
+                }
+            }
+            ch => {
+                rendered.push(ch);
+                idx += 1;
+            }
+        }
+    }
+
+    rendered
+}
+
+pub fn render_variant_typst<V: EgglogEnumVariantTy>(
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> Option<String> {
+    V::TYPST_TEMPLATE
+        .map(|template| render_template_with_precedence(template, V::PRECEDENCE, fields))
+}
+
+pub fn render_variant_display<V: EgglogEnumVariantTy>(
+    fields: &[(&str, RenderedTemplateField<'_>)],
+) -> Option<String> {
+    V::DISPLAY_TEMPLATE
+        .map(|template| render_template_with_precedence(template, V::PRECEDENCE, fields))
 }
 
 #[derive(DerefMut, Deref)]
@@ -889,8 +1119,51 @@ impl<T: EgglogTy> fmt::Debug for Value<T> {
 /// a pattern may extract values in EGraph, for example
 /// if you record pattern (fib x) then x will be extracted
 /// we use [`PatVars`] trait to mark such patterns
-pub trait PatVars<T: PatRecSgl>: ToStrArcSort {
-    type Valued: FromPlainValues;
+pub trait PatVars<PR: PatRecSgl>: ToStrArcSort + BindingNames {
+    type Valued: FromPlainValuesMetas<PR> + FromIndexedValuesMetas<PR> + DecodeWithPlanMetas<PR>;
+    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy>;
+
+    fn build_decode_plan(
+        &self,
+        binding_var_slots: &HashMap<Arc<str>, usize>,
+    ) -> <Self::Valued as DecodeWithPlanMetas<PR>>::DecodePlan {
+        let binding_slots = self
+            .binding_names()
+            .into_iter()
+            .map(|name| {
+                *binding_var_slots
+                    .get(name.as_str())
+                    .unwrap_or_else(|| panic!("missing binding layout var {}", name))
+            })
+            .collect::<Vec<_>>();
+        let mut value_idx = 0;
+        <Self::Valued as DecodeWithPlanMetas<PR>>::build_decode_plan(&binding_slots, &mut value_idx)
+    }
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        metas: &[PR::MetaTy],
+        plan: &<Self::Valued as DecodeWithPlanMetas<PR>>::DecodePlan,
+    ) -> Self::Valued {
+        let mut meta_idx = 0;
+        <Self::Valued as DecodeWithPlanMetas<PR>>::decode_with_plan(
+            values,
+            metas,
+            &mut meta_idx,
+            plan,
+        )
+    }
+}
+impl<T, PV: ToStrArcSort> ToStrArcSort for (PV, T) {
+    fn to_str_arcsort(&self, egraph: &EGraph) -> Vec<(VarName, ArcSort)> {
+        PV::to_str_arcsort(&self.0, egraph)
+    }
+}
+impl<PR: PatRecSgl, PV: PatVars<PR>> PatVars<PR> for (PV, PR::MetaTy) {
+    type Valued = PV::Valued;
+    fn metas_iter(&self) -> impl Iterator<Item = PR::MetaTy> {
+        self.0.metas_iter().chain(std::iter::once(self.1.clone()))
+    }
 }
 
 /// a pattern should be transformed into [(str,Arcsort)] when registering rules
@@ -898,14 +1171,154 @@ pub trait ToStrArcSort {
     fn to_str_arcsort(&self, egraph: &EGraph) -> Vec<(VarName, ArcSort)>;
 }
 
+/// This trait is stronger then FromPlainValuesMetas so auto impl that if this is implmented
 pub trait FromPlainValues {
     fn from_plain_values(values: &mut impl Iterator<Item = egglog::Value>) -> Self;
 }
 
+pub trait FromIndexedValues {
+    fn from_indexed_values(values: &[egglog::Value], value_idx: &mut usize) -> Self;
+}
+
+pub trait FromIndexedValuesMetas<PR: PatRecSgl> {
+    fn from_indexed_values_metas(
+        values: &[egglog::Value],
+        value_idx: &mut usize,
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+    ) -> Self;
+}
+
+pub trait DecodeWithPlanMetas<PR: PatRecSgl>: Sized {
+    type DecodePlan: Clone + Send + Sync + 'static;
+
+    fn build_decode_plan(binding_slots: &[usize], value_idx: &mut usize) -> Self::DecodePlan;
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+        plan: &Self::DecodePlan,
+    ) -> Self;
+}
+
+impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for (T, PR::MetaTy) {
+    fn from_plain_values_metas(
+        values: &mut impl Iterator<Item = egglog::Value>,
+        metas: &mut impl Iterator<Item = PR::MetaTy>,
+    ) -> Self {
+        (
+            <T as FromPlainValues>::from_plain_values(values),
+            metas.next().unwrap(),
+        )
+    }
+}
+impl<T: FromPlainValues, PR: PatRecSgl> FromPlainValuesMetas<PR> for T {
+    fn from_plain_values_metas(
+        values: &mut impl Iterator<Item = egglog::Value>,
+        _metas: &mut impl Iterator<Item = PR::MetaTy>,
+    ) -> Self {
+        <T as FromPlainValues>::from_plain_values(values)
+    }
+}
+
+impl<T: FromIndexedValues, PR: PatRecSgl> FromIndexedValuesMetas<PR> for (T, PR::MetaTy) {
+    fn from_indexed_values_metas(
+        values: &[egglog::Value],
+        value_idx: &mut usize,
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+    ) -> Self {
+        let value = <T as FromIndexedValues>::from_indexed_values(values, value_idx);
+        let meta = metas.get(*meta_idx).cloned().unwrap_or_default();
+        *meta_idx += 1;
+        (value, meta)
+    }
+}
+
+impl<T: DecodeWithPlanMetas<PR>, PR: PatRecSgl> DecodeWithPlanMetas<PR> for (T, PR::MetaTy) {
+    type DecodePlan = T::DecodePlan;
+
+    fn build_decode_plan(binding_slots: &[usize], value_idx: &mut usize) -> Self::DecodePlan {
+        T::build_decode_plan(binding_slots, value_idx)
+    }
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        metas: &[PR::MetaTy],
+        meta_idx: &mut usize,
+        plan: &Self::DecodePlan,
+    ) -> Self {
+        let value = T::decode_with_plan(values, metas, meta_idx, plan);
+        let meta = metas.get(*meta_idx).cloned().unwrap_or_default();
+        *meta_idx += 1;
+        (value, meta)
+    }
+}
+
+impl<T: FromIndexedValues, PR: PatRecSgl> FromIndexedValuesMetas<PR> for T {
+    fn from_indexed_values_metas(
+        values: &[egglog::Value],
+        value_idx: &mut usize,
+        _metas: &[PR::MetaTy],
+        _meta_idx: &mut usize,
+    ) -> Self {
+        <T as FromIndexedValues>::from_indexed_values(values, value_idx)
+    }
+}
+
+impl<T, PR: PatRecSgl> DecodeWithPlanMetas<PR> for Value<T> {
+    type DecodePlan = usize;
+
+    fn build_decode_plan(binding_slots: &[usize], value_idx: &mut usize) -> Self::DecodePlan {
+        let slot = *binding_slots
+            .get(*value_idx)
+            .unwrap_or_else(|| panic!("missing callback slot for binding #{}", value_idx));
+        *value_idx += 1;
+        slot
+    }
+
+    fn decode_with_plan(
+        values: &[egglog::Value],
+        _metas: &[PR::MetaTy],
+        _meta_idx: &mut usize,
+        plan: &Self::DecodePlan,
+    ) -> Self {
+        Self::new(values[*plan])
+    }
+}
+
+pub trait FromPlainValuesMetas<PR: PatRecSgl> {
+    fn from_plain_values_metas(
+        values: &mut impl Iterator<Item = egglog::Value>,
+        metas: &mut impl Iterator<Item = PR::MetaTy>,
+    ) -> Self;
+}
+
 /// Insertable and RetypeValue are quite different, Insertable is used in Union or table insert
 /// while RetypeValueonly used when you want operational structure
-pub trait Insertable<T> {
+pub trait Insertable<T>: Clone {
+    type MetaTy;
     fn to_value(&self, ctx: &RuleCtx) -> Value<T>;
+    fn meta(&self) -> Option<Self::MetaTy>;
+}
+impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for (I, M) {
+    type MetaTy = M;
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        self.0.to_value(ctx)
+    }
+    fn meta(&self) -> Option<Self::MetaTy> {
+        Some(self.1.clone())
+    }
+}
+impl<I: Insertable<T>, T, M: Meta + 'static> Insertable<T> for &(I, M) {
+    type MetaTy = M;
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        self.0.to_value(ctx)
+    }
+    fn meta(&self) -> Option<Self::MetaTy> {
+        Some(self.1.clone())
+    }
 }
 pub trait RetypeValue {
     type Target;
@@ -954,8 +1367,40 @@ pub trait BoxedContainer: BoxedValue {
 pub trait SingleFieldVariant {}
 
 impl<T0, B: BoxedBase<Boxed = T0> + EgglogTy + Clone> Insertable<B> for B {
+    type MetaTy = ();
     fn to_value(&self, ctx: &RuleCtx) -> Value<Self> {
         ctx.intern_base(self.clone())
+    }
+    fn meta(&self) -> Option<Self::MetaTy> {
+        None
+    }
+}
+
+impl<T, Elem> Insertable<T> for super::SetContainer<Elem>
+where
+    T: super::type_reg::EgglogContainerTy<EleTy = Elem>,
+    Elem: EgglogTy,
+{
+    type MetaTy = ();
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        ctx.intern_container::<T, super::SetContainer<Elem>>(self.clone())
+    }
+    fn meta(&self) -> Option<Self::MetaTy> {
+        None
+    }
+}
+
+impl<T, Elem> Insertable<T> for super::VecContainer<Elem>
+where
+    T: super::type_reg::EgglogContainerTy<EleTy = Elem>,
+    Elem: EgglogTy,
+{
+    type MetaTy = ();
+    fn to_value(&self, ctx: &RuleCtx) -> Value<T> {
+        ctx.intern_container::<T, super::VecContainer<Elem>>(self.clone())
+    }
+    fn meta(&self) -> Option<Self::MetaTy> {
+        None
     }
 }
 
@@ -1074,8 +1519,62 @@ where
 
 /// a marker trait for those not pattern recorder singleton
 /// because currently rust doesn't support `!PatRecSgl` clause
-pub trait NonPatRecSgl {}
-impl NonPatRecSgl for () {}
+pub trait NonPatRecSgl {
+    fn egraph() -> Arc<Mutex<EGraph>>;
+}
+impl NonPatRecSgl for () {
+    fn egraph() -> Arc<Mutex<EGraph>> {
+        panic!()
+    }
+}
 
 pub trait G: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl {}
 impl<T: TxSgl + NonPatRecSgl + RuleRunnerSgl + RxSgl> G for T {}
+
+pub type SlotVarID = String;
+
+pub trait QuerySlot {
+    fn query_slot(name: SlotVarID) -> Self;
+}
+pub trait SlottedPatRecSgl: PatRecSgl {
+    fn on_new_query_slot(node: &(impl EgglogNode + 'static), var_id: SlotVarID);
+}
+pub trait SlottedPatRec: PatRec {
+    fn on_new_query_slot(&self, node: &(impl EgglogNode + 'static), var_id: SlotVarID);
+}
+impl<T: PatRecSgl> SlottedPatRecSgl for T
+where
+    T::RetTy: SlottedPatRec + PatRec,
+{
+    fn on_new_query_slot(node: &(impl EgglogNode + 'static), var_id: SlotVarID) {
+        Self::sgl().on_new_query_slot(node, var_id);
+    }
+}
+pub trait FromMetas {
+    fn from_metas(values: &mut impl Iterator<Item = SlotMeta>) -> Self;
+}
+
+#[cfg(feature = "viewer")]
+impl<S: SingletonGetter> EGraphViewSgl for S
+where
+    S::RetTy: EGraphView,
+{
+    fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
+        Self::sgl().egraph()
+    }
+    fn view() -> Result<(), eggplant_viewer::Error> {
+        Self::sgl().view()
+    }
+}
+
+#[cfg(feature = "viewer")]
+pub trait EGraphViewSgl {
+    fn egraph() -> Arc<Mutex<EGraph>>;
+    fn view() -> Result<(), eframe::Error>;
+}
+
+#[cfg(feature = "viewer")]
+pub trait EGraphView {
+    fn egraph(&self) -> Arc<Mutex<EGraph>>;
+    fn view(&self) -> Result<(), eframe::Error>;
+}

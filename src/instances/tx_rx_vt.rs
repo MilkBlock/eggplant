@@ -1,6 +1,4 @@
-use crate::wrap::{EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, etc::topo_sort};
-
-use super::*;
+use crate::{etc::topo_sort, wrap::*};
 use dashmap::DashMap;
 use egglog::{
     EGraph, SerializeConfig,
@@ -32,7 +30,7 @@ pub struct TxRxVT {
 
 #[allow(unused)]
 #[derive(Debug)]
-pub struct CommitCheckPoint {
+struct CommitCheckPoint {
     committed_node_root: Sym,
     staged_set_nodes: Vec<Sym>,
     staged_new_nodes: Vec<Sym>,
@@ -592,7 +590,7 @@ impl Rx for TxRxVT {
         let mut term2sym = HashMap::new();
         let (term_dag, start_term, cost) = egraph.extract_value(sort, value.val).unwrap();
 
-        let root_idx = term_dag.lookup(&start_term);
+        let root_idx = start_term;
         log::debug!("term_dag:{:?}, {:?}", term_dag, start_term);
         let mut ret_sym = None;
 
@@ -623,10 +621,10 @@ impl Rx for TxRxVT {
             None => {
                 // situtaion 2
                 // func ret a BaseTy
-                SymLit::Lit(match term_dag.get(0) {
+                SymLit::Lit(match term_dag.get(root_idx) {
                     egglog::Term::Lit(literal) => literal.clone(),
                     _ => {
-                        panic!("termdag[0] should be a literal")
+                        panic!("root term should be a literal")
                     }
                 })
             }
@@ -635,10 +633,6 @@ impl Rx for TxRxVT {
     fn on_pull_sym<T: EgglogTy>(&self, sym: Sym) -> SymLit {
         let value = sym.get_value_by_eval_string(&mut self.egraph.lock().unwrap());
         self.on_pull_value(Value::<T>::new(value))
-    }
-
-    fn egraph(&self) -> Arc<Mutex<EGraph>> {
-        self.egraph.clone()
     }
 }
 

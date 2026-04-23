@@ -1,11 +1,31 @@
-pub use crate::wrap::constraint::Compare;
+pub use crate::instances::pat_rec::*;
+pub use crate::instances::tx::*;
+pub use crate::instances::tx_minimal::*;
+pub use crate::instances::tx_rx_vt::*;
+pub use crate::instances::tx_rx_vt_pr::*;
+pub use crate::instances::tx_rx_vt_pr_slot::*;
+pub use crate::schema::{
+    ArtifactCompatibility, ArtifactLoadError, ArtifactSchemaHeader, DslSchemaManifest,
+    DslVariantManifest, EngineConstructorManifest, EngineFunctionManifest, EngineSchemaManifest,
+    EngineSortKind, EngineSortManifest, ManifestCompatibility, ManifestDiff,
+    SchemaCompatibilityError, SchemaFingerprints, SerializedArtifactEnvelope,
+    current_dsl_schema_manifest, current_engine_schema_manifest,
+};
+#[cfg(feature = "viewer")]
+pub use crate::wrap::EGraphViewSgl;
+pub use crate::wrap::constraint::{
+    Compare, IntoHandleTy, SetExprExt, VecExprExt, prim_call, prim_fact, set_empty, set_of,
+    vec_empty, vec_of,
+};
 pub use crate::wrap::sorts::set::SetContainer;
 pub use crate::wrap::sorts::vec::VecContainer;
 pub use crate::wrap::{
-    Commit, EgglogNode, FromBase, Insertable, LocateVersion, PEq, PatRecSgl, PatRecorder,
-    RuleRunnerSgl, RuleSetId, RunConfig, RxSgl, SingletonGetter, ToDot, ToDotSgl, TxCommit,
-    TxCommitSgl, TxSgl, Value,
+    AsHandle, BaseVar, Commit, EgglogNode, FromBase, Insertable, LocateVersion, PEq, PatRecSgl,
+    QuerySlot, RenderedTemplateField, RuleRunnerSgl, RuleSetId, RunConfig, RxSgl, SingletonGetter,
+    SlotVarID, SlottedPatRecSgl, ToDot, ToDotSgl, TxCommit, TxCommitSgl, TxSgl, Value,
+    render_template_with_precedence, render_variant_display, render_variant_typst,
 };
+
 pub use dashmap;
 pub use derive_more;
 pub use egglog;
