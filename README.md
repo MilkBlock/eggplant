@@ -141,7 +141,7 @@ fn main() {
 }
 ```
 
-`tx_rx_vt_pr!` now generates a session-aware `Tx` facade by default.
+`tx_rx_vt_pr!` now generates the default `Tx` facade as a session-routed runtime.
 
 - Calls like `MyTx::add_rule(...)`, `MyTx::run_ruleset(...)`, and `MyTx::canonical_raw(...)`
   resolve against the current active session when one is bound.
@@ -150,10 +150,10 @@ fn main() {
 
 If you want to study the explicit session API in practice, see:
 
-- `examples/constant_prop_pseudo_singleton.rs`
-- `examples/constant_prop_pseudo_singleton_async.rs`
+- `examples/constant_prop_sessions.rs`
+- `examples/constant_prop_sessions_async.rs`
 
-These examples use the default session-aware `MyTx::...` API together with explicit
+These examples use the default `MyTx::...` API together with explicit
 session handles. The async version only supports explicit wrapper-based entry
 (`run_async` / `spawn_async`); it does not claim ambient async-task inheritance.
 
@@ -281,17 +281,17 @@ Run it with:
 cargo run --example action_sample_recorder
 ```
 
-### Pseudo-Singleton Session Examples
+### Session Examples
 
-- **`examples/constant_prop_pseudo_singleton.rs`**: Demonstrates the default session-aware `tx_rx_vt_pr!` facade for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
+- **`examples/constant_prop_sessions.rs`**: Demonstrates the default `tx_rx_vt_pr!` facade for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
 
-- **`examples/constant_prop_pseudo_singleton_async.rs`**: Demonstrates the same session-aware model for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
+- **`examples/constant_prop_sessions_async.rs`**: Demonstrates the same session model for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
 
 Run them with:
 
 ```bash
-cargo run --example constant_prop_pseudo_singleton
-cargo run --example constant_prop_pseudo_singleton_async
+cargo run --example constant_prop_sessions
+cargo run --example constant_prop_sessions_async
 ```
 
 ### Feature-Gated Examples

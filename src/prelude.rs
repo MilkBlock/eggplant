@@ -19,7 +19,7 @@ pub use crate::artifact::{
     read_binary_artifact_header_from_file, restore_persisted_snapshot_v1,
 };
 pub use crate::instances::pat_rec::*;
-pub use crate::instances::pseudo_singleton::{Session, SessionAwareTxSgl};
+pub use crate::instances::session_runtime::Session;
 pub use crate::instances::tx::*;
 pub use crate::instances::tx_minimal::*;
 pub use crate::instances::tx_rx_vt::*;

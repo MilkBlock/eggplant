@@ -27,7 +27,7 @@ struct ErasedSessionBinding {
 }
 
 impl ErasedSessionBinding {
-    fn new<Tx: SessionAwareTxMarker>(state: Arc<SessionState<Tx>>) -> Self {
+    fn new<Tx: SessionTxMarker>(state: Arc<SessionState<Tx>>) -> Self {
         Self {
             state,
             order: NEXT_BINDING_ORDER.fetch_add(1, Ordering::Relaxed),
@@ -52,14 +52,14 @@ enum RulesetRegistration {
     Ready(RuleSetId),
 }
 
-struct SessionState<Tx: SessionAwareTxMarker> {
+struct SessionState<Tx: SessionTxMarker> {
     runtime: Tx::Runtime,
     pat_recorder: Mutex<Tx::PatRecorder>,
     rulesets: Mutex<HashMap<&'static str, RulesetRegistration>>,
     rulesets_cv: Condvar,
 }
 
-impl<Tx: SessionAwareTxMarker> SessionState<Tx> {
+impl<Tx: SessionTxMarker> SessionState<Tx> {
     fn new() -> Self {
         Self {
             runtime: Tx::new_runtime(),
@@ -74,20 +74,20 @@ fn type_key<T: 'static>() -> TypeId {
     TypeId::of::<T>()
 }
 
-fn erase_state<Tx: SessionAwareTxMarker>(state: Arc<SessionState<Tx>>) -> ErasedState {
+fn erase_state<Tx: SessionTxMarker>(state: Arc<SessionState<Tx>>) -> ErasedState {
     state
 }
 
-fn downcast_state<Tx: SessionAwareTxMarker>(state: ErasedState) -> Arc<SessionState<Tx>> {
+fn downcast_state<Tx: SessionTxMarker>(state: ErasedState) -> Arc<SessionState<Tx>> {
     state.downcast::<SessionState<Tx>>().unwrap_or_else(|_| {
         panic!(
-            "pseudo-singleton state type mismatch for {}",
+            "session-runtime state type mismatch for {}",
             std::any::type_name::<Tx>()
         )
     })
 }
 
-fn default_state<Tx: SessionAwareTxMarker>() -> Arc<SessionState<Tx>> {
+fn default_state<Tx: SessionTxMarker>() -> Arc<SessionState<Tx>> {
     let key = type_key::<Tx>();
     let mut registry = DEFAULT_SESSIONS
         .get_or_init(|| Mutex::new(HashMap::new()))
@@ -108,7 +108,7 @@ fn task_bindings_snapshot() -> HashMap<TypeId, ErasedSessionBinding> {
         .unwrap_or_default()
 }
 
-fn current_state<Tx: SessionAwareTxMarker>() -> Arc<SessionState<Tx>> {
+fn current_state<Tx: SessionTxMarker>() -> Arc<SessionState<Tx>> {
     let key = type_key::<Tx>();
     let thread_binding = CURRENT_SESSION_THREADS.with(|slot| slot.borrow().get(&key).cloned());
     let task_binding = CURRENT_SESSION_TASKS
@@ -130,12 +130,12 @@ fn current_state<Tx: SessionAwareTxMarker>() -> Arc<SessionState<Tx>> {
     }
 }
 
-pub fn with_runtime<Tx: SessionAwareTxMarker, R>(f: impl FnOnce(&Tx::Runtime) -> R) -> R {
+pub fn with_runtime<Tx: SessionTxMarker, R>(f: impl FnOnce(&Tx::Runtime) -> R) -> R {
     let state = current_state::<Tx>();
     f(&state.runtime)
 }
 
-pub fn with_pat_recorder<Tx: SessionAwareTxMarker, R>(
+pub fn with_pat_recorder<Tx: SessionTxMarker, R>(
     f: impl FnOnce(&Tx::PatRecorder) -> R,
 ) -> R {
     let state = current_state::<Tx>();
@@ -143,11 +143,11 @@ pub fn with_pat_recorder<Tx: SessionAwareTxMarker, R>(
     f(&pat_recorder)
 }
 
-pub struct Session<Tx: SessionAwareTxMarker> {
+pub struct Session<Tx: SessionTxMarker> {
     state: Arc<SessionState<Tx>>,
 }
 
-impl<Tx: SessionAwareTxMarker> Clone for Session<Tx> {
+impl<Tx: SessionTxMarker> Clone for Session<Tx> {
     fn clone(&self) -> Self {
         Self {
             state: Arc::clone(&self.state),
@@ -155,7 +155,7 @@ impl<Tx: SessionAwareTxMarker> Clone for Session<Tx> {
     }
 }
 
-impl<Tx: SessionAwareTxMarker> Session<Tx> {
+impl<Tx: SessionTxMarker> Session<Tx> {
     pub fn new() -> Self {
         Self {
             state: Arc::new(SessionState::<Tx>::new()),
@@ -247,7 +247,7 @@ impl<Tx: SessionAwareTxMarker> Session<Tx> {
     }
 }
 
-fn get_or_register_ruleset_state<Tx: SessionAwareTxMarker>(
+fn get_or_register_ruleset_state<Tx: SessionTxMarker>(
     state: &Arc<SessionState<Tx>>,
     key: &'static str,
     build: impl FnOnce() -> RuleSetId,
@@ -295,7 +295,7 @@ fn get_or_register_ruleset_state<Tx: SessionAwareTxMarker>(
     }
 }
 
-pub fn get_or_register_ruleset<Tx: SessionAwareTxMarker>(
+pub fn get_or_register_ruleset<Tx: SessionTxMarker>(
     key: &'static str,
     build: impl FnOnce() -> RuleSetId,
 ) -> RuleSetId {
@@ -303,7 +303,7 @@ pub fn get_or_register_ruleset<Tx: SessionAwareTxMarker>(
     get_or_register_ruleset_state::<Tx>(&state, key, build)
 }
 
-pub fn reset_for_bench<Tx: SessionAwareTxMarker>() {
+pub fn reset_for_bench<Tx: SessionTxMarker>() {
     let state = current_state::<Tx>();
     Tx::reset_runtime_for_bench(&state.runtime);
     *state.pat_recorder.lock().unwrap() = Tx::new_pat_recorder();
@@ -312,11 +312,11 @@ pub fn reset_for_bench<Tx: SessionAwareTxMarker>() {
     state.rulesets_cv.notify_all();
 }
 
-pub fn egraph<Tx: SessionAwareTxMarker>() -> Arc<Mutex<EGraph>> {
+pub fn egraph<Tx: SessionTxMarker>() -> Arc<Mutex<EGraph>> {
     with_runtime::<Tx, _>(Tx::runtime_egraph)
 }
 
-pub trait SessionAwareTxMarker: Sized + 'static {
+pub trait SessionTxMarker: Sized + 'static {
     type Runtime: Tx
         + Rx
         + VersionCtl
@@ -329,7 +329,7 @@ pub trait SessionAwareTxMarker: Sized + 'static {
         + Send
         + Sync
         + 'static;
-    type PatRecorder: PatRec<MetaTy = <Self::PatRecMarker as SessionAwarePatRecMarker>::MetaTy>
+    type PatRecorder: PatRec<MetaTy = <Self::PatRecMarker as SessionPatRecMarker>::MetaTy>
         + NodeOwner
         + NodeDropper
         + NodeSetter
@@ -337,7 +337,7 @@ pub trait SessionAwareTxMarker: Sized + 'static {
         + Send
         + Sync
         + 'static;
-    type PatRecMarker: SessionAwarePatRecMarker<TxMarker = Self> + PatRecSgl;
+    type PatRecMarker: SessionPatRecMarker<TxMarker = Self> + PatRecSgl;
 
     fn new_runtime() -> Self::Runtime;
     fn new_pat_recorder() -> Self::PatRecorder;
@@ -345,12 +345,12 @@ pub trait SessionAwareTxMarker: Sized + 'static {
     fn reset_runtime_for_bench(runtime: &Self::Runtime);
 }
 
-pub trait SessionAwarePatRecMarker: Sized + 'static {
-    type TxMarker: SessionAwareTxMarker<PatRecMarker = Self>;
+pub trait SessionPatRecMarker: Sized + 'static {
+    type TxMarker: SessionTxMarker<PatRecMarker = Self>;
     type MetaTy: crate::wrap::Meta;
 }
 
-pub trait SessionAwareTxSgl: SessionAwareTxMarker {
+pub trait SessionTxSgl: SessionTxMarker {
     fn new_session() -> Session<Self> {
         Session::new()
     }
@@ -360,34 +360,34 @@ pub trait SessionAwareTxSgl: SessionAwareTxMarker {
     }
 }
 
-impl<T: SessionAwareTxMarker> SessionAwareTxSgl for T {}
+impl<T: SessionTxMarker> SessionTxSgl for T {}
 
-pub struct SessionTxFacade<TxMarker: SessionAwareTxMarker>(PhantomData<TxMarker>);
+pub struct TxFacade<TxMarker: SessionTxMarker>(PhantomData<TxMarker>);
 
-impl<TxMarker: SessionAwareTxMarker> SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> TxFacade<TxMarker> {
     pub const fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<TxMarker: SessionAwareTxMarker> NodeOwner for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> NodeOwner for TxFacade<TxMarker> {
     type OwnerSpecDataInNode<T: EgglogTy, V: crate::wrap::EgglogEnumVariantTy> =
         <TxMarker::Runtime as NodeOwner>::OwnerSpecDataInNode<T, V>;
 }
 
-impl<TxMarker: SessionAwareTxMarker> NodeDropper for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> NodeDropper for TxFacade<TxMarker> {
     fn on_drop(&self, dropped: &mut (impl EgglogNode + 'static)) {
         with_runtime::<TxMarker, _>(|runtime| runtime.on_drop(dropped));
     }
 }
 
-impl<TxMarker: SessionAwareTxMarker> NodeSetter for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> NodeSetter for TxFacade<TxMarker> {
     fn on_set(&self, node: &mut (impl EgglogNode + 'static)) {
         with_runtime::<TxMarker, _>(|runtime| runtime.on_set(node));
     }
 }
 
-impl<TxMarker: SessionAwareTxMarker> Tx for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> Tx for TxFacade<TxMarker> {
     fn send(&self, sended: TxCommand) {
         with_runtime::<TxMarker, _>(|runtime| runtime.send(sended));
     }
@@ -420,7 +420,7 @@ impl<TxMarker: SessionAwareTxMarker> Tx for SessionTxFacade<TxMarker> {
     }
 }
 
-impl<TxMarker: SessionAwareTxMarker> Rx for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> Rx for TxFacade<TxMarker> {
     fn on_func_get<'a, F: EgglogFunc>(
         &self,
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
@@ -447,7 +447,7 @@ impl<TxMarker: SessionAwareTxMarker> Rx for SessionTxFacade<TxMarker> {
     }
 }
 
-impl<TxMarker: SessionAwareTxMarker> VersionCtl for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> VersionCtl for TxFacade<TxMarker> {
     fn locate_latest(&self, node: Sym) -> Sym {
         with_runtime::<TxMarker, _>(|runtime| runtime.locate_latest(node))
     }
@@ -468,7 +468,7 @@ impl<TxMarker: SessionAwareTxMarker> VersionCtl for SessionTxFacade<TxMarker> {
     }
 }
 
-impl<TxMarker: SessionAwareTxMarker> TxCommit for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> TxCommit for TxFacade<TxMarker> {
     fn on_stage<T: EgglogNode + ?Sized>(&self, node: &T) {
         with_runtime::<TxMarker, _>(|runtime| runtime.on_stage(node));
     }
@@ -478,9 +478,9 @@ impl<TxMarker: SessionAwareTxMarker> TxCommit for SessionTxFacade<TxMarker> {
     }
 }
 
-impl<TxMarker> RuleRunner<TxMarker::PatRecMarker> for SessionTxFacade<TxMarker>
+impl<TxMarker> RuleRunner<TxMarker::PatRecMarker> for TxFacade<TxMarker>
 where
-    TxMarker: SessionAwareTxMarker,
+    TxMarker: SessionTxMarker,
     TxMarker::PatRecMarker: PatRecSgl,
 {
     fn add_rule<P: PatVars<TxMarker::PatRecMarker>>(
@@ -513,7 +513,7 @@ where
     }
 }
 
-impl<TxMarker: SessionAwareTxMarker> ToDot for SessionTxFacade<TxMarker> {
+impl<TxMarker: SessionTxMarker> ToDot for TxFacade<TxMarker> {
     fn egraph_to_dot(&self, path: impl AsRef<std::path::Path>) {
         with_runtime::<TxMarker, _>(|runtime| runtime.egraph_to_dot(path));
     }
@@ -531,32 +531,32 @@ impl<TxMarker: SessionAwareTxMarker> ToDot for SessionTxFacade<TxMarker> {
     }
 }
 
-pub struct SessionPatRecFacade<PatMarker: SessionAwarePatRecMarker>(PhantomData<PatMarker>);
+pub struct PatRecFacade<PatMarker: SessionPatRecMarker>(PhantomData<PatMarker>);
 
-impl<PatMarker: SessionAwarePatRecMarker> SessionPatRecFacade<PatMarker> {
+impl<PatMarker: SessionPatRecMarker> PatRecFacade<PatMarker> {
     pub const fn new() -> Self {
         Self(PhantomData)
     }
 }
 
-impl<PatMarker: SessionAwarePatRecMarker> NodeOwner for SessionPatRecFacade<PatMarker> {
+impl<PatMarker: SessionPatRecMarker> NodeOwner for PatRecFacade<PatMarker> {
     type OwnerSpecDataInNode<T: EgglogTy, V: crate::wrap::EgglogEnumVariantTy> =
-        <<PatMarker::TxMarker as SessionAwareTxMarker>::PatRecorder as NodeOwner>::OwnerSpecDataInNode<T, V>;
+        <<PatMarker::TxMarker as SessionTxMarker>::PatRecorder as NodeOwner>::OwnerSpecDataInNode<T, V>;
 }
 
-impl<PatMarker: SessionAwarePatRecMarker> NodeDropper for SessionPatRecFacade<PatMarker> {
+impl<PatMarker: SessionPatRecMarker> NodeDropper for PatRecFacade<PatMarker> {
     fn on_drop(&self, dropped: &mut (impl EgglogNode + 'static)) {
         with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.on_drop(dropped));
     }
 }
 
-impl<PatMarker: SessionAwarePatRecMarker> NodeSetter for SessionPatRecFacade<PatMarker> {
+impl<PatMarker: SessionPatRecMarker> NodeSetter for PatRecFacade<PatMarker> {
     fn on_set(&self, node: &mut (impl EgglogNode + 'static)) {
         with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.on_set(node));
     }
 }
 
-impl<PatMarker: SessionAwarePatRecMarker> Tx for SessionPatRecFacade<PatMarker> {
+impl<PatMarker: SessionPatRecMarker> Tx for PatRecFacade<PatMarker> {
     fn send(&self, sended: TxCommand) {
         with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.send(sended));
     }
@@ -582,8 +582,8 @@ impl<PatMarker: SessionAwarePatRecMarker> Tx for SessionPatRecFacade<PatMarker> 
     }
 }
 
-impl<PatMarker: SessionAwarePatRecMarker> PatRec for SessionPatRecFacade<PatMarker> {
-    type MetaTy = <<PatMarker::TxMarker as SessionAwareTxMarker>::PatRecorder as PatRec>::MetaTy;
+impl<PatMarker: SessionPatRecMarker> PatRec for PatRecFacade<PatMarker> {
+    type MetaTy = <<PatMarker::TxMarker as SessionTxMarker>::PatRecorder as PatRec>::MetaTy;
 
     fn on_new_query_leaf(&self, node: &(impl EgglogNode + 'static)) {
         with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.on_new_query_leaf(node));
