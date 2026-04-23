@@ -2,7 +2,8 @@
 mod pseudo_singleton_runtime;
 
 use eggplant::prelude::*;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use eggplant::wrap::NonPatRecSgl;
+#[cfg(test)]
 use std::sync::Arc;
 #[cfg(test)]
 use std::sync::{Barrier, mpsc};
@@ -57,35 +58,22 @@ pub fn register_constant_prop_rules() -> RuleSetId {
 }
 
 fn current_session_has_const(needle: i64) -> bool {
-    static NEXT_SCAN_ID: AtomicUsize = AtomicUsize::new(0);
+    let egraph = MyTx::egraph();
+    let egraph = egraph.lock().unwrap();
 
-    let scan_id = NEXT_SCAN_ID.fetch_add(1, Ordering::Relaxed);
-    let ruleset_name: &'static str =
-        Box::leak(format!("constant_prop_scan_ruleset_{scan_id}").into_boxed_str());
-    let rule_name: &'static str =
-        Box::leak(format!("constant_prop_scan_rule_{scan_id}").into_boxed_str());
-    let found = Arc::new(AtomicBool::new(false));
-    let found_in_rule = Arc::clone(&found);
+    let Ok((const_terms, _, termdag)) = egraph.function_to_dag("Const", usize::MAX, false) else {
+        return false;
+    };
 
-    let ruleset = MyTx::new_ruleset(ruleset_name);
-    MyTx::add_rule(
-        rule_name,
-        ruleset,
-        || {
-            let c = Const::query();
-            #[eggplant::pat_vars_catch]
-            struct ConstPat {
-                c: Const,
-            }
-        },
-        move |ctx, pat| {
-            if ctx.devalue(pat.c.num) == needle {
-                found_in_rule.store(true, Ordering::Relaxed);
-            }
-        },
-    );
-    let _ = MyTx::run_ruleset(ruleset, RunConfig::Once);
-    found.load(Ordering::Relaxed)
+    const_terms.into_iter().any(|term_id| match termdag.get(term_id) {
+        eggplant::egglog::Term::App(head, args) if head == "Const" && args.len() == 1 => {
+            matches!(
+                termdag.get(args[0]),
+                eggplant::egglog::Term::Lit(eggplant::egglog::ast::Literal::Int(value)) if *value == needle
+            )
+        }
+        _ => false,
+    })
 }
 
 fn canonical_eq(lhs: &Expr<MyTx>, rhs_const: i64) -> bool {
