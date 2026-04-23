@@ -1,5 +1,5 @@
-#[path = "pseudo_singleton_runtime.rs"]
-mod pseudo_singleton_runtime;
+#[path = "constant_prop_sessions/runtime.rs"]
+mod session_runtime;
 
 use eggplant::prelude::*;
 use eggplant::wrap::NonPatRecSgl;
@@ -10,7 +10,7 @@ use std::sync::{Barrier, mpsc};
 #[cfg(test)]
 use std::time::Duration;
 
-pub use pseudo_singleton_runtime::{MyTx, Session, new_session};
+pub use session_runtime::{MyTx, Session, new_session};
 
 #[eggplant::dsl]
 pub enum Expr {
@@ -47,9 +47,9 @@ macro_rules! prop {
 
 pub fn register_constant_prop_rules() -> RuleSetId {
     const RULESET_CACHE_KEY: &str = "constant_prop";
-    const RULESET_NAME: &str = "constant_prop_pseudo_singleton";
+    const RULESET_NAME: &str = "constant_prop_sessions";
 
-    pseudo_singleton_runtime::get_or_register_ruleset(RULESET_CACHE_KEY, || {
+    session_runtime::get_or_register_ruleset(RULESET_CACHE_KEY, || {
         let ruleset = MyTx::new_ruleset(RULESET_NAME);
         prop!("AddPat", Add, +, AddPat, ruleset);
         prop!("MulPat", Mul, *, MulPat, ruleset);
@@ -214,19 +214,17 @@ pub fn nested_ruleset_registration_is_safe() {
     let (sender, receiver) = mpsc::sync_channel(1);
 
     let handle = session.spawn(move || {
-        let outer =
-            pseudo_singleton_runtime::get_or_register_ruleset("outer_constant_prop", || {
-                let inner = pseudo_singleton_runtime::get_or_register_ruleset(
-                    "inner_constant_prop",
-                    || MyTx::new_ruleset("inner_constant_prop_ruleset"),
-                );
-                let outer = MyTx::new_ruleset("outer_constant_prop_ruleset");
-                assert_ne!(
-                    inner.0, outer.0,
-                    "nested registration should be able to build dependent rulesets"
-                );
-                outer
+        let outer = session_runtime::get_or_register_ruleset("outer_constant_prop", || {
+            let inner = session_runtime::get_or_register_ruleset("inner_constant_prop", || {
+                MyTx::new_ruleset("inner_constant_prop_ruleset")
             });
+            let outer = MyTx::new_ruleset("outer_constant_prop_ruleset");
+            assert_ne!(
+                inner.0, outer.0,
+                "nested registration should be able to build dependent rulesets"
+            );
+            outer
+        });
         sender.send(outer.0.to_owned()).unwrap();
     });
 
@@ -243,11 +241,10 @@ pub fn nested_same_key_registration_panics_instead_of_deadlocking() {
 
     let panic = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         session.run(|| {
-            let _ = pseudo_singleton_runtime::get_or_register_ruleset("same_key_ruleset", || {
-                let _ =
-                    pseudo_singleton_runtime::get_or_register_ruleset("same_key_ruleset", || {
-                        MyTx::new_ruleset("same_key_inner_ruleset")
-                    });
+            let _ = session_runtime::get_or_register_ruleset("same_key_ruleset", || {
+                let _ = session_runtime::get_or_register_ruleset("same_key_ruleset", || {
+                    MyTx::new_ruleset("same_key_inner_ruleset")
+                });
                 MyTx::new_ruleset("same_key_outer_ruleset")
             });
         });
@@ -371,4 +368,10 @@ pub fn two_isolated_sessions_keep_separate_egraphs_with_handles() {
         !session_has_const(&right, 10),
         "right session should not inherit the left session's folded constant"
     );
+}
+
+fn main() {
+    env_logger::init();
+    two_isolated_sessions_keep_separate_egraphs_with_handles();
+    println!("constant_prop_sessions passed");
 }

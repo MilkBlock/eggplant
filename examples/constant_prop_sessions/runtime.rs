@@ -77,7 +77,7 @@ fn current_state() -> Arc<SessionState> {
         (Some(thread), None) => thread.state,
         (None, Some(task)) => task.state,
         (None, None) => panic!(
-            "no pseudo-singleton session is active; enter via Session::run, Session::run_async, Session::spawn, or Session::spawn_async"
+            "no session is active; enter via Session::run, Session::run_async, Session::spawn, or Session::spawn_async"
         ),
     }
 }

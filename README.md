@@ -141,11 +141,11 @@ fn main() {
 }
 ```
 
-If you want to study a "pseudo-singleton" design instead of the default true-global
+If you want to study a session-routed design instead of the default true-global
 runtime style, see:
 
-- `examples/constant_prop_pseudo_singleton.rs`
-- `examples/constant_prop_pseudo_singleton_async.rs`
+- `examples/constant_prop_sessions.rs`
+- `examples/constant_prop_sessions_async.rs`
 
 These examples keep a singleton-looking facade API (`MyTx::...`), but route operations
 through an explicit session handle. The async version only supports explicit wrapper-based
@@ -275,17 +275,17 @@ Run it with:
 cargo run --example action_sample_recorder
 ```
 
-### Pseudo-Singleton Session Examples
+### Session-Routed Examples
 
-- **`examples/constant_prop_pseudo_singleton.rs`**: Demonstrates a pseudo-singleton session model for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
+- **`examples/constant_prop_sessions.rs`**: Demonstrates a session-routed model for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
 
-- **`examples/constant_prop_pseudo_singleton_async.rs`**: Demonstrates the same pseudo-singleton idea for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
+- **`examples/constant_prop_sessions_async.rs`**: Demonstrates the same session-routed idea for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
 
 Run them with:
 
 ```bash
-cargo run --example constant_prop_pseudo_singleton
-cargo run --example constant_prop_pseudo_singleton_async
+cargo run --example constant_prop_sessions
+cargo run --example constant_prop_sessions_async
 ```
 
 ### Feature-Gated Examples
