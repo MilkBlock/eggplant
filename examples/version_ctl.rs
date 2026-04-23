@@ -1,4 +1,5 @@
 use eggplant::basic_tx_vt;
+use eggplant::egglog;
 use eggplant::func;
 use eggplant::prelude::*;
 

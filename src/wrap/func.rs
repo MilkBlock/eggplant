@@ -70,6 +70,11 @@ pub trait EgglogFunc {
     type Output: EgglogFuncOutput;
     const FUNC_NAME: &'static str;
 }
+
+pub trait EgglogRelation {
+    type Input: EgglogFuncInputs;
+    const REL_NAME: &'static str;
+}
 impl<T> EgglogFuncInput for T
 where
     T: EgglogNode + 'static,
@@ -132,7 +137,7 @@ macro_rules! impl_egglog_for_primitive {
 impl_egglog_for_primitive!(i64);
 impl_egglog_for_primitive!(String);
 impl_egglog_for_primitive!(bool);
-// todo! f64
+impl_egglog_for_primitive!(f64);
 
 macro_rules! impl_input_for_tuples {
     () => {

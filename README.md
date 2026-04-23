@@ -149,6 +149,16 @@ fn main() {
 }
 ```
 
+If you want to study a session-routed design instead of the default true-global
+runtime style, see:
+
+- `examples/constant_prop_sessions.rs`
+- `examples/constant_prop_sessions_async.rs`
+
+These examples keep a singleton-looking facade API (`MyTx::...`), but route operations
+through an explicit session handle. The async version only supports explicit wrapper-based
+entry (`run_async` / `spawn_async`); it does not claim ambient async-task inheritance.
+
 Finally, the following EGraph is generated, and you can see that the root node value is directly derived.
 
 Note that the execution count of `run_ruleset` is not the number of matches, but should be less than the tree depth.
@@ -179,12 +189,17 @@ strum_macros = "0.27.2"
 1. Support slotted egraph 
 2. Proof & Viewer 
 
+## Serialization Formats
+
+For serialization format boundaries and current binary-vs-JSON guidance, see
+[`docs/binary-artifact-format.md`](docs/binary-artifact-format.md).
+
 Here's the complete code for implementing addition, subtraction, multiplication, and division constant propagation:
 
 ```rust
 use eggplant::{prelude::*, tx_rx_vt_pr};
 
-#[eggplant::ty]
+#[eggplant::dsl]
 pub enum Expr {
     Const { num: i64 },
     Mul { l: Expr, r: Expr },
@@ -197,12 +212,6 @@ tx_rx_vt_pr!(MyTx, MyPatRec);
 
 macro_rules! prop {
     ($ty:ident,$op:tt,$pat_name:ident,$ruleset:ident) => {
-        #[eggplant::pat_vars]
-        struct $pat_name {
-            l: Const,
-            r: Const,
-            p: $ty,
-        }
         MyTx::add_rule(
             stringify!($pat_name),
             $ruleset,
@@ -210,6 +219,12 @@ macro_rules! prop {
                 let l = Const::query();
                 let r = Const::query();
                 let p = $ty::query(&l, &r);
+                #[eggplant::pat_vars]
+                struct $pat_name {
+                    l: Const,
+                    r: Const,
+                    p: $ty,
+                }
                 $pat_name::new(l, r, p)
             },
             |ctx, values| {
@@ -260,6 +275,41 @@ The project includes several example files demonstrating different features of e
 
 - **`examples/base_ty_def.rs`**: Demonstrates the use of base types in DSL definitions. Shows how to define an operation type enum and use it in binary expressions with pattern matching.
 
+### Action Trace Example
+
+- **`examples/action_sample_recorder.rs`**: Demonstrates how to attach `ActionSampleRecorder`, inspect captured runtime action events, and print the raw `ActionSampleTrace` JSON.
+
+Run it with:
+
+```bash
+cargo run --example action_sample_recorder
+```
+
+### Session-Routed Examples
+
+- **`examples/constant_prop_sessions.rs`**: Demonstrates a session-routed model for constant propagation. The API still looks like `MyTx::...`, but the active runtime is selected by an explicit session handle.
+
+- **`examples/constant_prop_sessions_async.rs`**: Demonstrates the same session-routed idea for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
+
+Run them with:
+
+```bash
+cargo run --example constant_prop_sessions
+cargo run --example constant_prop_sessions_async
+```
+
+### Feature-Gated Examples
+
+- **`examples/rustsat_common_subexpr.rs`**
+- **`examples/rustsat_optimize_expression.rs`**
+- `*_extract_bench.rs` / `*_timeline_export.rs` examples that depend on RustSAT-backed extraction
+
+These examples require the `rustsat-extract` feature:
+
+```bash
+cargo run --features rustsat-extract --example rustsat_optimize_expression
+```
+
 ## Documentation
 
 To view documentation, run `cargo doc --open`.
@@ -267,6 +317,3 @@ To view documentation, run `cargo doc --open`.
 ## Contributing
 
 Welcome to submit issues! Hope you have fun!
-
-
-

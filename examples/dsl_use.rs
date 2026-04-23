@@ -1,3 +1,4 @@
+use eggplant::egglog;
 use eggplant::{basic_tx_vt, prelude::*};
 use std::path::PathBuf;
 

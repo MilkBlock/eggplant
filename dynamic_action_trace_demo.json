@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "events": [
+    {
+      "kind": "insert",
+      "id": "evt_0",
+      "effect_id": "effect@2281:2306",
+      "table": "TraceConst",
+      "key_debug": [
+        "Value(2)"
+      ],
+      "rendered_label": "sample:const(2)"
+    },
+    {
+      "kind": "insert",
+      "id": "evt_1",
+      "effect_id": "effect@2334:2366",
+      "table": "TraceMul",
+      "key_debug": [
+        "Value(1)",
+        "Value(4)"
+      ],
+      "rendered_label": "sample:mul(r, 2)"
+    },
+    {
+      "kind": "union",
+      "id": "evt_2",
+      "effect_id": "effect@2384:2408",
+      "lhs_debug": "Value(2)",
+      "rhs_debug": "Value(5)",
+      "rendered_label": "sample:union(expr, mul(r, 2))"
+    }
+  ]
+}

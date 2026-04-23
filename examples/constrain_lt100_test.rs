@@ -28,12 +28,13 @@ fn main() {
         stringify!(AddPat),
         ruleset,
         || {
-            use eggplant::wrap::AsHandle;
             let l = Const::query();
             let r = Const::query();
             let p = Add::query(&l, &r);
-            let l_h = l.handle_num();
-            let l_lt_100 = l_h.lt(&((&50i64).as_handle() * (&2i64).as_handle()));
+
+            let l_lt_100 = l
+                .handle_num()
+                .lt(&((&50i64).as_handle() * (&2i64).as_handle()));
             let r_lt_100 = r.handle_num().lt(&100);
             // Constraint: both operands are less than 100
             {
