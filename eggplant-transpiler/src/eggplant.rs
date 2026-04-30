@@ -466,26 +466,34 @@ impl EggplantCodeGenerator {
                 self.add_line("}");
             }
             EggplantCommand::RunSchedule { schedules } => {
-                let schedule_program = schedules
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                let command = format!("(run-schedule {schedule_program})");
-                self.add_line("let outputs = {");
-                self.indent();
-                self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
-                self.add_line(&format!(
-                    "egraph.parse_and_run_program(None, {:?}).unwrap()",
-                    command
-                ));
-                self.dedent();
-                self.add_line("};");
-                self.add_line("for output in outputs {");
-                self.indent();
-                self.add_line("print!(\"{}\", output);");
-                self.dedent();
-                self.add_line("}");
+                if schedules.iter().any(schedule_has_until) {
+                    let schedule_program = schedules
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join(" ");
+                    let command = format!("(run-schedule {schedule_program})");
+                    self.add_line("let outputs = {");
+                    self.indent();
+                    self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
+                    self.add_line(&format!(
+                        "egraph.parse_and_run_program(None, {:?}).unwrap()",
+                        command
+                    ));
+                    self.dedent();
+                    self.add_line("};");
+                    self.add_line("for output in outputs {");
+                    self.indent();
+                    self.add_line("print!(\"{}\", output);");
+                    self.dedent();
+                    self.add_line("}");
+                } else {
+                    self.add_line(&format!(
+                        "let schedule = {};",
+                        schedule_items_to_rust_expr(schedules)
+                    ));
+                    self.add_line("let _report = MyTx::run_schedule(schedule);");
+                }
             }
             EggplantCommand::Assert { expr, expected } => {
                 self.add_line(&format!(
@@ -1331,6 +1339,99 @@ fn normalize_ruleset_name(name: &str) -> String {
 
 fn same_normalized_identifier(left: &str, right: &str) -> bool {
     normalize_identifier(left) == normalize_identifier(right)
+}
+
+fn schedule_has_until(schedule: &Schedule) -> bool {
+    match schedule {
+        Schedule::Run { until, .. } => until.is_some(),
+        Schedule::Named(_) => false,
+        Schedule::Seq(items) | Schedule::Saturate(items) => items.iter().any(schedule_has_until),
+        Schedule::Repeat(_, inner) => schedule_has_until(inner),
+    }
+}
+
+fn schedule_items_to_rust_expr(schedules: &[Schedule]) -> String {
+    match schedules {
+        [] => "RunSchedule::builder().build()".to_string(),
+        [schedule] => schedule_to_rust_expr(schedule),
+        _ => {
+            let mut expr = "RunSchedule::builder()".to_string();
+            for schedule in schedules {
+                expr.push_str(&format!(".then({})", schedule_to_rust_expr(schedule)));
+            }
+            expr.push_str(".build()");
+            expr
+        }
+    }
+}
+
+fn schedule_to_rust_expr(schedule: &Schedule) -> String {
+    match schedule {
+        Schedule::Run {
+            ruleset,
+            limit,
+            until: None,
+        } => {
+            let ruleset = schedule_ruleset_expr(ruleset.as_deref());
+            let run = format!("RunSchedule::builder().run({ruleset}).build()");
+            match limit {
+                Some(limit) => {
+                    format!(
+                        "RunSchedule::builder().repeat({limit}, |schedule| schedule.then({run})).build()"
+                    )
+                }
+                None => run,
+            }
+        }
+        Schedule::Run { .. } => {
+            unreachable!("run-schedule with :until must use raw egglog bridge")
+        }
+        Schedule::Named(name) => {
+            format!(
+                "RunSchedule::builder().run({}).build()",
+                normalize_ruleset_name(name)
+            )
+        }
+        Schedule::Seq(items) => schedule_items_to_rust_expr(items),
+        Schedule::Saturate(items) => match items.as_slice() {
+            [single] => {
+                if let Some(ruleset) = direct_schedule_ruleset_expr(single) {
+                    format!("RunSchedule::builder().saturate({ruleset}).build()")
+                } else {
+                    format!(
+                        "RunSchedule::builder().saturate_schedule({}).build()",
+                        schedule_to_rust_expr(single)
+                    )
+                }
+            }
+            _ => format!(
+                "RunSchedule::builder().saturate_schedule({}).build()",
+                schedule_items_to_rust_expr(items)
+            ),
+        },
+        Schedule::Repeat(times, inner) => {
+            format!(
+                "RunSchedule::builder().repeat({times}, |schedule| schedule.then({})).build()",
+                schedule_to_rust_expr(inner)
+            )
+        }
+    }
+}
+
+fn direct_schedule_ruleset_expr(schedule: &Schedule) -> Option<String> {
+    match schedule {
+        Schedule::Named(name) => Some(normalize_ruleset_name(name)),
+        Schedule::Run {
+            ruleset,
+            limit: None,
+            until: None,
+        } => Some(schedule_ruleset_expr(ruleset.as_deref())),
+        _ => None,
+    }
+}
+
+fn schedule_ruleset_expr(ruleset: Option<&str>) -> String {
+    normalize_ruleset_name(ruleset.unwrap_or("default"))
 }
 
 fn expr_type_name(expr: &Expr) -> String {
@@ -4530,6 +4631,43 @@ mod tests {
             "generated Rust:\n{rust}"
         );
         assert!(rust.contains("for output in outputs {"));
+    }
+
+    #[test]
+    fn test_run_schedule_without_until_uses_builder_codegen() {
+        let program = r#"
+            (ruleset fast-analyses)
+            (ruleset subst)
+            (run-schedule
+              (repeat 2
+                (saturate fast-analyses)
+                (run)
+                (saturate subst)))
+        "#;
+
+        let mut parser = Parser::default();
+        let commands = parser.get_program_from_string(None, program).unwrap();
+        let rust = EggplantCodeGenerator::new()
+            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
+
+        assert!(
+            rust.contains("RunSchedule::builder()"),
+            "generated Rust:\n{rust}"
+        );
+        assert!(rust.contains(".repeat(2"), "generated Rust:\n{rust}");
+        assert!(
+            rust.contains(".saturate(fast_analyses)"),
+            "generated Rust:\n{rust}"
+        );
+        assert!(
+            rust.contains(".run(default_ruleset)"),
+            "generated Rust:\n{rust}"
+        );
+        assert!(rust.contains(".saturate(subst)"), "generated Rust:\n{rust}");
+        assert!(
+            !rust.contains("parse_and_run_program"),
+            "generated Rust:\n{rust}"
+        );
     }
 
     #[test]

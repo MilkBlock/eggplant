@@ -30,10 +30,10 @@ pub use crate::wrap::sorts::vec::VecContainer;
 pub use crate::wrap::{
     AsHandle, BaseVar, Commit, EBoostExtractConfig, EBoostLayeredConfig, EgglogNode,
     ExtractBackend, ExtractNodeSgl, ExtractSgl, FromBase, Insertable, LocateVersion, PEq,
-    PatRecSgl, QuerySlot, RenderedTemplateField, RuleRunnerSgl, RuleSetId, RunConfig,
-    RustsatExtractConfig, RxSgl, SingletonGetter, SlotVarID, SlottedPatRecSgl, ToDot, ToDotSgl,
-    TxCommit, TxCommitSgl, TxSgl, Value, extract_raw_with_backend, render_template_with_precedence,
-    render_variant_display, render_variant_typst,
+    PatRecSgl, QuerySlot, RenderedTemplateField, RuleRunnerSgl, RuleSetId, RunConfig, RunSchedule,
+    RunScheduleBuilder, RustsatExtractConfig, RxSgl, SingletonGetter, SlotVarID, SlottedPatRecSgl,
+    ToDot, ToDotSgl, TxCommit, TxCommitSgl, TxSgl, Value, extract_raw_with_backend,
+    render_template_with_precedence, render_variant_display, render_variant_typst,
 };
 
 pub use dashmap;
