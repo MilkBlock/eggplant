@@ -590,6 +590,11 @@ pub trait RuleRunner<PR: PatRecSgl> {
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
+    fn run_schedule(&self, schedule: impl Into<RunSchedule>) -> RunReport {
+        schedule
+            .into()
+            .execute_with(|ruleset| self.run_ruleset(ruleset, RunConfig::Once))
+    }
     fn value<T: EgglogNode>(&self, node: &T) -> Value<T>;
 }
 pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
@@ -619,6 +624,11 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
+    fn run_schedule(schedule: impl Into<RunSchedule>) -> RunReport {
+        schedule
+            .into()
+            .execute_with(|ruleset| Self::run_ruleset(ruleset, RunConfig::Once))
+    }
     fn value<T: EgglogNode>(node: &T) -> Value<T>;
 }
 impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
@@ -646,13 +656,164 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuleSetId(pub &'static str);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunConfig {
     Sat,
     Times(u32),
     Once,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunSchedule {
+    Run(RuleSetId),
+    Sequence(Vec<RunSchedule>),
+    Repeat {
+        times: u32,
+        schedule: Box<RunSchedule>,
+    },
+    Saturate(Box<RunSchedule>),
+}
+
+impl RunSchedule {
+    pub fn builder() -> RunScheduleBuilder {
+        RunScheduleBuilder::new()
+    }
+
+    pub fn run(ruleset: RuleSetId) -> Self {
+        Self::Run(ruleset)
+    }
+
+    pub fn from_ruleset_config(ruleset: RuleSetId, config: RunConfig) -> Self {
+        match config {
+            RunConfig::Once => Self::run(ruleset),
+            RunConfig::Times(times) => Self::repeat(times, Self::run(ruleset)),
+            RunConfig::Sat => Self::saturate(Self::run(ruleset)),
+        }
+    }
+
+    pub fn seq(items: impl IntoIterator<Item = RunSchedule>) -> Self {
+        Self::Sequence(items.into_iter().collect())
+    }
+
+    pub fn repeat(times: u32, schedule: impl Into<RunSchedule>) -> Self {
+        Self::Repeat {
+            times,
+            schedule: Box::new(schedule.into()),
+        }
+    }
+
+    pub fn saturate(schedule: impl Into<RunSchedule>) -> Self {
+        Self::Saturate(Box::new(schedule.into()))
+    }
+
+    pub fn execute_with(&self, mut run_once: impl FnMut(RuleSetId) -> RunReport) -> RunReport {
+        self.execute_with_ref(&mut run_once)
+    }
+
+    fn execute_with_ref(&self, run_once: &mut impl FnMut(RuleSetId) -> RunReport) -> RunReport {
+        match self {
+            RunSchedule::Run(ruleset) => run_once(*ruleset),
+            RunSchedule::Sequence(schedules) => {
+                let mut report = RunReport::default();
+                for schedule in schedules {
+                    report.union(schedule.execute_with_ref(run_once));
+                }
+                report
+            }
+            RunSchedule::Repeat { times, schedule } => {
+                let mut report = RunReport::default();
+                for _ in 0..*times {
+                    let iter_report = schedule.execute_with_ref(run_once);
+                    let updated = iter_report.updated;
+                    report.union(iter_report);
+                    if !updated {
+                        break;
+                    }
+                }
+                report
+            }
+            RunSchedule::Saturate(schedule) => {
+                let mut report = RunReport::default();
+                loop {
+                    let iter_report = schedule.execute_with_ref(run_once);
+                    let updated = iter_report.updated;
+                    report.union(iter_report);
+                    if !updated {
+                        break report;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl From<RuleSetId> for RunSchedule {
+    fn from(ruleset: RuleSetId) -> Self {
+        Self::run(ruleset)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunScheduleBuilder {
+    schedules: Vec<RunSchedule>,
+}
+
+impl RunScheduleBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn run(mut self, ruleset: RuleSetId) -> Self {
+        self.schedules.push(RunSchedule::run(ruleset));
+        self
+    }
+
+    pub fn run_with(mut self, ruleset: RuleSetId, config: RunConfig) -> Self {
+        self.schedules
+            .push(RunSchedule::from_ruleset_config(ruleset, config));
+        self
+    }
+
+    pub fn then(mut self, schedule: impl Into<RunSchedule>) -> Self {
+        self.schedules.push(schedule.into());
+        self
+    }
+
+    pub fn repeat(
+        mut self,
+        times: u32,
+        build: impl FnOnce(RunScheduleBuilder) -> RunScheduleBuilder,
+    ) -> Self {
+        self.schedules
+            .push(RunSchedule::repeat(times, build(Self::new()).build()));
+        self
+    }
+
+    pub fn repeat_schedule(mut self, times: u32, schedule: impl Into<RunSchedule>) -> Self {
+        self.schedules.push(RunSchedule::repeat(times, schedule));
+        self
+    }
+
+    pub fn saturate(mut self, ruleset: RuleSetId) -> Self {
+        self.schedules.push(RunSchedule::saturate(ruleset));
+        self
+    }
+
+    pub fn saturate_schedule(mut self, schedule: impl Into<RunSchedule>) -> Self {
+        self.schedules.push(RunSchedule::saturate(schedule));
+        self
+    }
+
+    pub fn build(self) -> RunSchedule {
+        match self.schedules.len() {
+            0 => RunSchedule::Sequence(Vec::new()),
+            1 => self.schedules.into_iter().next().unwrap(),
+            _ => RunSchedule::Sequence(self.schedules),
+        }
+    }
 }
 
 pub struct FactsBuilder {
