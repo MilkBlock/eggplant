@@ -54,15 +54,17 @@ pub fn bench() {
         "merge_during_rebuild_check",
         check,
         || {
-            #[eggplant::pat_vars_catch]
-            struct Unit {}
+            let x = Node::query().i(&2_i64);
+            let y = Node::query().i(&3_i64);
+            let got = distance::query(&x, &y);
+            #[eggplant::pat_vars]
+            struct Pat {
+                got: i64,
+            }
+            Pat::new(got)
         },
-        |ctx, _pat| {
-            let x = ctx.insert_node(2);
-            let y = ctx.insert_node(3);
-            let got = ctx
-                .try_read_distance(x, y)
-                .expect("distance(x,y) should be set");
+        |ctx, pat| {
+            let got = ctx.devalue(pat.got);
             assert_eq!(got, 1);
         },
     );

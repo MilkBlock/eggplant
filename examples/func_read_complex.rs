@@ -19,21 +19,16 @@ fn main() {
 
     // We'll seed a function-table row in a rule callback (tx_rx_vt_pr doesn't support `LeadTo::set` yet):
     //   LeadTo(Add(1,2)) = Const(3)
-    let one = Const::new(1);
-    let two = Const::new(2);
-    let three = Const::new(3);
+    let one: Expr<MyTx, ConstTy> = Const::new(1);
+    let two: Expr<MyTx, ConstTy> = Const::new(2);
+    let three: Expr<MyTx, ConstTy> = Const::new(3);
     let add_1_2 = Add::<MyTx>::new(&one, &two);
     add_1_2.commit();
     three.commit();
 
-    // Also create a key that has no LeadTo row, to demo try_read_*.
-    let add_1_3 = Add::<MyTx>::new(&one, &three);
-    add_1_3.commit();
-
     // In rule callbacks, func ctx helpers take `Insertable<Expr<(), _>>`.
     // A practical way to pass an existing node is to capture its canonical `egglog::Value` handle.
     let add_1_2_key: Value<Expr<(), AddTy>> = Value::new(MyTx::canonical_raw(&add_1_2));
-    let add_1_3_key: Value<Expr<(), AddTy>> = Value::new(MyTx::canonical_raw(&add_1_3));
     let three_key: Value<Expr<(), ConstTy>> = Value::new(MyTx::canonical_raw(&three));
 
     let seed_ruleset = MyTx::new_ruleset("seed_complex_output");
@@ -54,17 +49,18 @@ fn main() {
         "read_complex_output",
         ruleset,
         || {
-            #[eggplant::pat_vars_catch]
-            struct Unit {}
+            let one = Const::query().n(&1);
+            let two = Const::query().n(&2);
+            let add_1_2 = Add::query(&one, &two);
+            let out = LeadTo::query(&add_1_2);
+            #[eggplant::pat_vars]
+            struct Pat {
+                out: Expr,
+            }
+            Pat::new(out)
         },
-        move |ctx, _pat| {
-            // Complex-output read: returns Value<Expr> (opaque handle), not a concrete Rust AST.
-            let out_v = ctx.read_lead_to(add_1_2_key);
-            println!("LeadTo(Add(1,2)) -> {:?}", out_v);
-
-            // Optional: non-panicking read for missing rows.
-            let missing = ctx.try_read_lead_to(add_1_3_key);
-            println!("try_read LeadTo(Add(1,3)) -> {}", missing.is_some());
+        move |_ctx, pat| {
+            println!("LeadTo(Add(1,2)) -> {:?}", pat.out);
         },
     );
 

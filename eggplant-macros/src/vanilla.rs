@@ -100,27 +100,21 @@ pub fn func(
                 };
                 let (set_fn, set_fn_decl, set_fn_pr, set_fn_decl_pr) =
                     ctx_set_fn_ts(&variant, &output, &name_func);
-                let (read_fn, read_fn_decl, read_fn_pr, read_fn_decl_pr) =
-                    ctx_read_fn_ts(&variant, &output, &name_func);
                 let ctx_trait_name = format_ident!("{}RuleCtx", name_func);
                 let pr_ctx_trait_name = format_ident!("{}PRRuleCtx", name_func);
 
                 quote! {
                     pub trait #ctx_trait_name {
                         #set_fn_decl
-                        #read_fn_decl
                     }
                     impl #ctx_trait_name for #W::RuleCtx<'_,'_,'_,'_> {
                         #set_fn
-                        #read_fn
                     }
                     pub trait #pr_ctx_trait_name {
                         #set_fn_decl_pr
-                        #read_fn_decl_pr
                     }
                     impl<PR:PatRecSgl> #pr_ctx_trait_name for #W::PRRuleCtx<'_,'_,'_,'_, PR> {
                         #set_fn_pr
-                        #read_fn_pr
                     }
                 }
             };
@@ -175,12 +169,14 @@ pub fn func(
                         )
                     });
 
-            // Support function-table queries where the output is a base sort but inputs are complex/container sorts.
+            // Support function-table queries where the output is a variable sort but inputs are complex/container sorts.
             //
             // Example from eggcc-extraction: `(VecOperand-length f) -> i64`, where `f: VecOperand` is complex.
             let can_query_base_from_complex_inputs = matches!(
                 BasicOrComplex::from(&output),
-                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
+                BasicOrComplex::BaseType
+                    | BasicOrComplex::UserDefinedBaseType
+                    | BasicOrComplex::UserDefinedContainerType
             ) && input_types.iter().all(|ty| {
                 matches!(
                     BasicOrComplex::from(&ty.to_token_stream()),
@@ -190,7 +186,9 @@ pub fn func(
 
             let can_query_base = matches!(
                 BasicOrComplex::from(&output),
-                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType
+                BasicOrComplex::BaseType
+                    | BasicOrComplex::UserDefinedBaseType
+                    | BasicOrComplex::UserDefinedContainerType
             ) && input_types.iter().all(|ty| {
                 matches!(
                     BasicOrComplex::from(&ty.to_token_stream()),
@@ -517,11 +515,6 @@ pub fn relation(
     let valued_field_types = pat_field_types
         .iter()
         .map(|ty| quote!(<#ty as #W::PatVars<PR>>::Valued))
-        .collect::<Vec<_>>();
-    let metas_iter_chains = field_idents
-        .iter()
-        .zip(pat_field_types.iter())
-        .map(|(ident, ty)| quote!(.chain(<#ty as #W::PatVars<PR>>::metas_iter(&self.#ident))))
         .collect::<Vec<_>>();
     let insert_param_types = data_struct
         .fields

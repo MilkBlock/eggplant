@@ -2458,7 +2458,7 @@ mod tests {
     }
 
     #[test]
-    fn func_ctx_read_smoke() {
+    fn func_ctx_query_smoke() {
         tx_rx_vt_pr!(MyTxRead, MyPatRecRead);
 
         #[eggplant::func(output=i64)]
@@ -2483,15 +2483,25 @@ mod tests {
 
         let use_read = MyTxRead::new_ruleset("use_read");
         MyTxRead::add_rule(
-            "use_read",
+            "use_query",
             use_read,
             || {
-                #[eggplant::pat_vars_catch]
-                struct Unit {}
+                let x1 = FibRead::x().named("x1");
+                let x2 = FibRead::x().named("x2");
+                let v1 = FibRead::query(&x1);
+                let v2 = FibRead::query(&x2);
+                #[eggplant::pat_vars]
+                struct Pat {
+                    v1: i64,
+                    v2: i64,
+                }
+                Pat::new(v1, v2)
+                    .assert(x1.handle().eq(&1_i64))
+                    .assert(x2.handle().eq(&2_i64))
             },
-            |ctx, _pat| {
-                let v1 = ctx.read_fib_read(1);
-                let v2 = ctx.devalue(ctx.read_fib_read_value(2));
+            |ctx, pat| {
+                let v1 = ctx.devalue(pat.v1);
+                let v2 = ctx.devalue(pat.v2);
                 ctx.set_fib_read(3, v1 + v2);
             },
         );
@@ -3501,9 +3511,7 @@ mod tests {
                 let x2 = ctx.devalue(pat.x2);
                 let f0 = ctx.devalue(pat.f0);
                 let f1 = ctx.devalue(pat.f1);
-                if ctx.try_read_fib(x2).is_none() {
-                    ctx.set_fib(x2, f0 + f1);
-                }
+                ctx.set_fib(x2, f0 + f1);
             });
             MyTxFib::run_ruleset(step, RunConfig::Times(7));
 

@@ -66,11 +66,15 @@ pub fn bench() {
         "repro_665_check",
         check,
         || {
-            #[eggplant::pat_vars_catch]
-            struct Unit {}
+            let out = f::query();
+            #[eggplant::pat_vars]
+            struct Pat {
+                out: BaseVar<IntSet>,
+            }
+            Pat::new(out)
         },
-        |ctx, _pat| {
-            let out = ctx.try_read_f().expect("f() should be set");
+        |ctx, pat| {
+            let out = pat.out;
             let set = ctx
                 ._devalue_container::<egglog::sort::SetContainer>(out.val)
                 .expect("f() output should be a set container");
