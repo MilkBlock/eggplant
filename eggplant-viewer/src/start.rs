@@ -1,11 +1,11 @@
 use eframe::CreationContext;
-use egglog::{EGraph, RawEGraphNode, SerializeConfig, Value};
+use egglog::{EGraph, SerializeConfig, Value, sort::Sort};
+use egglog_numeric_id::NumericId;
 use eggplant_egui_graphs::{
     ENode, EventHandler, FuncOffset, Graph, InnerPos, MaybeInner, ViewEdge, ViewNode,
 };
 use indexmap::IndexMap;
 use petgraph::prelude::StableGraph;
-use std::collections::HashMap;
 
 #[cfg(feature = "events")]
 use crate::event_filters::EventFilters;
@@ -19,6 +19,12 @@ struct ValueWithCano {
     sort: SortName,
     offset: usize,
 }
+
+struct SerializedRow {
+    inputs_complex: Vec<ValueWithCano>,
+    basics: Vec<u32>,
+    output: ValueWithCano,
+}
 impl EGraphApp {
     pub fn new(
         cc: &CreationContext<'_>,
@@ -27,107 +33,59 @@ impl EGraphApp {
         event_handler: Box<dyn EventHandle>,
     ) -> Self {
         let mut g = Graph::new(StableGraph::default());
-        let tables = {
-            let tables = egraph.serialize_raw(SerializeConfig::default());
-            let tables = tables
-                .iter()
-                .map(|(k, v)| {
-                    (
-                        k.clone(),
-                        v.iter()
-                            .enumerate()
-                            .map(|(offset, node)| {
-                                let inputs_complex = node
-                                    .inputs_complex
-                                    .iter()
-                                    .enumerate()
-                                    .filter_map(|(i, value)| {
-                                        let sort = &egraph
-                                            .get_function(&k)
-                                            .unwrap_or_else(|| panic!("can't find func {}", k))
-                                            .schema()
-                                            .input
-                                            .get(i)
-                                            .unwrap();
-                                        if egraph.is_base_sort(sort) {
-                                            None
-                                        } else {
-                                            let cano_value =
-                                                egraph.get_canonical_value(*value, sort);
-                                            println!(
-                                                "canno value of {}{} is {}",
-                                                k,
-                                                value.rep(),
-                                                cano_value.rep()
-                                            );
-                                            Some(ValueWithCano {
-                                                value: *value,
-                                                cano_value,
-                                                sort: sort.name().to_string(),
-                                                offset,
-                                            })
-                                        }
-                                    })
-                                    .collect();
-                                let basics = node
-                                    .inputs_complex
-                                    .iter()
-                                    .enumerate()
-                                    .filter_map(|(i, value)| {
-                                        let sort = &egraph
-                                            .get_function(&k)
-                                            .unwrap_or_else(|| panic!("can't find func {}", k))
-                                            .schema()
-                                            .input
-                                            .get(i)
-                                            .unwrap();
-                                        if egraph.is_base_sort(sort) {
-                                            Some(value.rep())
-                                        } else {
-                                            None
-                                        }
-                                    })
-                                    .collect::<Vec<_>>();
-                                RawEGraphNode {
-                                    inputs_complex,
-                                    basics,
-                                    output: ValueWithCano {
-                                        value: node.output,
-                                        cano_value: egraph.get_canonical_value(
-                                            node.output,
-                                            &egraph
-                                                .get_function(&k)
-                                                .unwrap_or_else(|| panic!("can't find func {}", k))
-                                                .schema()
-                                                .output,
-                                        ),
-                                        sort: { k.to_string() },
-                                        offset,
-                                    },
-                                    term: node.term,
-                                    subsumed: node.subsumed,
-                                    class_name: node.class_name.clone(),
-                                    node_name: node.node_name.clone(),
-                                }
-                            })
-                            .collect::<Vec<RawEGraphNode<_, _, _>>>(),
-                    )
-                })
-                .collect::<HashMap<String, Vec<_>>>();
-            tables
-        };
-        let class2nodes: IndexMap<Value, Vec<(String, TblOffset)>> =
+        let serialized = egraph.serialize(SerializeConfig {
+            include_temporary_functions: true,
+            ..SerializeConfig::default()
+        });
+        let serialized_graph = serialized.egraph;
+        let mut tables: IndexMap<String, Vec<SerializedRow>> = IndexMap::new();
+        for (node_id, node) in &serialized_graph.nodes {
+            let func = node.op.clone();
+            let function = egraph
+                .get_function(&func)
+                .unwrap_or_else(|| panic!("can't find func {}", func));
+            let row_offset = tables.get(&func).map_or(0, Vec::len);
+            let output_sort = function.schema().output.clone();
+            let output_value = egraph.class_id_to_value(&node.eclass);
+            let mut inputs_complex = Vec::new();
+            let mut basics = Vec::new();
+            for (i, child) in node.children.iter().enumerate() {
+                let sort = function.schema().input.get(i).unwrap();
+                let child_value = egraph.class_id_to_value(serialized_graph.nid_to_cid(child));
+                if sort.value_type().is_some() {
+                    basics.push(child_value.rep());
+                } else {
+                    inputs_complex.push(ValueWithCano {
+                        value: child_value.clone(),
+                        cano_value: child_value,
+                        sort: sort.name().to_string(),
+                        offset: row_offset,
+                    });
+                }
+            }
+            let _ = node_id;
+            tables.entry(func).or_default().push(SerializedRow {
+                inputs_complex,
+                basics,
+                output: ValueWithCano {
+                    value: output_value.clone(),
+                    cano_value: output_value,
+                    sort: output_sort.name().to_string(),
+                    offset: row_offset,
+                },
+            });
+        }
+        let class2nodes: IndexMap<u32, Vec<(String, TblOffset)>> =
             tables
                 .iter()
                 .fold(IndexMap::default(), |mut acc, (func, rows)| {
                     rows.iter().enumerate().for_each(|(tbl_offset, row)| {
-                        acc.entry(row.output.cano_value)
+                        acc.entry(row.output.cano_value.rep())
                             .or_default()
                             .push((func.clone(), tbl_offset))
                     });
                     acc
                 });
-        println!("{:?}", class2nodes);
 
         // add nodes
         let mut cano_value2node_idx = IndexMap::new();
@@ -145,7 +103,7 @@ impl EGraphApp {
                             .get(*offset)
                             .unwrap_or_else(|| panic!("row {} in func {} not found", offset, func));
                         cano_value = Some(row.output.cano_value);
-                        let enode = trans_raw_egraph_node(func.to_string(), *offset, row);
+                        let enode = trans_serialized_row_node(func.to_string(), *offset, row);
                         sort_offset2cano_value_and_maybe_inner.insert(
                             FuncOffset::new(row.output.sort.clone(), *offset),
                             (
@@ -295,11 +253,7 @@ impl EGraphApp {
     }
 }
 
-fn trans_raw_egraph_node(
-    func: String,
-    offset: usize,
-    row: &egglog::RawEGraphNode<ValueWithCano, Vec<u32>, ValueWithCano>,
-) -> ENode {
+fn trans_serialized_row_node(func: String, offset: usize, row: &SerializedRow) -> ENode {
     ENode {
         func_offset: FuncOffset { func, offset },
         cano_value: row.output.cano_value.rep(),
@@ -309,4 +263,3 @@ fn trans_raw_egraph_node(
         dsl_metadata: None,
     }
 }
-use egglog::NumericId;

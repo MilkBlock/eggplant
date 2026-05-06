@@ -49,7 +49,7 @@ impl eggplant::wrap::PersistedSnapshotUserBaseSortHook for HookedFixtureBaseRest
 
     fn restore_machine_value(
         &self,
-        ctx: &mut eggplant::egglog::prelude::RustRuleContext<'_, '_, '_>,
+        ctx: &mut eggplant::egglog::prelude::RustRuleContext<'_, '_>,
         machine_value: &serde_json::Value,
     ) -> Result<eggplant::egglog::Value, String> {
         let n = machine_value
@@ -203,7 +203,7 @@ fn build_hooked_user_base_snapshot() -> PersistedSnapshot {
 "#,
         )
         .unwrap();
-    eggplant::egglog::prelude::run_ephemeral_rust_rule(
+    run_ephemeral_rust_rule(
         &mut egraph,
         "seed_hooked_fixture_snapshot",
         &[],

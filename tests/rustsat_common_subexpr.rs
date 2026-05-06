@@ -1,3 +1,5 @@
+#![cfg(feature = "rustsat-extract")]
+
 use eggplant::{prelude::*, tx_rx_vt_pr};
 
 #[eggplant::dsl]

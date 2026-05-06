@@ -142,7 +142,7 @@ fn persisted_snapshot_corpus_hooked_user_base_round_trips() {
 "#,
         )
         .unwrap();
-    eggplant::egglog::prelude::run_ephemeral_rust_rule(
+    run_ephemeral_rust_rule(
         &mut seeded,
         "seed_corpus_hooked_base",
         &[],
@@ -204,7 +204,7 @@ fn persisted_snapshot_corpus_unhooked_user_base_reports_gap_and_fails_restore() 
 "#,
         )
         .unwrap();
-    eggplant::egglog::prelude::run_ephemeral_rust_rule(
+    run_ephemeral_rust_rule(
         &mut seeded,
         "seed_corpus_unhooked_base",
         &[],
