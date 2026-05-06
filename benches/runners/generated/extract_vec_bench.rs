@@ -11,151 +11,151 @@ struct Vec_Tensor {
 
 #[eggplant::dsl]
 enum IntTuple {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("IntTuple___add__({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("IntTuple___add__({a0}, {a1})")]
     IntTuple___add__ { a0: IntTuple, a1: IntTuple },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("IntTuple___init__({a0})")]
+    #[precedence(100)]
+    #[typst("IntTuple___init__({a0})")]
     IntTuple___init__ { a0: Int },
 }
 
 #[eggplant::dsl]
 enum Int {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Int___init__({a0})")]
+    #[precedence(100)]
+    #[typst("Int___init__({a0})")]
     Int___init__ { a0: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Int_var({a0})")]
+    #[precedence(100)]
+    #[typst("Int_var({a0})")]
     Int_var { a0: String },
 }
 
 #[eggplant::dsl]
 enum StringTensor {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("StringTensor___init__({a0})")]
+    #[precedence(100)]
+    #[typst("StringTensor___init__({a0})")]
     StringTensor___init__ { a0: String },
 }
 
 #[eggplant::dsl]
 enum FloatTuple {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("FloatTuple___init__({a0})")]
+    #[precedence(100)]
+    #[typst("FloatTuple___init__({a0})")]
     FloatTuple___init__ { a0: Float },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("FloatTuple___add__({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("FloatTuple___add__({a0}, {a1})")]
     FloatTuple___add__ { a0: FloatTuple, a1: FloatTuple },
 }
 
 #[eggplant::dsl]
 enum Float {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Float_var({a0})")]
+    #[precedence(100)]
+    #[typst("Float_var({a0})")]
     Float_var { a0: String },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Float___init__({a0})")]
+    #[precedence(100)]
+    #[typst("Float___init__({a0})")]
     Float___init__ { a0: f64 },
 }
 
 #[eggplant::dsl]
 enum Tensor {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("UnaryOp___call__({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("UnaryOp___call__({a0}, {a1})")]
     UnaryOp___call__ { a0: UnaryOp, a1: Tensor },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("BinaryOp___call__({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("BinaryOp___call__({a0}, {a1}, {a2})")]
     BinaryOp___call__ {
         a0: BinaryOp,
         a1: Tensor,
         a2: Tensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Tensor___init__({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("Tensor___init__({a0}, {a1}, {a2}, {a3})")]
     Tensor___init__ {
         a0: StringTensor,
         a1: IntTuple,
         a2: StringTensor,
         a3: FloatTuple,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Constant_tensor({a0})")]
+    #[precedence(100)]
+    #[typst("Constant_tensor({a0})")]
     Constant_tensor { a0: Constant },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Iota_tensor({a0})")]
+    #[precedence(100)]
+    #[typst("Iota_tensor({a0})")]
     Iota_tensor { a0: Iota },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("NaryOp___call__({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("NaryOp___call__({a0}, {a1})")]
     NaryOp___call__ { a0: NaryOp, a1: TensorArr },
 }
 
 #[eggplant::dsl]
 enum UnaryOp {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("cosine_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("cosine_xla({a0}, {a1}, {a2})")]
     cosine_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("reshape({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("reshape({a0}, {a1}, {a2})")]
     reshape {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("convert_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("convert_xla({a0}, {a1}, {a2})")]
     convert_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("custom_call({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("custom_call({a0}, {a1}, {a2})")]
     custom_call {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("slice_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("slice_xla({a0}, {a1}, {a2})")]
     slice_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("broadcast({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("broadcast({a0}, {a1}, {a2}, {a3})")]
     broadcast {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
         a3: IntTuple,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("sine_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("sine_xla({a0}, {a1}, {a2})")]
     sine_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("exp_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("exp_xla({a0}, {a1}, {a2})")]
     exp_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("transpose({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("transpose({a0}, {a1}, {a2}, {a3})")]
     transpose {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
         a3: IntTuple,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("log_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("log_xla({a0}, {a1}, {a2})")]
     log_xla {
         a0: IntTuple,
         a1: StringTensor,
@@ -165,57 +165,57 @@ enum UnaryOp {
 
 #[eggplant::dsl]
 enum BinaryOp {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("dot_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("dot_xla({a0}, {a1}, {a2})")]
     dot_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("and_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("and_xla({a0}, {a1}, {a2})")]
     and_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("compare({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("compare({a0}, {a1}, {a2})")]
     compare {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("divide({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("divide({a0}, {a1}, {a2})")]
     divide {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("subtract_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("subtract_xla({a0}, {a1}, {a2})")]
     subtract_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("multiply({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("multiply({a0}, {a1}, {a2})")]
     multiply {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("add_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("add_xla({a0}, {a1}, {a2})")]
     add_xla {
         a0: IntTuple,
         a1: StringTensor,
         a2: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("maximum_xla({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("maximum_xla({a0}, {a1}, {a2})")]
     maximum_xla {
         a0: IntTuple,
         a1: StringTensor,
@@ -225,38 +225,38 @@ enum BinaryOp {
 
 #[eggplant::dsl]
 enum Constant {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Constant___init__({a0})")]
+    #[precedence(100)]
+    #[typst("Constant___init__({a0})")]
     Constant___init__ { a0: Tensor },
 }
 
 #[eggplant::dsl]
 enum Iota {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Iota___init__({a0})")]
+    #[precedence(100)]
+    #[typst("Iota___init__({a0})")]
     Iota___init__ { a0: Tensor },
 }
 
 #[eggplant::dsl]
 enum NaryOp {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("select({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("select({a0}, {a1}, {a2}, {a3})")]
     select {
         a0: Int,
         a1: IntTuple,
         a2: StringTensor,
         a3: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("concatenate({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("concatenate({a0}, {a1}, {a2}, {a3})")]
     concatenate {
         a0: Int,
         a1: IntTuple,
         a2: StringTensor,
         a3: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("reduce({a0}, {a1}, {a2}, {a3}, {a4})")]
+    #[precedence(100)]
+    #[typst("reduce({a0}, {a1}, {a2}, {a3}, {a4})")]
     reduce {
         a0: OpType,
         a1: Int,
@@ -264,8 +264,8 @@ enum NaryOp {
         a3: StringTensor,
         a4: StringTensor,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("scatter_xla({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("scatter_xla({a0}, {a1}, {a2}, {a3})")]
     scatter_xla {
         a0: Int,
         a1: IntTuple,
@@ -276,15 +276,15 @@ enum NaryOp {
 
 #[eggplant::dsl]
 enum TensorArr {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("TensorArr___init__({a0})")]
+    #[precedence(100)]
+    #[typst("TensorArr___init__({a0})")]
     TensorArr___init__ { a0: Vec_Tensor },
 }
 
 #[eggplant::dsl]
 enum OpType {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("AddOp")]
+    #[precedence(100)]
+    #[typst("AddOp")]
     AddOp {},
 }
 

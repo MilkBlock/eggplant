@@ -45,63 +45,63 @@ fn math_vars(math: &ArcSort, names: &[&'static str]) -> Vec<(&'static str, ArcSo
     names.iter().map(|name| (*name, math.clone())).collect()
 }
 
-fn ctor1(ctx: &mut RustRuleContext<'_, '_, '_>, name: &str, a: Value) -> Value {
+fn ctor1(ctx: &mut RustRuleContext<'_, '_>, name: &str, a: Value) -> Value {
     ctx.lookup(name, &[a]).unwrap()
 }
 
-fn ctor2(ctx: &mut RustRuleContext<'_, '_, '_>, name: &str, a: Value, b: Value) -> Value {
+fn ctor2(ctx: &mut RustRuleContext<'_, '_>, name: &str, a: Value, b: Value) -> Value {
     ctx.lookup(name, &[a, b]).unwrap()
 }
 
-fn m_diff(ctx: &mut RustRuleContext<'_, '_, '_>, x: Value, f: Value) -> Value {
+fn m_diff(ctx: &mut RustRuleContext<'_, '_>, x: Value, f: Value) -> Value {
     ctor2(ctx, "MDiff", x, f)
 }
 
-fn m_integral(ctx: &mut RustRuleContext<'_, '_, '_>, f: Value, x: Value) -> Value {
+fn m_integral(ctx: &mut RustRuleContext<'_, '_>, f: Value, x: Value) -> Value {
     ctor2(ctx, "MIntegral", f, x)
 }
 
-fn m_add(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value, b: Value) -> Value {
+fn m_add(ctx: &mut RustRuleContext<'_, '_>, a: Value, b: Value) -> Value {
     ctor2(ctx, "MAdd", a, b)
 }
 
-fn m_sub(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value, b: Value) -> Value {
+fn m_sub(ctx: &mut RustRuleContext<'_, '_>, a: Value, b: Value) -> Value {
     ctor2(ctx, "MSub", a, b)
 }
 
-fn m_mul(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value, b: Value) -> Value {
+fn m_mul(ctx: &mut RustRuleContext<'_, '_>, a: Value, b: Value) -> Value {
     ctor2(ctx, "MMul", a, b)
 }
 
-fn m_div(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value, b: Value) -> Value {
+fn m_div(ctx: &mut RustRuleContext<'_, '_>, a: Value, b: Value) -> Value {
     ctor2(ctx, "MDiv", a, b)
 }
 
-fn m_pow(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value, b: Value) -> Value {
+fn m_pow(ctx: &mut RustRuleContext<'_, '_>, a: Value, b: Value) -> Value {
     ctor2(ctx, "MPow", a, b)
 }
 
-fn m_ln(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value) -> Value {
+fn m_ln(ctx: &mut RustRuleContext<'_, '_>, a: Value) -> Value {
     ctor1(ctx, "MLn", a)
 }
 
-fn m_sqrt(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value) -> Value {
+fn m_sqrt(ctx: &mut RustRuleContext<'_, '_>, a: Value) -> Value {
     ctor1(ctx, "MSqrt", a)
 }
 
-fn m_sin(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value) -> Value {
+fn m_sin(ctx: &mut RustRuleContext<'_, '_>, a: Value) -> Value {
     ctor1(ctx, "MSin", a)
 }
 
-fn m_cos(ctx: &mut RustRuleContext<'_, '_, '_>, a: Value) -> Value {
+fn m_cos(ctx: &mut RustRuleContext<'_, '_>, a: Value) -> Value {
     ctor1(ctx, "MCos", a)
 }
 
-fn m_const(ctx: &mut RustRuleContext<'_, '_, '_>, n: i64) -> Value {
+fn m_const(ctx: &mut RustRuleContext<'_, '_>, n: i64) -> Value {
     ctor1(ctx, "MConst", ctx.base_to_value::<i64>(n))
 }
 
-fn m_var(ctx: &mut RustRuleContext<'_, '_, '_>, name: &'static str) -> Value {
+fn m_var(ctx: &mut RustRuleContext<'_, '_>, name: &'static str) -> Value {
     ctor1(ctx, "MVar", ctx.base_to_value::<S>(name.to_owned().into()))
 }
 
@@ -111,7 +111,7 @@ fn add_math_rule(
     rule_name: &str,
     vars: &[(&'static str, ArcSort)],
     facts: Facts<String, String>,
-    action: impl Fn(&mut RustRuleContext<'_, '_, '_>, &[Value]) -> Option<()>
+    action: impl Fn(&mut RustRuleContext<'_, '_>, &[Value]) -> Option<()>
     + Clone
     + Send
     + Sync
@@ -605,4 +605,8 @@ pub fn run_and_collect_stats() -> MathMicrobenchmarkStats {
             .map(|table| (*table, input.egraph.get_size(table)))
             .collect(),
     }
+}
+
+fn main() {
+    eprintln!("math_microbenchmark_support is a support module; run a wrapper example instead");
 }

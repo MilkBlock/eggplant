@@ -1,7 +1,7 @@
-#[path = "../benches/runners/eggplant_rewrite/math_microbenchmark.rs"]
-mod typed_math_microbenchmark;
 #[path = "../examples/math_microbenchmark_support.rs"]
 mod rust_rule_math_microbenchmark;
+#[path = "../benches/runners/eggplant_rewrite/math_microbenchmark.rs"]
+mod typed_math_microbenchmark;
 
 #[test]
 fn typed_math_microbenchmark_stats_are_non_empty() {

@@ -3,20 +3,20 @@ use eggplant::tx_rx_vt_pr;
 
 #[eggplant::dsl]
 pub enum Expr {
-    #[eggplant::typst("{num}")]
-    #[eggplant::precedence(100)]
+    #[typst("{num}")]
+    #[precedence(100)]
     Const { num: i64 },
-    #[eggplant::typst("{l} * {r}")]
-    #[eggplant::precedence(60)]
+    #[typst("{l} * {r}")]
+    #[precedence(60)]
     Mul { l: Expr, r: Expr },
-    #[eggplant::typst("{l} - {r}")]
-    #[eggplant::precedence(50)]
+    #[typst("{l} - {r}")]
+    #[precedence(50)]
     Sub { l: Expr, r: Expr },
-    #[eggplant::typst("{l} + {r}")]
-    #[eggplant::precedence(50)]
+    #[typst("{l} + {r}")]
+    #[precedence(50)]
     Add { l: Expr, r: Expr },
-    #[eggplant::typst("frac({l}, {r})")]
-    #[eggplant::precedence(60)]
+    #[typst("frac({l}, {r})")]
+    #[precedence(60)]
     Div { l: Expr, r: Expr },
 }
 

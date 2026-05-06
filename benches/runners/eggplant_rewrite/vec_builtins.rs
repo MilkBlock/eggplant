@@ -9,11 +9,11 @@ struct IVec {
 
 #[eggplant::dsl]
 enum X {
-    #[eggplant::typst("a")]
-    #[eggplant::precedence(100)]
+    #[typst("a")]
+    #[precedence(100)]
     a {},
-    #[eggplant::typst("b")]
-    #[eggplant::precedence(100)]
+    #[typst("b")]
+    #[precedence(100)]
     b {},
 }
 
@@ -30,19 +30,6 @@ struct Q {}
 
 tx_rx_vt_pr!(MyTxVec, MyPatRecVec);
 
-#[eggplant::pat_vars]
-struct CheckIVecPat<PR: PatRecSgl> {
-    v: BaseVar<IVec, PR>,
-}
-
-#[eggplant::pat_vars]
-struct CheckUnitPat<PR: PatRecSgl> {}
-
-#[eggplant::pat_vars]
-struct CheckI64Pat<PR: PatRecSgl> {
-    v: BaseVar<i64, PR>,
-}
-
 fn expect_rule_matches(report: &RunReport, rule: &str) {
     let key = format!("@{rule}");
     assert!(
@@ -56,63 +43,6 @@ fn expect_rule_matches(report: &RunReport, rule: &str) {
     );
 }
 
-fn pat_vec_check_vec_of<PR: PatRecSgl>() -> CheckIVecPat<PR> {
-    let v = BaseVar::<IVec, PR>::query_named("v");
-    let vh = v.handle();
-    let e1 = vec_of::<IVec, _, _>([&1_i64, &2_i64]);
-    let e2 = vec_empty::<IVec>().vec_push(&1_i64).vec_push(&2_i64);
-    CheckIVecPat::new(v).assert(vh.eq(&e1)).assert(vh.eq(&e2))
-}
-
-fn pat_vec_check_vec_append<PR: PatRecSgl>() -> CheckIVecPat<PR> {
-    let v = BaseVar::<IVec, PR>::query_named("v");
-    let vh = v.handle();
-    let lhs =
-        vec_of::<IVec, _, _>([&1_i64, &2_i64]).vec_append(vec_of::<IVec, _, _>([&3_i64, &4_i64]));
-    let rhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64, &4_i64]);
-    CheckIVecPat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
-}
-
-fn pat_vec_check_vec_pop<PR: PatRecSgl>() -> CheckIVecPat<PR> {
-    let v = BaseVar::<IVec, PR>::query_named("v");
-    let vh = v.handle();
-    let lhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_pop();
-    let rhs = vec_of::<IVec, _, _>([&1_i64, &2_i64]);
-    CheckIVecPat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
-}
-
-fn pat_vec_check_vec_not_contains<PR: PatRecSgl>() -> CheckUnitPat<PR> {
-    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_not_contains(&4_i64);
-    CheckUnitPat::new().assert(e)
-}
-
-fn pat_vec_check_vec_contains<PR: PatRecSgl>() -> CheckUnitPat<PR> {
-    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_contains(&2_i64);
-    CheckUnitPat::new().assert(e)
-}
-
-fn pat_vec_check_vec_length<PR: PatRecSgl>() -> CheckI64Pat<PR> {
-    let v = BaseVar::<i64, PR>::query_named("n");
-    let vh = v.handle();
-    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_len();
-    CheckI64Pat::new(v).assert(vh.eq(&e)).assert(vh.eq(&3_i64))
-}
-
-fn pat_vec_check_vec_get<PR: PatRecSgl>() -> CheckI64Pat<PR> {
-    let v = BaseVar::<i64, PR>::query_named("n");
-    let vh = v.handle();
-    let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_get(&1_i64);
-    CheckI64Pat::new(v).assert(vh.eq(&e)).assert(vh.eq(&2_i64))
-}
-
-fn pat_vec_check_vec_set<PR: PatRecSgl>() -> CheckIVecPat<PR> {
-    let v = BaseVar::<IVec, PR>::query_named("v");
-    let vh = v.handle();
-    let lhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_set(&1_i64, &4_i64);
-    let rhs = vec_of::<IVec, _, _>([&1_i64, &4_i64, &3_i64]);
-    CheckIVecPat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
-}
-
 pub fn bench() {
     MyTxVec::reset_for_bench();
 
@@ -122,7 +52,17 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_of",
         rs,
-        pat_vec_check_vec_of,
+        || {
+            let v = BaseVar::<IVec, MyPatRecVec>::query_named("v");
+            let vh = v.handle();
+            let e1 = vec_of::<IVec, _, _>([&1_i64, &2_i64]);
+            let e2 = vec_empty::<IVec>().vec_push(&1_i64).vec_push(&2_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                v: BaseVar<IVec>,
+            }
+            Pat::new(v).assert(vh.eq(&e1)).assert(vh.eq(&e2))
+        },
         |_ctx, _pat| {},
     );
 
@@ -130,7 +70,18 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_append",
         rs,
-        pat_vec_check_vec_append,
+        || {
+            let v = BaseVar::<IVec, MyPatRecVec>::query_named("v");
+            let vh = v.handle();
+            let lhs = vec_of::<IVec, _, _>([&1_i64, &2_i64])
+                .vec_append(vec_of::<IVec, _, _>([&3_i64, &4_i64]));
+            let rhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64, &4_i64]);
+            #[eggplant::pat_vars]
+            struct Pat {
+                v: BaseVar<IVec>,
+            }
+            Pat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
+        },
         |_ctx, _pat| {},
     );
 
@@ -138,7 +89,17 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_pop",
         rs,
-        pat_vec_check_vec_pop,
+        || {
+            let v = BaseVar::<IVec, MyPatRecVec>::query_named("v");
+            let vh = v.handle();
+            let lhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_pop();
+            let rhs = vec_of::<IVec, _, _>([&1_i64, &2_i64]);
+            #[eggplant::pat_vars]
+            struct Pat {
+                v: BaseVar<IVec>,
+            }
+            Pat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
+        },
         |_ctx, _pat| {},
     );
 
@@ -146,7 +107,12 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_not_contains",
         rs,
-        pat_vec_check_vec_not_contains,
+        || {
+            let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_not_contains(&4_i64);
+            #[eggplant::pat_vars]
+            struct Pat {}
+            Pat::new().assert(e)
+        },
         |_ctx, _pat| {},
     );
 
@@ -154,7 +120,12 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_contains",
         rs,
-        pat_vec_check_vec_contains,
+        || {
+            let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_contains(&2_i64);
+            #[eggplant::pat_vars]
+            struct Pat {}
+            Pat::new().assert(e)
+        },
         |_ctx, _pat| {},
     );
 
@@ -162,7 +133,16 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_length",
         rs,
-        pat_vec_check_vec_length,
+        || {
+            let v = BaseVar::<i64, MyPatRecVec>::query_named("n");
+            let vh = v.handle();
+            let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_len();
+            #[eggplant::pat_vars]
+            struct Pat {
+                v: BaseVar<i64>,
+            }
+            Pat::new(v).assert(vh.eq(&e)).assert(vh.eq(&3_i64))
+        },
         |_ctx, _pat| {},
     );
 
@@ -170,7 +150,16 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_get",
         rs,
-        pat_vec_check_vec_get,
+        || {
+            let v = BaseVar::<i64, MyPatRecVec>::query_named("n");
+            let vh = v.handle();
+            let e = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_get(&1_i64);
+            #[eggplant::pat_vars]
+            struct Pat {
+                v: BaseVar<i64>,
+            }
+            Pat::new(v).assert(vh.eq(&e)).assert(vh.eq(&2_i64))
+        },
         |_ctx, _pat| {},
     );
 
@@ -178,7 +167,17 @@ pub fn bench() {
     MyTxVec::add_rule(
         "vec_check_vec_set",
         rs,
-        pat_vec_check_vec_set,
+        || {
+            let v = BaseVar::<IVec, MyPatRecVec>::query_named("v");
+            let vh = v.handle();
+            let lhs = vec_of::<IVec, _, _>([&1_i64, &2_i64, &3_i64]).vec_set(&1_i64, &4_i64);
+            let rhs = vec_of::<IVec, _, _>([&1_i64, &4_i64, &3_i64]);
+            #[eggplant::pat_vars]
+            struct Pat {
+                v: BaseVar<IVec>,
+            }
+            Pat::new(v).assert(vh.eq(&lhs)).assert(vh.eq(&rhs))
+        },
         |_ctx, _pat| {},
     );
 

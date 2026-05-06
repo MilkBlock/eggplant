@@ -13,6 +13,22 @@ struct MathMicrobenchmarkStats {
     table_sizes: Vec<(&'static str, usize)>,
 }
 
+const TYPED_TABLES: &[&str] = &[
+    "MDiff",
+    "MIntegral",
+    "MAdd",
+    "MSub",
+    "MMul",
+    "MDiv",
+    "MPow",
+    "MLn",
+    "MSqrt",
+    "MSin",
+    "MCos",
+    "MConst",
+    "MVar",
+];
+
 fn print_stats(label: &str, stats: &MathMicrobenchmarkStats) {
     println!("{label} time: {:?}", stats.elapsed);
     println!("[{label}] total num_tuples = {}", stats.total_num_tuples);
@@ -73,12 +89,17 @@ fn relabel_stats(
 }
 
 fn collect_rust_rule_stats() -> MathMicrobenchmarkStats {
-    let stats = math_microbenchmark_support::run_and_collect_stats();
+    let mut input = math_microbenchmark_support::math_microbenchmark_setup();
+    let started = Instant::now();
+    math_microbenchmark_support::run_math_microbenchmark_iters(&mut input, 5);
     MathMicrobenchmarkStats {
-        elapsed: stats.elapsed,
-        total_num_tuples: stats.total_num_tuples,
+        elapsed: started.elapsed(),
+        total_num_tuples: input.egraph.num_tuples(),
         table_sizes: relabel_stats(
-            stats.table_sizes,
+            TYPED_TABLES
+                .iter()
+                .map(|table| (*table, input.egraph.get_size(table)))
+                .collect(),
             &[
                 ("Diff", "MDiff"),
                 ("Integral", "MIntegral"),
@@ -99,7 +120,7 @@ fn collect_rust_rule_stats() -> MathMicrobenchmarkStats {
 }
 
 fn collect_typed_stats() -> MathMicrobenchmarkStats {
-    let stats = typed_math_microbenchmark::run_and_collect_stats(false);
+    let stats = typed_math_microbenchmark::run_and_collect_stats_iters(false, 5);
     MathMicrobenchmarkStats {
         elapsed: stats.elapsed,
         total_num_tuples: stats.total_num_tuples,
@@ -130,6 +151,6 @@ fn main() {
     let typed = collect_typed_stats();
 
     print_stats("egg", &egg);
-    print_stats("rust", &rust);
-    print_stats("typed", &typed);
+    print_stats("rust-5", &rust);
+    print_stats("typed-5", &typed);
 }

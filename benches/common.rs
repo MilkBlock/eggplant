@@ -2,9 +2,9 @@ use egglog::EGraph;
 use egglog::SerializeConfig;
 use egglog::Value;
 use egglog::prelude::*;
+use eggplant::prelude::EgglogCompatExt;
 use std::path::Path;
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::Once;
 
 #[global_allocator]
@@ -322,21 +322,10 @@ pub fn bench_union_chain(n_edges: usize, proofs: bool, typed_union: bool, do_pro
         .output
         .clone();
 
-    let edge_view_proof: Option<Arc<str>> = if proofs && typed_union {
-        Some(Arc::<str>::from(
-            egraph
-                .proof_view_proof_name("Edge")
-                .expect("Edge should have a view-proof function in proofs mode")
-                .to_owned(),
-        ))
-    } else {
-        None
-    };
-
     // One rust rule: for each (Edge a b), union Node(a) ~ Node(b).
     //
-    // Use an `=` fact to bind the (instrumented) output value so we can also look up
-    // the row's view-proof value in proofs mode.
+    // Use an `=` fact to bind the instrumented output value. In proofs mode egglog
+    // now carries the matching premise proof into RustRuleContext automatically.
     rust_rule(
         &mut egraph,
         "union_chain",
@@ -344,19 +333,11 @@ pub fn bench_union_chain(n_edges: usize, proofs: bool, typed_union: bool, do_pro
         vars![a: i64, b: i64, u: { edge_output_sort.clone() }],
         facts![(= u (Edge a b))],
         move |ctx: &mut RustRuleContext, values: &[Value]| {
-            let [a, b, u] = values else { unreachable!() };
+            let [a, b, _u] = values else { unreachable!() };
             let node_a = ctx.lookup("Node", &[*a]).unwrap();
             let node_b = ctx.lookup("Node", &[*b]).unwrap();
             if typed_union {
-                let premise_proofs: Option<[Value; 1]> = edge_view_proof.as_ref().map(|vp| {
-                    let prf = ctx.lookup(vp.as_ref(), &[*a, *b, *u]).unwrap();
-                    [prf]
-                });
-                if let Some(premises) = premise_proofs.as_ref() {
-                    ctx.union_typed("Expr", node_a, node_b, premises.as_slice());
-                } else {
-                    ctx.union_typed("Expr", node_a, node_b, &[]);
-                }
+                ctx.union_typed("Expr", node_a, node_b);
             } else {
                 ctx.union(node_a, node_b);
             }

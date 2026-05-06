@@ -39,34 +39,34 @@ struct EcxVecVecOperandBase {
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxBody {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Gamma({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("Gamma({a0}, {a1}, {a2})")]
     EcxGamma {
         a0: EcxOperand,
         a1: EcxVecOperand,
         a2: EcxVecVecOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("OperandGroup({a0})")]
+    #[precedence(100)]
+    #[typst("OperandGroup({a0})")]
     EcxOperandGroup { a0: EcxVecOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("PureOp({a0})")]
+    #[precedence(100)]
+    #[typst("PureOp({a0})")]
     EcxPureOp { a0: EcxExpr },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ShiftBody({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("ShiftBody({a0}, {a1}, {a2})")]
     EcxShiftBody { a0: EcxBody, a1: i64, a2: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstBody({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("SubstBody({a0}, {a1}, {a2})")]
     EcxSubstBody {
         a0: EcxBody,
         a1: i64,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstBodyAll({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("SubstBodyAll({a0}, {a1})")]
     EcxSubstBodyAll { a0: EcxBody, a1: EcxVecOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Theta({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("Theta({a0}, {a1}, {a2})")]
     EcxTheta {
         a0: EcxOperand,
         a1: EcxVecOperand,
@@ -76,140 +76,140 @@ enum EcxBody {
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxConstOps {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("kw_const")]
+    #[precedence(100)]
+    #[typst("kw_const")]
     Ecxkw_const {},
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxEffectType {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Bril({a0})")]
+    #[precedence(100)]
+    #[typst("Bril({a0})")]
     EcxBril { a0: EcxType },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("PrintState")]
+    #[precedence(100)]
+    #[typst("PrintState")]
     EcxPrintState {},
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxExpr {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Call({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("Call({a0}, {a1}, {a2}, {a3})")]
     EcxCall {
         a0: EcxOptionType,
         a1: String,
         a2: EcxVecOperand,
         a3: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Const({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("Const({a0}, {a1}, {a2})")]
     EcxConst {
         a0: EcxType,
         a1: EcxConstOps,
         a2: EcxLiteral,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("PRINT({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("PRINT({a0}, {a1})")]
     EcxPRINT { a0: EcxOperand, a1: EcxOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ShiftExpr({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("ShiftExpr({a0}, {a1}, {a2})")]
     EcxShiftExpr { a0: EcxExpr, a1: i64, a2: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstExpr({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("SubstExpr({a0}, {a1}, {a2})")]
     EcxSubstExpr {
         a0: EcxExpr,
         a1: i64,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstExprAll({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("SubstExprAll({a0}, {a1})")]
     EcxSubstExprAll { a0: EcxExpr, a1: EcxVecOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("badd({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("badd({a0}, {a1}, {a2})")]
     Ecxbadd {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("band({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("band({a0}, {a1}, {a2})")]
     Ecxband {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bdiv({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bdiv({a0}, {a1}, {a2})")]
     Ecxbdiv {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("beq({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("beq({a0}, {a1}, {a2})")]
     Ecxbeq {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bfmul({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bfmul({a0}, {a1}, {a2})")]
     Ecxbfmul {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bge({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bge({a0}, {a1}, {a2})")]
     Ecxbge {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bgt({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bgt({a0}, {a1}, {a2})")]
     Ecxbgt {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ble({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("ble({a0}, {a1}, {a2})")]
     Ecxble {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("blt({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("blt({a0}, {a1}, {a2})")]
     Ecxblt {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bmul({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bmul({a0}, {a1}, {a2})")]
     Ecxbmul {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bnot({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bnot({a0}, {a1}, {a2})")]
     Ecxbnot {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bor({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bor({a0}, {a1}, {a2})")]
     Ecxbor {
         a0: EcxType,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("bsub({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("bsub({a0}, {a1}, {a2})")]
     Ecxbsub {
         a0: EcxType,
         a1: EcxOperand,
@@ -219,8 +219,8 @@ enum EcxExpr {
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxFunction {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Func({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("Func({a0}, {a1}, {a2}, {a3})")]
     EcxFunc {
         a0: String,
         a1: EcxFuncSigs,
@@ -231,298 +231,298 @@ enum EcxFunction {
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxInterval {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("BoolI({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("BoolI({a0}, {a1})")]
     EcxBoolI { a0: bool, a1: bool },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("IntI({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("IntI({a0}, {a1})")]
     EcxIntI { a0: i64, a1: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("interval_intersect({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("interval_intersect({a0}, {a1})")]
     Ecxinterval_intersect { a0: EcxInterval, a1: EcxInterval },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("interval_union({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("interval_union({a0}, {a1})")]
     Ecxinterval_union { a0: EcxInterval, a1: EcxInterval },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxLiteral {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Bool({a0})")]
+    #[precedence(100)]
+    #[typst("Bool({a0})")]
     EcxBool { a0: bool },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Char({a0})")]
+    #[precedence(100)]
+    #[typst("Char({a0})")]
     EcxChar { a0: String },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Float({a0})")]
+    #[precedence(100)]
+    #[typst("Float({a0})")]
     EcxFloat { a0: f64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Num({a0})")]
+    #[precedence(100)]
+    #[typst("Num({a0})")]
     EcxNum { a0: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxOperand {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Arg({a0})")]
+    #[precedence(100)]
+    #[typst("Arg({a0})")]
     EcxArg { a0: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Node({a0})")]
+    #[precedence(100)]
+    #[typst("Node({a0})")]
     EcxNode { a0: EcxBody },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Project({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("Project({a0}, {a1})")]
     EcxProject { a0: i64, a1: EcxBody },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ShiftOperand({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("ShiftOperand({a0}, {a1}, {a2})")]
     EcxShiftOperand { a0: EcxOperand, a1: i64, a2: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstOperand({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("SubstOperand({a0}, {a1}, {a2})")]
     EcxSubstOperand {
         a0: EcxOperand,
         a1: i64,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstOperandAll({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("SubstOperandAll({a0}, {a1})")]
     EcxSubstOperandAll { a0: EcxOperand, a1: EcxVecOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VecOperand_get({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("VecOperand_get({a0}, {a1})")]
     EcxVecOperand_get { a0: EcxVecOperand, a1: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxOptionType {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("NoneType")]
+    #[precedence(100)]
+    #[typst("NoneType")]
     EcxNoneType {},
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SomeType({a0})")]
+    #[precedence(100)]
+    #[typst("SomeType({a0})")]
     EcxSomeType { a0: EcxType },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxTermAndCost {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("BodyAndCost({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("BodyAndCost({a0}, {a1})")]
     EcxBodyAndCost { a0: EcxBody, a1: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ExprAndCost({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("ExprAndCost({a0}, {a1})")]
     EcxExprAndCost { a0: EcxExpr, a1: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("OperandAndCost({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("OperandAndCost({a0}, {a1})")]
     EcxOperandAndCost { a0: EcxOperand, a1: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Smaller({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("Smaller({a0}, {a1})")]
     EcxSmaller {
         a0: EcxTermAndCost,
         a1: EcxTermAndCost,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VecOperandAndCost({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("VecOperandAndCost({a0}, {a1})")]
     EcxVecOperandAndCost { a0: EcxVecOperand, a1: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VecVecOperandAndCost({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("VecVecOperandAndCost({a0}, {a1})")]
     EcxVecVecOperandAndCost { a0: EcxVecVecOperand, a1: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxType {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("BoolT")]
+    #[precedence(100)]
+    #[typst("BoolT")]
     EcxBoolT {},
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("CharT")]
+    #[precedence(100)]
+    #[typst("CharT")]
     EcxCharT {},
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("FloatT")]
+    #[precedence(100)]
+    #[typst("FloatT")]
     EcxFloatT {},
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("IntT")]
+    #[precedence(100)]
+    #[typst("IntT")]
     EcxIntT {},
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("PointerT({a0})")]
+    #[precedence(100)]
+    #[typst("PointerT({a0})")]
     EcxPointerT { a0: EcxType },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxVecOperand {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("BodyToVecOperand({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("BodyToVecOperand({a0}, {a1})")]
     EcxBodyToVecOperand { a0: i64, a1: EcxBody },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("BodyToVecOperandHelper({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("BodyToVecOperandHelper({a0}, {a1}, {a2}, {a3})")]
     EcxBodyToVecOperandHelper {
         a0: i64,
         a1: i64,
         a2: EcxBody,
         a3: EcxVecOperandBase,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("PassThroughArguments({a0})")]
+    #[precedence(100)]
+    #[typst("PassThroughArguments({a0})")]
     EcxPassThroughArguments { a0: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("PassThroughArgumentsHelper({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("PassThroughArgumentsHelper({a0}, {a1})")]
     EcxPassThroughArgumentsHelper { a0: i64, a1: EcxVecOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ShiftVecOperand({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("ShiftVecOperand({a0}, {a1}, {a2})")]
     EcxShiftVecOperand { a0: EcxVecOperand, a1: i64, a2: i64 },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ShiftVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("ShiftVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
     EcxShiftVecOperand_helper {
         a0: EcxVecOperand,
         a1: i64,
         a2: i64,
         a3: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecOperand({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("SubstVecOperand({a0}, {a1}, {a2})")]
     EcxSubstVecOperand {
         a0: EcxVecOperand,
         a1: i64,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("SubstVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
     EcxSubstVecOperand_helper {
         a0: EcxVecOperand,
         a1: i64,
         a2: EcxOperand,
         a3: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecOperandAll({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("SubstVecOperandAll({a0}, {a1})")]
     EcxSubstVecOperandAll {
         a0: EcxVecOperand,
         a1: EcxVecOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecOperandAll_helper({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("SubstVecOperandAll_helper({a0}, {a1}, {a2})")]
     EcxSubstVecOperandAll_helper {
         a0: EcxVecOperand,
         a1: EcxVecOperand,
         a2: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VO({a0})")]
+    #[precedence(100)]
+    #[typst("VO({a0})")]
     EcxVO { a0: EcxVecOperandBase },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VecVecOperand_get({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("VecVecOperand_get({a0}, {a1})")]
     EcxVecVecOperand_get { a0: EcxVecVecOperand, a1: i64 },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxVecVecOperand {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ShiftVecVecOperand({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("ShiftVecVecOperand({a0}, {a1}, {a2})")]
     EcxShiftVecVecOperand {
         a0: EcxVecVecOperand,
         a1: i64,
         a2: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("ShiftVecVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("ShiftVecVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
     EcxShiftVecVecOperand_helper {
         a0: EcxVecVecOperand,
         a1: i64,
         a2: i64,
         a3: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecVecOperand({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("SubstVecVecOperand({a0}, {a1}, {a2})")]
     EcxSubstVecVecOperand {
         a0: EcxVecVecOperand,
         a1: i64,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
+    #[precedence(100)]
+    #[typst("SubstVecVecOperand_helper({a0}, {a1}, {a2}, {a3})")]
     EcxSubstVecVecOperand_helper {
         a0: EcxVecVecOperand,
         a1: i64,
         a2: EcxOperand,
         a3: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecVecOperandAll({a0}, {a1})")]
+    #[precedence(100)]
+    #[typst("SubstVecVecOperandAll({a0}, {a1})")]
     EcxSubstVecVecOperandAll {
         a0: EcxVecVecOperand,
         a1: EcxVecOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("SubstVecVecOperandAll_helper({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("SubstVecVecOperandAll_helper({a0}, {a1}, {a2})")]
     EcxSubstVecVecOperandAll_helper {
         a0: EcxVecVecOperand,
         a1: EcxVecOperand,
         a2: i64,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VVO({a0})")]
+    #[precedence(100)]
+    #[typst("VVO({a0})")]
     EcxVVO { a0: EcxVecVecOperandBase },
 }
 
 #[eggplant::dsl(container = EcxFuncSigs, container = EcxVecOperandBase, container = EcxVecVecOperandBase)]
 enum EcxRel {
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Body_contains_Body({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("Body_contains_Body({a0}, {a1}, {a2})")]
     EcxBody_contains_Body { a0: EcxBody, a1: i64, a2: EcxBody },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Body_contains_Expr({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("Body_contains_Expr({a0}, {a1}, {a2})")]
     EcxBody_contains_Expr { a0: EcxBody, a1: i64, a2: EcxExpr },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Body_contains_Operand({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("Body_contains_Operand({a0}, {a1}, {a2})")]
     EcxBody_contains_Operand {
         a0: EcxBody,
         a1: i64,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Body_is_pure({a0})")]
+    #[precedence(100)]
+    #[typst("Body_is_pure({a0})")]
     EcxBody_is_pure { a0: EcxBody },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Expr_is_pure({a0})")]
+    #[precedence(100)]
+    #[typst("Expr_is_pure({a0})")]
     EcxExpr_is_pure { a0: EcxExpr },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Function_is_pure({a0})")]
+    #[precedence(100)]
+    #[typst("Function_is_pure({a0})")]
     EcxFunction_is_pure { a0: EcxFunction },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("Operand_is_pure({a0})")]
+    #[precedence(100)]
+    #[typst("Operand_is_pure({a0})")]
     EcxOperand_is_pure { a0: EcxOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VecOperand_is_pure({a0})")]
+    #[precedence(100)]
+    #[typst("VecOperand_is_pure({a0})")]
     EcxVecOperand_is_pure { a0: EcxVecOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("VecVecOperand_is_pure({a0})")]
+    #[precedence(100)]
+    #[typst("VecVecOperand_is_pure({a0})")]
     EcxVecVecOperand_is_pure { a0: EcxVecVecOperand },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("can_subst_Body_beneath({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("can_subst_Body_beneath({a0}, {a1}, {a2})")]
     Ecxcan_subst_Body_beneath {
         a0: EcxBody,
         a1: EcxBody,
         a2: EcxBody,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("can_subst_Expr_beneath({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("can_subst_Expr_beneath({a0}, {a1}, {a2})")]
     Ecxcan_subst_Expr_beneath {
         a0: EcxBody,
         a1: EcxExpr,
         a2: EcxExpr,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("can_subst_Operand_beneath({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("can_subst_Operand_beneath({a0}, {a1}, {a2})")]
     Ecxcan_subst_Operand_beneath {
         a0: EcxBody,
         a1: EcxOperand,
         a2: EcxOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("can_subst_VecOperand_beneath({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("can_subst_VecOperand_beneath({a0}, {a1}, {a2})")]
     Ecxcan_subst_VecOperand_beneath {
         a0: EcxBody,
         a1: EcxVecOperand,
         a2: EcxVecOperand,
     },
-    #[eggplant::precedence(100)]
-    #[eggplant::typst("can_subst_VecVecOperand_beneath({a0}, {a1}, {a2})")]
+    #[precedence(100)]
+    #[typst("can_subst_VecVecOperand_beneath({a0}, {a1}, {a2})")]
     Ecxcan_subst_VecVecOperand_beneath {
         a0: EcxBody,
         a1: EcxVecVecOperand,

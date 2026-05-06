@@ -1,0 +1,3 @@
+pub mod nncase_clamp_microbenchmark;
+pub mod nncase_transpose_microbenchmark;
+pub mod nncase_vectorize_microbenchmark;
