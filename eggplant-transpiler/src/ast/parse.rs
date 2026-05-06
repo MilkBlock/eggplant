@@ -1681,7 +1681,13 @@ mod tests {
             &commands[0],
             Command::Datatype { name, .. } if name == "Math"
         ));
-        assert!(matches!(&commands[1], Command::Sort(_, name, None) if name == "MathVec"));
+        assert!(matches!(
+            &commands[1],
+            Command::Sort(_, name, Some((kind, args)))
+                if name == "MathVec"
+                    && kind == "Vec"
+                    && matches!(&args[..], [Expr::Var(_, arg)] if arg == "Math")
+        ));
         assert!(matches!(
             &commands[2],
             Command::Datatype { name, .. } if name == "Bool"

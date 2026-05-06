@@ -2,10 +2,20 @@ use eggplant::prelude::*;
 use eggplant::tx_rx_vt_pr;
 #[eggplant::dsl]
 pub enum Expr {
+    #[typst("{num}")]
+    #[precedence(100)]
     Const { num: i64 },
+    #[typst("{l} * {r}")]
+    #[precedence(60)]
     Mul { l: Expr, r: Expr },
+    #[typst("{l} - {r}")]
+    #[precedence(50)]
     Sub { l: Expr, r: Expr },
+    #[typst("{l} + {r}")]
+    #[precedence(50)]
     Add { l: Expr, r: Expr },
+    #[typst("frac({l}, {r})")]
+    #[precedence(60)]
     Div { l: Expr, r: Expr },
 }
 
@@ -40,7 +50,26 @@ fn main() {
     expr.commit();
 
     let ruleset = MyTx::new_ruleset("constant_prop");
-    prop!(Add,+,AddPat,ruleset);
+    MyTx::add_rule(
+        stringify!(AddPat),
+        ruleset,
+        || {
+            let l = Const::query();
+            let r = Const::query();
+            let p = Add::query(&l, &r);
+            #[eggplant::pat_vars_catch]
+            struct AddPat {
+                l: Const,
+                r: Const,
+                p: Add,
+            }
+        },
+        |ctx, pat| {
+            let cal = ctx.devalue(pat.l.num) + ctx.devalue(pat.r.num);
+            let op_value = ctx.insert_const(cal);
+            ctx.union(pat.p, op_value);
+        },
+    );
     prop!(Sub,-,SubPat,ruleset);
     prop!(Mul,*,MulPat,ruleset);
     prop!(Div,/,DivPat,ruleset);

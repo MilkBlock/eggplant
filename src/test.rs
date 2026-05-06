@@ -33,15 +33,15 @@ mod tests {
     }
     #[eggplant::dsl]
     enum DisplayMath {
-        #[eggplant::display("{x} + {f}")]
-        #[eggplant::typst("diff({x}, {f})")]
-        #[eggplant::precedence(5)]
+        #[display("{x} + {f}")]
+        #[typst("diff({x}, {f})")]
+        #[precedence(5)]
         MDiff {
             x: DisplayMath,
             f: DisplayMath,
         },
-        #[eggplant::display("integ {f} {x}")]
-        #[eggplant::typst("integral({f}, {x})")]
+        #[display("integ {f} {x}")]
+        #[typst("integral({f}, {x})")]
         MIntegral {
             f: DisplayMath,
             x: DisplayMath,
@@ -52,16 +52,16 @@ mod tests {
     }
     #[eggplant::dsl]
     enum PrecedenceExpr {
-        #[eggplant::typst("{name}")]
+        #[typst("{name}")]
         Var { name: String },
-        #[eggplant::typst("{lhs} + {rhs}")]
-        #[eggplant::precedence(10)]
+        #[typst("{lhs} + {rhs}")]
+        #[precedence(10)]
         Add {
             lhs: PrecedenceExpr,
             rhs: PrecedenceExpr,
         },
-        #[eggplant::typst("{lhs} * {rhs}")]
-        #[eggplant::precedence(20)]
+        #[typst("{lhs} * {rhs}")]
+        #[precedence(20)]
         Mul {
             lhs: PrecedenceExpr,
             rhs: PrecedenceExpr,

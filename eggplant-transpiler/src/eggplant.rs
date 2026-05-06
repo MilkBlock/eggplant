@@ -6,6 +6,9 @@ use crate::ast::*;
 use heck::ToSnakeCase;
 use std::collections::{HashMap, HashSet};
 
+pub const TRANSPILER_FALLBACK_PANIC_PREFIX: &str = "eggplant transpiler fallback";
+pub const RAW_EGGLOG_FALLBACK_PANIC_PREFIX: &str = TRANSPILER_FALLBACK_PANIC_PREFIX;
+
 /// Eggplant DSL type definition
 #[derive(Debug, Clone, PartialEq)]
 pub struct DslType {
@@ -123,7 +126,8 @@ pub enum EggplantCommand {
     },
     /// Bridge include through the underlying egglog interpreter
     Include { file: String },
-    /// Bridge an arbitrary egglog command through the underlying interpreter
+    /// Unsupported arbitrary egglog command. Generated code fails fast instead
+    /// of silently routing it through the underlying egglog interpreter.
     RawEgglogCommand { command: String },
 }
 
@@ -424,10 +428,20 @@ impl EggplantCodeGenerator {
                 self.add_line(&format!("{}.pull();", expr));
             }
             EggplantCommand::Extract { expr, variants } => {
-                if let Some(variants) = variants {
-                    self.add_line(&format!("// extract requested {} variant(s)", variants));
-                }
-                self.add_line(&format!("{}.pull();", self.expr_to_string(expr)));
+                let command = match variants {
+                    Some(variants) => {
+                        format!(
+                            "(extract {} {})",
+                            expr_to_egglog_command_string(expr),
+                            variants
+                        )
+                    }
+                    None => format!("(extract {})", expr_to_egglog_command_string(expr)),
+                };
+                panic!(
+                    "{}: unsupported extract command: {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, command
+                );
             }
             EggplantCommand::RunRuleset(ruleset, config) => {
                 if !self.options.omit_run_ruleset_calls {
@@ -442,50 +456,28 @@ impl EggplantCodeGenerator {
                 limit,
                 until,
             } => {
-                let mut command = format!("(run {}", ruleset);
-                if let Some(limit) = limit {
-                    command.push_str(&format!(" {}", limit));
-                }
-                command.push_str(&format!(
-                    " :until {})",
-                    fact_to_egglog_command_string(until)
-                ));
-                self.add_line("let outputs = {");
-                self.indent();
-                self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
-                self.add_line(&format!(
-                    "egraph.parse_and_run_program(None, {:?}).unwrap()",
-                    command
-                ));
-                self.dedent();
-                self.add_line("};");
-                self.add_line("for output in outputs {");
-                self.indent();
-                self.add_line("print!(\"{}\", output);");
-                self.dedent();
-                self.add_line("}");
+                let schedule = Schedule::Run {
+                    ruleset: Some(ruleset.clone()),
+                    limit: *limit,
+                    until: Some(until.clone()),
+                };
+                let command = format!(
+                    "(run-schedule {})",
+                    schedule_to_egglog_schedule_string(&schedule)
+                );
+                self.add_raw_egglog_command(&command);
             }
             EggplantCommand::RunSchedule { schedules } => {
-                let schedule_program = schedules
-                    .iter()
-                    .map(ToString::to_string)
-                    .collect::<Vec<_>>()
-                    .join(" ");
-                let command = format!("(run-schedule {schedule_program})");
-                self.add_line("let outputs = {");
-                self.indent();
-                self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
-                self.add_line(&format!(
-                    "egraph.parse_and_run_program(None, {:?}).unwrap()",
-                    command
-                ));
-                self.dedent();
-                self.add_line("};");
-                self.add_line("for output in outputs {");
-                self.indent();
-                self.add_line("print!(\"{}\", output);");
-                self.dedent();
-                self.add_line("}");
+                if schedules.iter().any(schedule_has_until) {
+                    let command = run_schedule_to_egglog_command_string(schedules);
+                    self.add_raw_egglog_command(&command);
+                } else {
+                    self.add_line(&format!(
+                        "let schedule = {};",
+                        schedule_items_to_rust_expr(schedules)
+                    ));
+                    self.add_line("let _report = MyTx::run_schedule(schedule);");
+                }
             }
             EggplantCommand::Assert { expr, expected } => {
                 self.add_line(&format!(
@@ -527,20 +519,10 @@ impl EggplantCodeGenerator {
                 }
                 command.push(')');
 
-                self.add_line("let outputs = {");
-                self.indent();
-                self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
-                self.add_line(&format!(
-                    "egraph.parse_and_run_program(None, {:?}).unwrap()",
-                    command
-                ));
-                self.dedent();
-                self.add_line("};");
-                self.add_line("for output in outputs {");
-                self.indent();
-                self.add_line("print!(\"{}\", output);");
-                self.dedent();
-                self.add_line("}");
+                panic!(
+                    "{}: unsupported print-size: {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, command
+                );
             }
             EggplantCommand::PrintFunction {
                 name,
@@ -560,55 +542,29 @@ impl EggplantCodeGenerator {
                 }
                 command.push(')');
 
-                self.add_line("let outputs = {");
-                self.indent();
-                self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
-                self.add_line(&format!(
-                    "egraph.parse_and_run_program(None, {:?}).unwrap()",
-                    command
-                ));
-                self.dedent();
-                self.add_line("};");
-                self.add_line("for output in outputs {");
-                self.indent();
-                self.add_line("print!(\"{}\", output);");
-                self.dedent();
-                self.add_line("}");
+                panic!(
+                    "{}: unsupported print-function: {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, command
+                );
             }
             EggplantCommand::Include { file } => {
                 let command = format!("(include {:?})", file);
-                self.add_line("let outputs = {");
-                self.indent();
-                self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
-                self.add_line(&format!(
-                    "egraph.parse_and_run_program(None, {:?}).unwrap()",
-                    command
-                ));
-                self.dedent();
-                self.add_line("};");
-                self.add_line("for output in outputs {");
-                self.indent();
-                self.add_line("print!(\"{}\", output);");
-                self.dedent();
-                self.add_line("}");
+                panic!(
+                    "{}: unsupported include: {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, command
+                );
             }
             EggplantCommand::RawEgglogCommand { command } => {
-                self.add_line("let outputs = {");
-                self.indent();
-                self.add_line("let mut egraph = MyTx::sgl().egraph.lock().unwrap();");
-                self.add_line(&format!(
-                    "egraph.parse_and_run_program(None, {:?}).unwrap()",
-                    command
-                ));
-                self.dedent();
-                self.add_line("};");
-                self.add_line("for output in outputs {");
-                self.indent();
-                self.add_line("print!(\"{}\", output);");
-                self.dedent();
-                self.add_line("}");
+                panic!("{}: {}", TRANSPILER_FALLBACK_PANIC_PREFIX, command);
             }
         }
+    }
+
+    fn add_raw_egglog_command(&mut self, command: &str) {
+        self.add_line(&format!(
+            "let _outputs = MyTx::egraph().lock().unwrap().parse_and_run_program(None, {}).unwrap();",
+            rust_raw_string_literal(command)
+        ));
     }
 
     fn expr_to_string(&self, expr: &Expr) -> String {
@@ -900,11 +856,11 @@ pub fn convert_to_eggplant_with_source_and_program(
                 });
             }
             Command::Function { name, span, .. } => {
-                let function_type = function_types.get(name).cloned().unwrap_or(FunctionType {
-                    name: normalize_identifier(name),
-                    fields: Vec::new(),
-                    output_type: "()".to_string(),
-                    merge_expr: None,
+                let function_type = function_types.get(name).cloned().unwrap_or_else(|| {
+                    panic!(
+                        "{}: missing function schema for {}",
+                        TRANSPILER_FALLBACK_PANIC_PREFIX, name
+                    )
                 });
                 eggplant_commands.push(EggplantCommandWithSource {
                     command: EggplantCommand::FunctionType(function_type),
@@ -1168,14 +1124,18 @@ pub fn convert_to_eggplant_with_source_and_program(
             },
             Command::Push(_) => {
                 eggplant_commands.push(EggplantCommandWithSource {
-                    command: EggplantCommand::Commit("current_expr".to_string()),
+                    command: EggplantCommand::RawEgglogCommand {
+                        command: command.to_string(),
+                    },
                     source_file: source_file.clone(),
                     source_line: Some(1), // Default line for Push command
                 });
             }
             Command::Pop(span, _) => {
                 eggplant_commands.push(EggplantCommandWithSource {
-                    command: EggplantCommand::Pull("current_expr".to_string()),
+                    command: EggplantCommand::RawEgglogCommand {
+                        command: command.to_string(),
+                    },
                     source_file: source_file.clone(),
                     source_line: Some(span.line),
                 });
@@ -1288,7 +1248,13 @@ pub fn convert_to_eggplant_with_source_and_program(
                 });
             }
             _ => {
-                // Skip unsupported commands for now
+                eggplant_commands.push(EggplantCommandWithSource {
+                    command: EggplantCommand::RawEgglogCommand {
+                        command: command.to_string(),
+                    },
+                    source_file: source_file.clone(),
+                    source_line: Some(1),
+                });
             }
         }
     }
@@ -1331,6 +1297,165 @@ fn normalize_ruleset_name(name: &str) -> String {
 
 fn same_normalized_identifier(left: &str, right: &str) -> bool {
     normalize_identifier(left) == normalize_identifier(right)
+}
+
+fn schedule_has_until(schedule: &Schedule) -> bool {
+    match schedule {
+        Schedule::Run { until, .. } => until.is_some(),
+        Schedule::Named(_) => false,
+        Schedule::Seq(items) | Schedule::Saturate(items) => items.iter().any(schedule_has_until),
+        Schedule::Repeat(_, inner) => schedule_has_until(inner),
+    }
+}
+
+fn schedule_items_to_rust_expr(schedules: &[Schedule]) -> String {
+    match schedules {
+        [] => "RunSchedule::builder().build()".to_string(),
+        [schedule] => schedule_to_rust_expr(schedule),
+        _ => {
+            let mut expr = "RunSchedule::builder()".to_string();
+            for schedule in schedules {
+                expr.push_str(&format!(".then({})", schedule_to_rust_expr(schedule)));
+            }
+            expr.push_str(".build()");
+            expr
+        }
+    }
+}
+
+fn schedule_to_rust_expr(schedule: &Schedule) -> String {
+    match schedule {
+        Schedule::Run {
+            ruleset,
+            limit,
+            until: None,
+        } => {
+            let ruleset = schedule_ruleset_expr(ruleset.as_deref());
+            let run = format!("RunSchedule::builder().run({ruleset}).build()");
+            match limit {
+                Some(limit) => {
+                    format!(
+                        "RunSchedule::builder().repeat({limit}, |schedule| schedule.then({run})).build()"
+                    )
+                }
+                None => run,
+            }
+        }
+        Schedule::Run { .. } => {
+            unreachable!("run-schedule with :until must use raw egglog bridge")
+        }
+        Schedule::Named(name) => {
+            format!(
+                "RunSchedule::builder().run({}).build()",
+                normalize_ruleset_name(name)
+            )
+        }
+        Schedule::Seq(items) => schedule_items_to_rust_expr(items),
+        Schedule::Saturate(items) => match items.as_slice() {
+            [single] => {
+                if let Some(ruleset) = direct_schedule_ruleset_expr(single) {
+                    format!("RunSchedule::builder().saturate({ruleset}).build()")
+                } else {
+                    format!(
+                        "RunSchedule::builder().saturate_schedule({}).build()",
+                        schedule_to_rust_expr(single)
+                    )
+                }
+            }
+            _ => format!(
+                "RunSchedule::builder().saturate_schedule({}).build()",
+                schedule_items_to_rust_expr(items)
+            ),
+        },
+        Schedule::Repeat(times, inner) => {
+            format!(
+                "RunSchedule::builder().repeat({times}, |schedule| schedule.then({})).build()",
+                schedule_to_rust_expr(inner)
+            )
+        }
+    }
+}
+
+fn direct_schedule_ruleset_expr(schedule: &Schedule) -> Option<String> {
+    match schedule {
+        Schedule::Named(name) => Some(normalize_ruleset_name(name)),
+        Schedule::Run {
+            ruleset,
+            limit: None,
+            until: None,
+        } => Some(schedule_ruleset_expr(ruleset.as_deref())),
+        _ => None,
+    }
+}
+
+fn schedule_ruleset_expr(ruleset: Option<&str>) -> String {
+    normalize_ruleset_name(ruleset.unwrap_or("default"))
+}
+
+fn run_schedule_to_egglog_command_string(schedules: &[Schedule]) -> String {
+    let schedule_program = schedules
+        .iter()
+        .map(schedule_to_egglog_schedule_string)
+        .collect::<Vec<_>>()
+        .join(" ");
+    format!("(run-schedule {schedule_program})")
+}
+
+fn schedule_to_egglog_schedule_string(schedule: &Schedule) -> String {
+    match schedule {
+        Schedule::Run {
+            ruleset,
+            limit,
+            until,
+        } => {
+            let ruleset = schedule_ruleset_expr(ruleset.as_deref());
+            let mut run = format!("(run {ruleset}");
+            if let Some(until) = until {
+                run.push_str(&format!(" :until {}", fact_to_egglog_command_string(until)));
+            }
+            run.push(')');
+
+            match limit {
+                Some(limit) => format!("(repeat {limit} {run})"),
+                None => run,
+            }
+        }
+        Schedule::Named(name) => normalize_ruleset_name(name),
+        Schedule::Seq(items) => format!(
+            "(seq {})",
+            items
+                .iter()
+                .map(schedule_to_egglog_schedule_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        Schedule::Saturate(items) => format!(
+            "(saturate {})",
+            items
+                .iter()
+                .map(schedule_to_egglog_schedule_string)
+                .collect::<Vec<_>>()
+                .join(" ")
+        ),
+        Schedule::Repeat(times, inner) => {
+            format!(
+                "(repeat {times} {})",
+                schedule_to_egglog_schedule_string(inner)
+            )
+        }
+    }
+}
+
+fn rust_raw_string_literal(value: &str) -> String {
+    let mut hashes = 1usize;
+    loop {
+        let hash_marks = "#".repeat(hashes);
+        let closing = format!("\"{hash_marks}");
+        if !value.contains(&closing) {
+            return format!("r{hash_marks}\"{value}\"{hash_marks}");
+        }
+        hashes += 1;
+    }
 }
 
 fn expr_type_name(expr: &Expr) -> String {
@@ -1377,15 +1502,7 @@ fn expr_to_egglog_command_string(expr: &Expr) -> String {
 fn fact_to_egglog_command_string(fact: &Fact) -> String {
     match fact {
         Fact::Op(span, left, right) => {
-            let operator = if let Some(file) = &span.file {
-                if file.starts_with("operator:") {
-                    file.trim_start_matches("operator:")
-                } else {
-                    "="
-                }
-            } else {
-                "="
-            };
+            let operator = operator_from_span(span);
             format!(
                 "({} {} {})",
                 operator,
@@ -1756,8 +1873,7 @@ fn lower_rule_binding_fact(
             let binding_handle = if let Some(binding) = existing_binding {
                 binding_handle_expr(&binding)
             } else {
-                let inferred_type =
-                    infer_rule_expr_type(expr, state).unwrap_or_else(|| "i64".to_string());
+                let inferred_type = infer_rule_expr_type(expr, state)?;
                 let binding_name =
                     ensure_base_binding(&normalized_var_name, &inferred_type, true, state)?;
                 format!("{binding_name}.handle()")
@@ -1774,8 +1890,7 @@ fn lower_rule_binding_fact(
             let binding_handle = if let Some(binding) = existing_binding {
                 binding_handle_expr(&binding)
             } else {
-                let inferred_type =
-                    infer_rule_expr_type(expr, state).unwrap_or_else(|| "i64".to_string());
+                let inferred_type = infer_rule_expr_type(expr, state)?;
                 let binding_name =
                     ensure_base_binding(&normalized_var_name, &inferred_type, true, state)?;
                 format!("{binding_name}.handle()")
@@ -2011,7 +2126,12 @@ fn operator_from_span(span: &Span) -> &str {
     span.file
         .as_deref()
         .and_then(|file| file.strip_prefix("operator:"))
-        .unwrap_or("=")
+        .unwrap_or_else(|| {
+            panic!(
+                "{}: missing operator metadata for fact at line {}, column {}",
+                TRANSPILER_FALLBACK_PANIC_PREFIX, span.line, span.col
+            )
+        })
 }
 
 fn operator_method_name(operator: &str) -> Option<&'static str> {
@@ -2512,9 +2632,10 @@ fn render_rule_base_handle_expr_with_hint(
             let binding = lower_constructor_fact(func_name, args, None, state)?;
             Some(binding_handle_expr(&binding))
         }
-        Expr::Call(_, func_name, args) => {
+        Expr::Call(_, func_name, args) if supported_primitive_call(func_name) => {
             render_rule_primitive_handle_expr_with_hint(func_name, args, hint_type, state)
         }
+        Expr::Call(_, _, _) => None,
     }
 }
 
@@ -2529,6 +2650,9 @@ fn render_rule_handle_expr_with_expected_type(
                 && !state.function_types.contains_key(func_name)
                 && find_variant_output_type(func_name, state.dsl_types).is_none() =>
         {
+            if !supported_primitive_call(func_name) {
+                return None;
+            }
             let constraint_type = constraint_type_name(expected_type);
             let hint = rule_base_hint(Some(expected_type), state).map(str::to_string);
             let arg_exprs = args
@@ -2554,17 +2678,14 @@ fn render_rule_fact_constraint_expr(
     let Expr::Call(_, func_name, args) = expr else {
         return None;
     };
-    let arg_types = infer_primitive_fact_arg_types(func_name, args, state);
+    let arg_types = infer_primitive_fact_arg_types(func_name, args, state)?;
     let arg_exprs = args
         .iter()
         .enumerate()
         .map(|(index, arg)| {
             render_rule_fact_arg_handle_expr(
                 arg,
-                arg_types
-                    .as_ref()
-                    .and_then(|types| types.get(index))
-                    .and_then(|ty| ty.as_deref()),
+                arg_types.get(index).and_then(|ty| ty.as_deref()),
                 state,
             )
             .map(|rendered| format!("{rendered}.into_handle_ty()"))
@@ -2601,8 +2722,7 @@ fn render_rule_primitive_handle_expr_with_hint(
 ) -> Option<String> {
     let output_type = hint_type
         .map(normalize_identifier)
-        .or_else(|| infer_primitive_output_type(func_name, args, state))
-        .unwrap_or_else(|| "i64".to_string());
+        .or_else(|| infer_primitive_output_type(func_name, args, state))?;
     let constraint_type = constraint_type_name(&output_type);
     let arg_hints = primitive_call_arg_hints(func_name, &output_type, args, state);
     let arg_exprs = args
@@ -2977,19 +3097,15 @@ fn infer_rule_expr_type(expr: &Expr, state: &RulePatternState<'_>) -> Option<Str
     }
 }
 
-fn infer_numeric_operation_type(
-    args: &[Expr],
-    state: &RulePatternState<'_>,
-    fallback: &str,
-) -> String {
+fn infer_numeric_operation_type(args: &[Expr], state: &RulePatternState<'_>) -> Option<String> {
     let left = args
         .first()
         .and_then(|arg| infer_rule_expr_type(arg, state));
     let right = args.get(1).and_then(|arg| infer_rule_expr_type(arg, state));
     if matches!(left.as_deref(), Some("f64")) || matches!(right.as_deref(), Some("f64")) {
-        "f64".to_string()
+        Some("f64".to_string())
     } else {
-        left.or(right).unwrap_or_else(|| fallback.to_string())
+        left.or(right)
     }
 }
 
@@ -3005,14 +3121,10 @@ fn infer_primitive_output_type(
         "bigrat" => "BigRat".to_string(),
         "abs" | "min" | "max" | "neg" | "round" | "floor" | "ceil" | "sqrt" | "pow" => args
             .first()
-            .and_then(|arg| infer_rule_expr_type(arg, state))
-            .unwrap_or_else(|| "i64".to_string()),
+            .and_then(|arg| infer_rule_expr_type(arg, state))?,
         "=" | "==" | "!=" | "<" | "<=" | ">" | ">=" | "and" | "or" | "not" => "bool".to_string(),
-        "+" | "-" | "*" | "/" | "%" => infer_numeric_operation_type(args, state, "i64"),
-        _ => args
-            .first()
-            .and_then(|arg| infer_rule_expr_type(arg, state))
-            .unwrap_or_else(|| "i64".to_string()),
+        "+" | "-" | "*" | "/" | "%" => infer_numeric_operation_type(args, state)?,
+        _ => return None,
     };
     Some(inferred)
 }
@@ -3061,10 +3173,6 @@ fn container_element_type(sort_name: &str, state: &RulePatternState<'_>) -> Opti
     schema.args.first().cloned()
 }
 
-fn normalize_runtime_call_name(func_name: &str) -> String {
-    normalize_identifier(func_name).to_snake_case()
-}
-
 fn render_rule_runtime_call_expr(func_name: &str, arg_exprs: &[String]) -> Option<String> {
     match (func_name, arg_exprs.len()) {
         ("rational", 2) => Some(format!(
@@ -3093,29 +3201,56 @@ fn render_rule_runtime_call_expr(func_name: &str, arg_exprs: &[String]) -> Optio
         | (">=", 2)
         | ("==", 2)
         | ("!=", 2) => Some(format!("({} {} {})", arg_exprs[0], func_name, arg_exprs[1])),
-        _ => Some(format!(
-            "{}({})",
-            normalize_runtime_call_name(func_name),
-            arg_exprs.join(", ")
-        )),
+        _ => None,
     }
+}
+
+fn supported_primitive_call(func_name: &str) -> bool {
+    matches!(
+        func_name,
+        "rational"
+            | "to-f64"
+            | "from-string"
+            | "bigint"
+            | "numer"
+            | "denom"
+            | "bigrat"
+            | "abs"
+            | "min"
+            | "max"
+            | "neg"
+            | "round"
+            | "floor"
+            | "ceil"
+            | "sqrt"
+            | "pow"
+            | "="
+            | "=="
+            | "!="
+            | "<"
+            | "<="
+            | ">"
+            | ">="
+            | "and"
+            | "or"
+            | "not"
+            | "+"
+            | "-"
+            | "*"
+            | "/"
+            | "%"
+    )
 }
 
 /// Infer type from expression context with better variable type inference
 fn infer_type_from_expr(expr: &Expr) -> String {
     match expr {
         Expr::Call(_, func_name, _) => normalize_identifier(func_name),
-        Expr::Var(_, name) => {
-            // For pattern variables starting with ?, try to infer type from context
-            if name.starts_with('?') {
-                // Default to String for pattern variables that might be string types
-                // This is a temporary solution until we have better type inference
-                "String".to_string()
-            } else {
-                // For other variables, default to String
-                "String".to_string()
-            }
-        }
+        Expr::Var(_, name) => panic!(
+            "{}: cannot infer type for unbound variable {}",
+            TRANSPILER_FALLBACK_PANIC_PREFIX,
+            normalize_identifier(name)
+        ),
         Expr::Lit(_, lit) => match lit {
             Literal::Int(_) => "i64".to_string(),
             Literal::Float(_) => "f64".to_string(),
@@ -3152,9 +3287,10 @@ fn infer_variable_type_from_constructor(
         }
     }
 
-    // Fallback: if constructor not found in DSL types, use the constructor name as type
-    // println!("WARNING: {} infer to be itself", constructor_name);
-    constructor_name.to_string()
+    panic!(
+        "{}: cannot infer constructor argument type for {} at index {}",
+        TRANSPILER_FALLBACK_PANIC_PREFIX, constructor_name, arg_index
+    )
 }
 
 /// Generate better pattern query with type inference, variable context, and conditions
@@ -3193,16 +3329,7 @@ fn generate_pattern_query_with_context_and_conditions(
 
     for condition in conditions {
         if let Fact::Op(span, e1, e2) = condition {
-            // Extract operator from span file field (temporary hack)
-            let operator = if let Some(ref file) = span.file {
-                if file.starts_with("operator:") {
-                    file.trim_start_matches("operator:").to_string()
-                } else {
-                    "=".to_string() // Default to "=" if no operator info
-                }
-            } else {
-                "=".to_string() // Default to "=" if no operator info
-            };
+            let operator = operator_from_span(span).to_string();
 
             // Handle simple case: (Var, Lit) or (Lit, Var)
             if let (Expr::Var(_, var_name), Expr::Lit(_, lit)) = (e1, e2) {
@@ -3268,7 +3395,10 @@ fn generate_pattern_query_with_context_and_conditions(
 
     // Generate improved pattern query with conditions using handle and assert pattern
     let pattern_query = if pattern_query_parts.is_empty() {
-        format!("// TODO: implement pattern query for {}", rule_name)
+        panic!(
+            "{}: cannot generate pattern query for {}",
+            TRANSPILER_FALLBACK_PANIC_PREFIX, rule_name
+        )
     } else {
         let mut assert_conditions = Vec::new();
 
@@ -3319,7 +3449,10 @@ fn generate_pattern_query_with_context_and_conditions(
                         ">" => format!("{}.gt(&{})", handle_call, literal_value),
                         ">=" => format!("{}.ge(&{})", handle_call, literal_value),
                         "!=" => format!("{}.ne(&{})", handle_call, literal_value),
-                        _ => format!("{}.UNKNOWN(&{})", handle_call, literal_value), // default to eq
+                        _ => panic!(
+                            "{}: unsupported rewrite condition operator {}",
+                            TRANSPILER_FALLBACK_PANIC_PREFIX, operator
+                        ),
                     };
 
                     // Generate condition variable assignment
@@ -3357,7 +3490,10 @@ fn generate_pattern_query_with_context_and_conditions(
                 ">" => format!("{}.gt(&{})", left_handle, right_handle),
                 ">=" => format!("{}.ge(&{})", left_handle, right_handle),
                 "!=" => format!("{}.ne(&{})", left_handle, right_handle),
-                _ => format!("{}.eq(&{})", left_handle, right_handle), // default to eq
+                _ => panic!(
+                    "{}: unsupported rewrite condition operator {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, operator
+                ),
             };
 
             // Generate condition variable with node definitions inside the braces
@@ -4081,7 +4217,6 @@ fn generate_insert_expr(
                     );
                     format!("ctx.devalue(pat.{}.{})", node_name, field_name)
                 } else {
-                    // TODO insert function might be different when insert container
                     // Complex type variable - use the variable directly
                     if let Some(_var_info) = context
                         .variables
@@ -4093,12 +4228,13 @@ fn generate_insert_expr(
                         // format!("ctx.{}(pat.{})", insert_function, normalized_var_name)
                         format!("pat.{}", normalized_var_name)
                     } else {
-                        // Fallback for complex type variables
-                        format!("pat.{}", normalized_var_name)
+                        panic!(
+                            "{}: RHS variable {} is not bound in the rewrite context",
+                            TRANSPILER_FALLBACK_PANIC_PREFIX, normalized_var_name
+                        )
                     }
                 }
             } else {
-                // TODO insert function might be different when insert container
                 // Complex type variable - we need to access its fields
                 // Find the variable type and generate appropriate insert function
                 if let Some(_var_info) = context
@@ -4108,8 +4244,10 @@ fn generate_insert_expr(
                 {
                     format!("pat.{}", normalized_var_name)
                 } else {
-                    // Fallback for complex type variables
-                    format!("pat.{}", normalized_var_name)
+                    panic!(
+                        "{}: RHS variable {} is not bound in the rewrite context",
+                        TRANSPILER_FALLBACK_PANIC_PREFIX, normalized_var_name
+                    )
                 }
             }
         }
@@ -4142,14 +4280,14 @@ fn generate_insert_expr(
             } else {
                 // Complex type constructor call - generate proper insert function
                 // Get the variant information to ensure correct parameter ordering
-                let _variant_info = find_variant_info(func_name, dsl_types);
+                let has_variant = find_variant_info(func_name, dsl_types).is_some();
 
                 let arg_exprs: Vec<String> = args
                     .iter()
                     .map(|arg| generate_insert_expr(arg, context, dsl_types))
                     .collect();
 
-                // Generate the correct insert function name based on variant or primitve matching
+                // Generate the correct insert function name based on variant or primitive matching.
                 match func_name.as_str() {
                     "max" => {
                         let max_prim_fn = format!("std::cmp::max");
@@ -4164,6 +4302,12 @@ fn generate_insert_expr(
                         format!("{}({})", bitand_prim_fn, arg_exprs.join(", "))
                     }
                     _ => {
+                        if !has_variant {
+                            panic!(
+                                "{}: unsupported RHS constructor/function {}",
+                                TRANSPILER_FALLBACK_PANIC_PREFIX, func_name
+                            );
+                        }
                         let insert_fn = format!("insert_{}", func_name.to_snake_case());
                         format!("ctx.{}({})", insert_fn, arg_exprs.join(", "))
                     }
@@ -4224,8 +4368,10 @@ fn get_field_name_for_variable_in_constructor(
         }
     }
 
-    // Fallback: use generic field name
-    format!("arg{}", arg_index)
+    panic!(
+        "{}: cannot resolve field name for constructor {} at argument {}",
+        TRANSPILER_FALLBACK_PANIC_PREFIX, constructor_name, arg_index
+    )
 }
 
 /// Find variant information for a constructor
@@ -4378,13 +4524,11 @@ mod tests {
             )
         }));
 
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(rust.contains("let _expr:Num<MyTx> = Num::new(7);"));
-        assert!(rust.contains("_expr.pull();"));
-        assert!(rust.contains("// extract requested 0 variant(s)"));
-        assert!(rust.contains("Num::new(9).pull();"));
+        assert_commands_codegen_fallback_panic(
+            &commands,
+            None,
+            &["unsupported extract command", "(extract _expr 0)"],
+        );
     }
 
     #[test]
@@ -4411,13 +4555,14 @@ mod tests {
             )
         }));
 
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(rust.contains("parse_and_run_program"));
-        assert!(rust.contains("(print-function R 3 :file \\\"output.R3.csv.log\\\" :mode csv)"));
-        assert!(rust.contains("for output in outputs {"));
-        assert!(rust.contains("print!(\"{}\", output);"));
+        assert_commands_codegen_fallback_panic(
+            &commands,
+            None,
+            &[
+                "unsupported print-function",
+                "(print-function R 3 :file \"output.R3.csv.log\" :mode csv)",
+            ],
+        );
     }
 
     #[test]
@@ -4447,13 +4592,11 @@ mod tests {
                 .any(|cmd| { matches!(cmd, EggplantCommand::PrintSize { target: None }) })
         );
 
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(rust.contains("(print-size Add)"));
-        assert!(rust.contains("(print-size)"));
-        assert!(rust.contains("parse_and_run_program"));
-        assert!(rust.contains("print!(\"{}\", output);"));
+        assert_commands_codegen_fallback_panic(
+            &commands,
+            None,
+            &["unsupported print-size", "(print-size Add)"],
+        );
     }
 
     #[test]
@@ -4480,12 +4623,17 @@ mod tests {
             )
         }));
 
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(rust.contains("parse_and_run_program"));
-        assert!(rust.contains("(run default_ruleset 10 :until (= (g_ a b) (g_ (IConst) b)))"));
-        assert!(rust.contains("for output in outputs {"));
+        let rust = generate_commands_without_fallback(&commands, None).unwrap();
+        assert!(
+            rust.contains("parse_and_run_program"),
+            "generated Rust:\n{rust}"
+        );
+        assert!(
+            rust.contains(
+                r##"r#"(run-schedule (repeat 10 (run default_ruleset :until (= (g_ a b) (g_ (IConst) b)))))"#"##
+            ),
+            "generated Rust:\n{rust}"
+        );
     }
 
     #[test]
@@ -4499,20 +4647,58 @@ mod tests {
 
         let mut parser = Parser::default();
         let commands = parser.get_program_from_string(None, program).unwrap();
+        let rust = generate_commands_without_fallback(&commands, None).unwrap();
+        assert!(
+            rust.contains("parse_and_run_program"),
+            "generated Rust:\n{rust}"
+        );
+        assert!(
+            rust.contains(
+                r##"r#"(run-schedule (seq (run default_ruleset :until (= a 1)) (run default_ruleset :until (= a "s"))))"#"##
+            ),
+            "generated Rust:\n{rust}"
+        );
+        assert!(
+            !rust.contains("RunSchedule::builder()"),
+            "generated Rust:\n{rust}"
+        );
+    }
+
+    #[test]
+    fn test_run_schedule_without_until_uses_builder_codegen() {
+        let program = r#"
+            (ruleset fast-analyses)
+            (ruleset subst)
+            (run-schedule
+              (repeat 2
+                (saturate fast-analyses)
+                (run)
+                (saturate subst)))
+        "#;
+
+        let mut parser = Parser::default();
+        let commands = parser.get_program_from_string(None, program).unwrap();
         let rust = EggplantCodeGenerator::new()
             .generate_rust(&convert_to_eggplant_with_source(&commands, None));
 
-        assert!(rust.contains("parse_and_run_program"));
-        assert!(rust.contains("(run-schedule"), "generated Rust:\n{rust}");
         assert!(
-            rust.contains("(run :until (= a 1))"),
+            rust.contains("RunSchedule::builder()"),
+            "generated Rust:\n{rust}"
+        );
+        assert!(rust.contains(".repeat(2"), "generated Rust:\n{rust}");
+        assert!(
+            rust.contains(".saturate(fast_analyses)"),
             "generated Rust:\n{rust}"
         );
         assert!(
-            rust.contains("(run :until (= a \\\"s\\\"))"),
+            rust.contains(".run(default_ruleset)"),
             "generated Rust:\n{rust}"
         );
-        assert!(rust.contains("for output in outputs {"));
+        assert!(rust.contains(".saturate(subst)"), "generated Rust:\n{rust}");
+        assert!(
+            !rust.contains("parse_and_run_program"),
+            "generated Rust:\n{rust}"
+        );
     }
 
     #[test]
@@ -4537,15 +4723,14 @@ mod tests {
             )
         }));
 
-        let rust = EggplantCodeGenerator::new().generate_rust(&convert_to_eggplant_with_source(
+        assert_commands_codegen_fallback_panic(
             &commands,
             Some(source_path.clone()),
-        ));
-
-        assert!(rust.contains("parse_and_run_program"));
-        assert!(rust.contains(
-            "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/path.egg"
-        ));
+            &[
+                "unsupported include",
+                "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/path.egg",
+            ],
+        );
     }
 
     #[test]
@@ -5118,19 +5303,8 @@ mod tests {
 
         let mut parser = Parser::default();
         let commands = parser.get_program_from_string(None, program).unwrap();
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(
-            !rust.contains("TODO: implement action for rule_"),
-            "unexpected TODO in generated Rust:\n{rust}"
-        );
-        assert!(
-            rust.contains(
-                "ctx.set_ival(pat.lhs, ctx.insert_interval_union(pat.thenival, pat.elseival));"
-            ),
-            "generated Rust:\n{rust}"
-        );
+        let message = assert_commands_codegen_fallback_panic(&commands, None, &["vec_get"]);
+        assert!(!message.contains("prim_call::<Interval>(\"vec-get\""));
     }
 
     #[test]
@@ -5284,17 +5458,12 @@ mod tests {
 
         let mut parser = Parser::default();
         let commands = parser.get_program_from_string(None, program).unwrap();
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(
-            !rust.contains("TODO: implement action for rule_"),
-            "unexpected TODO in generated Rust:\n{rust}"
+        let message = assert_commands_codegen_fallback_panic(
+            &commands,
+            None,
+            &["unstable_multiset_fill_index"],
         );
-        assert!(
-            rust.contains("let _ = unstable_multiset_fill_index("),
-            "generated Rust:\n{rust}"
-        );
+        assert!(!message.contains("unstable_multiset_fill_index("));
     }
 
     #[test]
@@ -5324,7 +5493,7 @@ mod tests {
     }
 
     #[test]
-    fn test_generic_rule_fallback_bridges_raw_rule_and_normalizes_ruleset() {
+    fn test_generic_rule_fallback_panics_and_normalizes_ruleset() {
         let program = r#"
             (rule ((unknown-rel a b))
                   ((unknown-action a))
@@ -5333,29 +5502,16 @@ mod tests {
 
         let mut parser = Parser::default();
         let commands = parser.get_program_from_string(None, program).unwrap();
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(
-            !rust.contains("TODO: implement action for rule_"),
-            "unexpected TODO in generated Rust:\n{rust}"
+        let message = assert_commands_codegen_fallback_panic(
+            &commands,
+            None,
+            &["(rule ((unknown_rel a b)) ((unknown_action a)) :ruleset weird_rules)"],
         );
-        assert!(
-            rust.contains("parse_and_run_program"),
-            "generated Rust:\n{rust}"
-        );
-        assert!(
-            rust.contains("(rule ((unknown_rel a b)) ((unknown_action a)) :ruleset weird_rules)"),
-            "generated Rust:\n{rust}"
-        );
-        assert!(
-            !rust.contains(":name \\\"default\\\""),
-            "generated Rust:\n{rust}"
-        );
+        assert!(!message.contains(":name \"default\""));
     }
 
     #[test]
-    fn test_generic_rule_fallback_bridges_default_ruleset_name() {
+    fn test_generic_rule_fallback_panics_with_default_ruleset_name() {
         let program = r#"
             (rule ((unknown-rel a b))
                   ((unknown-action a)))
@@ -5363,23 +5519,30 @@ mod tests {
 
         let mut parser = Parser::default();
         let commands = parser.get_program_from_string(None, program).unwrap();
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(
-            !rust.contains("TODO: implement action for rule_"),
-            "unexpected TODO in generated Rust:\n{rust}"
-        );
-        assert!(
-            rust.contains(
-                "(rule ((unknown_rel a b)) ((unknown_action a)) :ruleset default_ruleset)"
-            ),
-            "generated Rust:\n{rust}"
+        assert_commands_codegen_fallback_panic(
+            &commands,
+            None,
+            &["(rule ((unknown_rel a b)) ((unknown_action a)) :ruleset default_ruleset)"],
         );
     }
 
     #[test]
-    fn test_check_with_fact_constraints_bridges_raw_egglog_command() {
+    fn test_unknown_primitive_call_panics_instead_of_prim_call_fallback() {
+        let program = r#"
+            (relation Seen (i64))
+            (rule ((= x (unknown-primitive y)))
+                  ((Seen x)))
+        "#;
+
+        let mut parser = Parser::default();
+        let commands = parser.get_program_from_string(None, program).unwrap();
+        let message =
+            assert_commands_codegen_fallback_panic(&commands, None, &["unknown_primitive"]);
+        assert!(!message.contains("prim_call::<i64>(\"unknown-primitive\""));
+    }
+
+    #[test]
+    fn test_check_with_fact_constraints_panics_on_raw_egglog_fallback() {
         let program = r#"
             (check (View c1 c2)
                    (UF_Exp c1 c1_leader)
@@ -5388,17 +5551,11 @@ mod tests {
 
         let mut parser = Parser::default();
         let commands = parser.get_program_from_string(None, program).unwrap();
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(
-            rust.contains("parse_and_run_program"),
-            "generated Rust:\n{rust}"
-        );
+        assert_commands_codegen_fallback_panic(&commands, None, &["(check"]);
     }
 
     #[test]
-    fn test_birewrite_with_conditions_bridges_raw_egglog_command() {
+    fn test_birewrite_with_conditions_panics_on_raw_egglog_fallback() {
         let program = r#"
             (birewrite (compose f (id B)) f
                 :when ((= (type A) (Ob))
@@ -5407,155 +5564,146 @@ mod tests {
 
         let mut parser = Parser::default();
         let commands = parser.get_program_from_string(None, program).unwrap();
-        let rust = EggplantCodeGenerator::new()
-            .generate_rust(&convert_to_eggplant_with_source(&commands, None));
-
-        assert!(
-            rust.contains("parse_and_run_program"),
-            "generated Rust:\n{rust}"
-        );
+        assert_commands_codegen_fallback_panic(&commands, None, &["(birewrite"]);
     }
 
     #[test]
-    fn test_full_program_combined_steps_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_combined_steps_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/test-combined-steps.egg",
         );
     }
 
     #[test]
-    fn test_full_program_combinators_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_combinators_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/combinators.egg",
         );
     }
 
     #[test]
-    fn test_full_program_eqsolve_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_eqsolve_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/eqsolve.egg",
         );
     }
 
     #[test]
-    fn test_full_program_herbie_tutorial_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_herbie_tutorial_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/herbie-tutorial.egg",
         );
     }
 
     #[test]
-    fn test_full_program_taylor51_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_taylor51_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/taylor51.egg",
         );
     }
 
     #[test]
-    fn test_full_program_type_constraints_tests_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_type_constraints_tests_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/type-constraints-tests.egg",
         );
     }
 
     #[test]
-    fn test_full_program_rw_analysis_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_rw_analysis_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/rw-analysis.egg",
         );
     }
 
     #[test]
-    fn test_full_program_typeinfer_has_no_generic_rule_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_typeinfer_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/typeinfer.egg",
         );
     }
 
     #[test]
-    fn test_full_program_print_function_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_print_function_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/print-function.egg",
         );
     }
 
     #[test]
-    fn test_full_program_hidden_print_size_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_hidden_print_size_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/hidden_print_size.egg",
         );
     }
 
     #[test]
-    fn test_full_program_internal_let_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_internal_let_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/internal_let.egg",
         );
     }
 
     #[test]
-    fn test_full_program_until_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_until_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/until.egg",
         );
     }
 
     #[test]
-    fn test_full_program_calc_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_calc_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/calc.egg",
         );
     }
 
     #[test]
-    fn test_full_program_resolution_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_resolution_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/resolution.egg",
         );
     }
 
     #[test]
-    fn test_full_program_include_has_no_todo() {
+    fn test_full_program_include_fails_fast_on_unsupported_fallback() {
         let path = "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/include.egg";
         let program = std::fs::read_to_string(path).unwrap();
         let mut parser = crate::ast::parse::Parser::default();
         let commands = parser
             .get_program_from_string(Some(path.to_string()), &program)
             .unwrap();
-        let rust = EggplantCodeGenerator::new().generate_rust(&convert_to_eggplant_with_source(
+        assert_commands_codegen_fallback_panic(
             &commands,
             Some(path.to_string()),
-        ));
-        assert!(
-            !rust.contains("TODO"),
-            "unexpected TODO lines in generated Rust for {path}:\n{rust}"
+            &["unsupported include", "web-demo/path.egg"],
         );
     }
 
     #[test]
-    fn test_full_program_egglog_bridge_math_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_egglog_bridge_math_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/egglog-bridge/examples/math.egg",
         );
     }
 
     #[test]
-    fn test_full_program_web_demo_math_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_web_demo_math_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/math.egg",
         );
     }
 
     #[test]
-    fn test_full_program_combined_nested_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_combined_nested_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/combined-nested.egg",
         );
     }
 
     #[test]
-    fn test_full_program_test_combined_steps_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_test_combined_steps_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/test-combined-steps.egg",
         );
     }
@@ -5568,43 +5716,43 @@ mod tests {
     }
 
     #[test]
-    fn test_full_program_eggcc_extraction_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_eggcc_extraction_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/eggcc-extraction.egg",
         );
     }
 
     #[test]
-    fn test_full_program_web_demo_prims_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_web_demo_prims_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/prims.egg",
         );
     }
 
     #[test]
-    fn test_full_program_web_demo_multiset_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_web_demo_multiset_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/multiset.egg",
         );
     }
 
     #[test]
-    fn test_full_program_python_array_optimize_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_python_array_optimize_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/python_array_optimize.egg",
         );
     }
 
     #[test]
-    fn test_full_program_tricky_type_checking_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_tricky_type_checking_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/tricky-type-checking.egg",
         );
     }
 
     #[test]
-    fn test_full_program_web_demo_bignum_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_web_demo_bignum_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/bignum.egg",
         );
     }
@@ -5617,8 +5765,8 @@ mod tests {
     }
 
     #[test]
-    fn test_full_program_web_demo_eqsat_basic_multiset_has_no_todo() {
-        assert_program_has_no_generic_rule_todo(
+    fn test_full_program_web_demo_eqsat_basic_multiset_fails_fast_on_unsupported_fallback() {
+        assert_program_fails_fast_with_fallback(
             "/Users/mineralsteins/Repos/egg_related/upstream_egglog/tests/web-demo/eqsat-basic-multiset.egg",
         );
     }
@@ -5630,8 +5778,8 @@ fn assert_program_has_no_generic_rule_todo(path: &str) {
 
     let mut parser = crate::ast::parse::Parser::default();
     let commands = parser.get_program_from_string(None, &program).unwrap();
-    let rust = EggplantCodeGenerator::new()
-        .generate_rust(&convert_to_eggplant_with_source(&commands, None));
+    let rust = generate_commands_without_fallback(&commands, None)
+        .unwrap_or_else(|message| panic!("fallback while generating Rust for {path}: {message}"));
 
     let line_count = rust.lines().count();
     let todo_lines: Vec<String> = rust
@@ -5655,6 +5803,90 @@ fn assert_program_has_no_generic_rule_todo(path: &str) {
         "unexpected TODO lines in generated Rust for {path}:\n{}",
         todo_lines.join("\n")
     );
+
+    let fallback_lines: Vec<String> = rust
+        .lines()
+        .enumerate()
+        .filter(|(_, line)| line.contains(TRANSPILER_FALLBACK_PANIC_PREFIX))
+        .map(|(line_index, line)| format!("{:04}: {}", line_index + 1, line))
+        .collect();
+    assert!(
+        fallback_lines.is_empty(),
+        "unexpected fallback lines in generated Rust for {path}:\n{}",
+        fallback_lines.join("\n")
+    );
+}
+
+#[cfg(test)]
+fn assert_commands_codegen_fallback_panic(
+    commands: &[Command],
+    source_file: Option<String>,
+    expected_substrings: &[&str],
+) -> String {
+    match generate_commands_without_fallback(commands, source_file) {
+        Ok(rust) => panic!("expected transpiler fallback panic, generated Rust:\n{rust}"),
+        Err(message) => {
+            assert!(
+                message.contains(TRANSPILER_FALLBACK_PANIC_PREFIX),
+                "unexpected panic payload: {message}"
+            );
+            assert!(
+                !message.contains("TODO: implement action for rule_"),
+                "fallback panic should not expose TODO action code: {message}"
+            );
+            for expected in expected_substrings {
+                assert!(
+                    message.contains(expected),
+                    "panic payload missing expected substring {expected:?}:\n{message}"
+                );
+            }
+            message
+        }
+    }
+}
+
+#[cfg(test)]
+fn assert_program_fails_fast_with_fallback(path: &str) -> String {
+    let program = std::fs::read_to_string(path).unwrap();
+
+    let mut parser = crate::ast::parse::Parser::default();
+    let commands = parser.get_program_from_string(None, &program).unwrap();
+    assert_commands_codegen_fallback_panic(&commands, None, &[])
+}
+
+#[cfg(test)]
+fn generate_commands_without_fallback(
+    commands: &[Command],
+    source_file: Option<String>,
+) -> Result<String, String> {
+    let generated = std::panic::catch_unwind(|| {
+        EggplantCodeGenerator::new()
+            .generate_rust(&convert_to_eggplant_with_source(commands, source_file))
+    });
+    match generated {
+        Ok(rust) => {
+            if let Some(fallback_line) = rust
+                .lines()
+                .find(|line| line.contains(TRANSPILER_FALLBACK_PANIC_PREFIX))
+            {
+                Err(fallback_line.trim().to_string())
+            } else {
+                Ok(rust)
+            }
+        }
+        Err(payload) => Err(test_panic_payload_to_string(payload)),
+    }
+}
+
+#[cfg(test)]
+fn test_panic_payload_to_string(payload: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "panic without string payload".to_string()
+    }
 }
 
 /// Generate a variable for an expression in condition context
@@ -5695,9 +5927,20 @@ fn render_rewrite_condition_handle_expr(
             format!("{node_name}.handle()")
         }
         Expr::Call(_, func_name, args) => {
+            if !supported_primitive_call(func_name) {
+                panic!(
+                    "{}: unsupported rewrite condition call {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, func_name
+                );
+            }
             let output_type = match func_name.as_str() {
-                "<" | "<=" | ">" | ">=" | "=" | "==" | "!=" => "bool".to_string(),
-                _ => "i64".to_string(),
+                "<" | "<=" | ">" | ">=" | "=" | "==" | "!=" | "and" | "or" | "not" => {
+                    "bool".to_string()
+                }
+                other => panic!(
+                    "{}: cannot infer rewrite condition primitive result type for {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, other
+                ),
             };
             let arg_handles = args
                 .iter()
@@ -5760,90 +6003,10 @@ fn generate_expression_variable(
                 || is_basic_type(func_name);
 
             if !is_known_constructor {
-                // This is an unknown action/function call - generate function call format
-                let node_name = format!("node_{}", node_counter);
-                *node_counter += 1;
-
-                // Extract variables or literal values for arguments
-                let arg_values: Vec<String> = args
-                    .iter()
-                    .map(|arg| match arg {
-                        Expr::Lit(_, lit) => {
-                            // For literals, use the literal value directly
-                            match lit {
-                                Literal::Int(i) => i.to_string(),
-                                Literal::Float(f) => f.0.to_string(),
-                                Literal::String(s) => format!("\"{}\"", s),
-                                Literal::Bool(b) => b.to_string(),
-                                Literal::Unit => "()".to_string(),
-                            }
-                        }
-                        Expr::Var(_, var_name) => {
-                            // For variables, check if they have constructor context
-                            let normalized_var_name = normalize_identifier(var_name);
-                            if let Some((constructor_name, node_name, arg_index)) =
-                                variable_constructors.get(&normalized_var_name)
-                            {
-                                // This variable has constructor context - generate handle call
-                                let field_name = get_field_name_for_variable_in_constructor(
-                                    constructor_name,
-                                    *arg_index,
-                                    dsl_types,
-                                );
-                                format!("{}.handle_{}()", node_name, field_name)
-                            } else {
-                                // No constructor context - use the variable name
-                                normalized_var_name
-                            }
-                        }
-                        _ => {
-                            // For other expressions, generate variables
-                            generate_expression_variable(
-                                arg,
-                                dsl_types,
-                                pattern_query_parts,
-                                pattern_vars_variables,
-                                node_counter,
-                                variable_constructors,
-                            )
-                        }
-                    })
-                    .collect();
-
-                // Generate function call query
-                let query = if arg_values.is_empty() {
-                    format!("let {} = {}::query_leaf();", node_name, func_name)
-                } else {
-                    // Generate function call with arguments
-                    // For operators like %, use a valid function name
-                    let valid_func_name = format!("TODO_{}", func_name);
-                    let mut query_parts =
-                        vec![format!("let {} = {}::query()", node_name, valid_func_name)];
-
-                    for (i, arg_value) in arg_values.iter().enumerate() {
-                        query_parts.push(format!(".arg_{:02}(&{})", i, arg_value));
-                    }
-
-                    query_parts.push(";".to_string());
-                    query_parts.join("")
-                };
-
-                pattern_query_parts.push(query);
-
-                // For unknown actions, assume return type is i64 (most common for arithmetic operations)
-                let return_type = "i64".to_string();
-
-                // Add to pattern variables only if it's a complex type
-                if !is_basic_type(&return_type)
-                    && !pattern_vars_variables.iter().any(|v| v.name == node_name)
-                {
-                    pattern_vars_variables.push(PatternVariable {
-                        name: node_name.clone(),
-                        var_type: return_type,
-                    });
-                }
-
-                node_name
+                panic!(
+                    "{}: unsupported expression call {} in pattern query",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, func_name
+                )
             } else {
                 // This is a known constructor - use the existing logic
                 let node_name = format!("node_{}", node_counter);
@@ -5900,19 +6063,25 @@ fn generate_expression_variable(
                                         format!("arg_{}_{:02}", variant.fields[i].field_type, i);
                                     query_parts.push(format!(".{}(&{})", field_name, arg_value));
                                 } else {
-                                    // Fallback if we don't have enough type info
-                                    query_parts.push(format!(".arg_{:02}(&{})", i, arg_value));
+                                    panic!(
+                                        "{}: constructor {} has no field at argument {}",
+                                        TRANSPILER_FALLBACK_PANIC_PREFIX, constructor_name, i
+                                    );
                                 }
                             } else {
-                                // Fallback if variant not found
-                                query_parts.push(format!(".arg_{:02}(&{})", i, arg_value));
+                                panic!(
+                                    "{}: cannot find variant {} in DSL type {}",
+                                    TRANSPILER_FALLBACK_PANIC_PREFIX,
+                                    constructor_name,
+                                    dsl_type.name
+                                );
                             }
                         }
                     } else {
-                        // Fallback if type not found
-                        for (i, arg_value) in arg_values.iter().enumerate() {
-                            query_parts.push(format!(".arg_{:02}(&{})", i, arg_value));
-                        }
+                        panic!(
+                            "{}: cannot find DSL type for constructor {}",
+                            TRANSPILER_FALLBACK_PANIC_PREFIX, constructor_name
+                        );
                     }
 
                     query_parts.push(";".to_string());

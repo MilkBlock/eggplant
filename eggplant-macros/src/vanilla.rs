@@ -6,7 +6,9 @@ use crate::helper::*;
 use crate::helper::{E, INVE, W};
 use proc_macro2::TokenStream;
 use quote::{ToTokens, format_ident, quote};
-use syn::{Data, DeriveInput, Field, Ident, Type, Visibility, parse_macro_input, parse_quote};
+use syn::{
+    Data, DeriveInput, Field, Fields, Ident, Path, Type, Visibility, parse_macro_input, parse_quote,
+};
 
 use crate::enum_related::*;
 
@@ -922,6 +924,81 @@ pub fn relation(
         #ctx_trait_and_impl
     };
 
+    expanded.into()
+}
+
+pub fn singleton_getter(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    #[derive(Debug, FromMeta)]
+    struct SingletonGetterMeta {
+        ctor: Path,
+    }
+
+    let input = parse_macro_input!(item as DeriveInput);
+    let args = match NestedMeta::parse_meta_list(attr.into()) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(Error::from(e).write_errors()),
+    };
+    let args = match SingletonGetterMeta::from_list(&args) {
+        Ok(v) => v,
+        Err(e) => return proc_macro::TokenStream::from(e.write_errors()),
+    };
+    if args.ctor.segments.len() != 1 {
+        return proc_macro::TokenStream::from(
+            Error::custom("singleton_getter(ctor = ...) expects a single constructor identifier")
+                .write_errors(),
+        );
+    }
+    let ctor = &args.ctor;
+
+    let name = &input.ident;
+    let fields = match &input.data {
+        Data::Struct(data_struct) => match &data_struct.fields {
+            Fields::Named(fields) if fields.named.len() == 1 => fields,
+            Fields::Named(fields) => {
+                return proc_macro::TokenStream::from(
+                    Error::custom(format!(
+                        "singleton_getter currently expects exactly one named field, got {}",
+                        fields.named.len()
+                    ))
+                    .write_errors(),
+                );
+            }
+            _ => {
+                return proc_macro::TokenStream::from(
+                    Error::custom("singleton_getter only supports structs with named fields")
+                        .write_errors(),
+                );
+            }
+        },
+        _ => {
+            return proc_macro::TokenStream::from(
+                Error::custom("singleton_getter only supports structs").write_errors(),
+            );
+        }
+    };
+    let field = fields.named.first().expect("checked len above");
+    let field_ident = field.ident.as_ref().expect("named field");
+    let field_ty = &field.ty;
+
+    let expanded = quote! {
+        #input
+        impl #W::SingletonGetter for #name {
+            type RetTy = #field_ty;
+            fn sgl() -> &'static #field_ty {
+                static INSTANCE: std::sync::OnceLock<#name> = std::sync::OnceLock::new();
+                &INSTANCE
+                    .get_or_init(|| -> #name {
+                        Self {
+                            #field_ident: #field_ty::#ctor(),
+                        }
+                    })
+                    .#field_ident
+            }
+        }
+    };
     expanded.into()
 }
 

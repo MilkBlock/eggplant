@@ -540,7 +540,7 @@ fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Res
                         return Err(syn::Error::new_spanned(
                             template,
                             format!(
-                                "nested `{{` inside #[eggplant::{attr_name}(\"...\")] placeholder is not supported"
+                                "nested `{{` inside #[{attr_name}(\"...\")] placeholder is not supported"
                             ),
                         ));
                     }
@@ -550,7 +550,7 @@ fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Res
                 if end >= chars.len() {
                     return Err(syn::Error::new_spanned(
                         template,
-                        format!("unclosed `{{` in #[eggplant::{attr_name}(\"...\")] template"),
+                        format!("unclosed `{{` in #[{attr_name}(\"...\")] template"),
                     ));
                 }
 
@@ -559,7 +559,7 @@ fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Res
                     return Err(syn::Error::new_spanned(
                         template,
                         format!(
-                            "empty `{{}}` placeholder is not allowed in #[eggplant::{attr_name}(\"...\")]"
+                            "empty `{{}}` placeholder is not allowed in #[{attr_name}(\"...\")]"
                         ),
                     ));
                 }
@@ -574,7 +574,7 @@ fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Res
                     return Err(syn::Error::new_spanned(
                         template,
                         format!(
-                            "invalid placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")]; only simple field names like `x` or `lhs_1` are supported"
+                            "invalid placeholder `{placeholder}` in #[{attr_name}(\"...\")]; only simple field names like `x` or `lhs_1` are supported"
                         ),
                     ));
                 }
@@ -588,7 +588,7 @@ fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Res
                 }
                 return Err(syn::Error::new_spanned(
                     template,
-                    format!("unmatched `}}` in #[eggplant::{attr_name}(\"...\")] template"),
+                    format!("unmatched `}}` in #[{attr_name}(\"...\")] template"),
                 ));
             }
             _ => idx += 1,
@@ -608,7 +608,7 @@ fn variant_template_tokens(variant: &Variant, attr_name: &str) -> syn::Result<To
     if attrs.len() > 1 {
         return Err(syn::Error::new_spanned(
             variant,
-            format!("only one #[eggplant::{attr_name}(\"...\")] attribute is allowed per variant"),
+            format!("only one #[{attr_name}(\"...\")] attribute is allowed per variant"),
         ));
     }
 
@@ -631,7 +631,7 @@ fn variant_template_tokens(variant: &Variant, attr_name: &str) -> syn::Result<To
                     return Err(syn::Error::new_spanned(
                         &template,
                         format!(
-                            "unknown placeholder `{placeholder}` in #[eggplant::{attr_name}(\"...\")] for variant `{}`",
+                            "unknown placeholder `{placeholder}` in #[{attr_name}(\"...\")] for variant `{}`",
                             variant.ident
                         ),
                     ));
@@ -653,7 +653,7 @@ fn variant_template_tokens(variant: &Variant, attr_name: &str) -> syn::Result<To
             return Err(syn::Error::new_spanned(
                 variant,
                 format!(
-                    "#[eggplant::{attr_name}(\"...\")] currently supports only named-field or unit variants"
+                    "#[{attr_name}(\"...\")] currently supports only named-field or unit variants"
                 ),
             ));
         }
@@ -680,7 +680,7 @@ pub fn variant_precedence_tokens(variant: &Variant) -> syn::Result<TokenStream> 
     if attrs.len() > 1 {
         return Err(syn::Error::new_spanned(
             variant,
-            "only one #[eggplant::precedence(...)] attribute is allowed per variant",
+            "only one #[precedence(...)] attribute is allowed per variant",
         ));
     }
 
@@ -827,7 +827,7 @@ mod tests {
     #[test]
     fn display_template_accepts_named_placeholders() {
         let variant: Variant = parse_quote! {
-            #[eggplant::display("{x} + {f}")]
+            #[display("{x} + {f}")]
             MDiff { x: Math, f: Math }
         };
         let tokens = variant_display_template_tokens(&variant).unwrap();
@@ -837,7 +837,7 @@ mod tests {
     #[test]
     fn display_template_rejects_unknown_placeholder() {
         let variant: Variant = parse_quote! {
-            #[eggplant::display("{x} + {missing}")]
+            #[display("{x} + {missing}")]
             MDiff { x: Math, f: Math }
         };
         let err = variant_display_template_tokens(&variant).unwrap_err();
@@ -847,7 +847,7 @@ mod tests {
     #[test]
     fn display_template_rejects_tuple_variant() {
         let variant: Variant = parse_quote! {
-            #[eggplant::display("{value}")]
+            #[display("{value}")]
             Wrap(Math)
         };
         let err = variant_display_template_tokens(&variant).unwrap_err();
@@ -860,7 +860,7 @@ mod tests {
     #[test]
     fn display_template_allows_escaped_braces() {
         let variant: Variant = parse_quote! {
-            #[eggplant::display("{{x}} -> {x}")]
+            #[display("{{x}} -> {x}")]
             Wrap { x: Math }
         };
         let tokens = variant_display_template_tokens(&variant).unwrap();
@@ -870,12 +870,12 @@ mod tests {
     #[test]
     fn typst_template_rejects_duplicate_attrs() {
         let variant: Variant = parse_quote! {
-            #[eggplant::typst("$x + $f$")]
+            #[typst("$x + $f$")]
             #[eggplant::typst("diff({x}, {f})")]
             MDiff { x: Math, f: Math }
         };
         let err = variant_typst_template_tokens(&variant).unwrap_err();
-        assert!(err.to_string().contains("only one #[eggplant::typst"));
+        assert!(err.to_string().contains("only one #[typst"));
     }
 
     #[test]
@@ -894,7 +894,7 @@ mod tests {
     #[test]
     fn precedence_accepts_valid_integer() {
         let variant: Variant = parse_quote! {
-            #[eggplant::precedence(40)]
+            #[precedence(40)]
             Add { lhs: Expr, rhs: Expr }
         };
         let tokens = variant_precedence_tokens(&variant).unwrap();
@@ -904,12 +904,12 @@ mod tests {
     #[test]
     fn precedence_rejects_duplicate_attrs() {
         let variant: Variant = parse_quote! {
-            #[eggplant::precedence(10)]
-            #[precedence(20)]
+            #[precedence(10)]
+            #[eggplant::precedence(20)]
             Add { lhs: Expr, rhs: Expr }
         };
         let err = variant_precedence_tokens(&variant).unwrap_err();
-        assert!(err.to_string().contains("only one #[eggplant::precedence"));
+        assert!(err.to_string().contains("only one #[precedence"));
     }
 }
 

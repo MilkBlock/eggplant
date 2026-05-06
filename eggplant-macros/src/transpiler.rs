@@ -2,7 +2,8 @@
 
 use eggplant_transpiler::ast::parse::Parser;
 use eggplant_transpiler::eggplant::{
-    CodeGenOptions, EggplantCodeGenerator, convert_to_eggplant_with_source_and_program,
+    CodeGenOptions, EggplantCodeGenerator, TRANSPILER_FALLBACK_PANIC_PREFIX,
+    convert_to_eggplant_with_source_and_program,
 };
 
 /// Transpiler that converts egglog DSL to Rust code
@@ -33,9 +34,11 @@ impl Transpiler {
         // Parse the DSL program
         let commands = parser
             .get_program_from_string(None, dsl_code)
-            .unwrap_or_else(|_| {
-                // If parsing fails, return error message as Rust code
-                return vec![];
+            .unwrap_or_else(|err| {
+                panic!(
+                    "{}: macro transpiler parse failure: {}",
+                    TRANSPILER_FALLBACK_PANIC_PREFIX, err
+                );
             });
 
         // Convert to eggplant commands
@@ -44,8 +47,20 @@ impl Transpiler {
             Some("transpiled.egg".to_string()),
         );
 
-        // Generate Rust code
-        codegen.generate_rust(&eggplant_commands)
+        // Generate Rust code. Unsupported egglog must fail during transpilation, not
+        // return Rust that falls back at runtime.
+        let rust = codegen.generate_rust(&eggplant_commands);
+        if let Some(fallback_line) = rust
+            .lines()
+            .find(|line| line.contains(TRANSPILER_FALLBACK_PANIC_PREFIX))
+        {
+            panic!(
+                "{}: macro transpiler generated fallback code: {}",
+                TRANSPILER_FALLBACK_PANIC_PREFIX,
+                fallback_line.trim()
+            );
+        }
+        rust
     }
 }
 
@@ -63,11 +78,17 @@ mod tests {
     }
 
     #[test]
-    fn test_transpile_rewrite() {
+    fn test_transpile_rewrite_fails_fast_on_unsupported_fallback() {
         let transpiler = Transpiler::new();
         let dsl = "(rewrite (MAdd (MNum ?a) (MNum ?b)) (MNum (+ ?a ?b)))";
-        let rust = transpiler.transpile(dsl);
-        // The actual transpiler should generate valid Rust code
-        assert!(!rust.is_empty());
+        let panic = std::panic::catch_unwind(|| transpiler.transpile(dsl)).unwrap_err();
+        let message = if let Some(message) = panic.downcast_ref::<&str>() {
+            (*message).to_string()
+        } else if let Some(message) = panic.downcast_ref::<String>() {
+            message.clone()
+        } else {
+            "panic without string payload".to_string()
+        };
+        assert!(message.contains(TRANSPILER_FALLBACK_PANIC_PREFIX));
     }
 }

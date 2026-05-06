@@ -33,7 +33,7 @@ pub fn relation(
 ///
 /// # Example:  
 ///     
-/// ```
+/// ```ignore
 /// #[allow(unused)]
 /// #[derive(Debug, Clone, EgglogTy)]
 /// enum Duration {
@@ -48,7 +48,7 @@ pub fn relation(
 /// is transformed to
 ///
 ///
-/// ```
+/// ```ignore
 /// #[derive(Debug, Clone)]
 /// pub struct DurationNode {
 ///     ty: _DurationNode,
@@ -198,10 +198,18 @@ pub fn container(
     dsl(attr, item)
 }
 
+#[proc_macro_attribute]
+pub fn singleton_getter(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    vanilla::singleton_getter(attr, item)
+}
+
 /// Transpile macro that converts egglog DSL to Rust code
 ///
 /// # Usage
-/// ```rust
+/// ```ignore
 /// datatype! {
 ///     (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
 /// }
@@ -234,7 +242,7 @@ pub fn datatype(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 }
 #[proc_macro]
 /// Transpile egglog Rewrite into Rust code
-/// ```rust
+/// ```ignore
 /// rule! {
 ///     (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
 ///     (rewrite (MAdd x y) (MAdd y x))
@@ -275,7 +283,7 @@ pub fn rule(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
 #[proc_macro]
 /// Transpile egglog Rewrite into Rust code
-/// ```rust
+/// ```ignore
 /// egglog! {
 ///     (datatype Math (MNum i64:args_name "num") (MAdd Math Math:args_name "l,r"))
 ///     (rewrite (MAdd x y) (MAdd y x))

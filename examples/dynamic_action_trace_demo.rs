@@ -18,21 +18,6 @@ enum DemoRoot {
 
 tx_rx_vt_pr!(DemoTx, DemoPatRec);
 
-#[eggplant::pat_vars]
-struct DemoPatternVars<PR: PatRecSgl> {
-    l: DemoExpr<PR>,
-    r: DemoExpr<PR>,
-    expr: TraceAdd<PR>,
-}
-
-fn demo_pat<PR: PatRecSgl>() -> DemoPatternVars<PR> {
-    let l = DemoExpr::query_leaf();
-    let r = DemoExpr::query_leaf();
-    let expr = TraceAdd::query(&l, &r);
-    let _root = DemoRoot::query(&expr);
-    DemoPatternVars::new(l, r, expr)
-}
-
 #[derive(Serialize)]
 struct NormalizedTrace {
     version: u32,
@@ -84,7 +69,19 @@ fn main() {
     DemoTx::add_rule_with_hook(
         "dynamic_action_trace_demo_rule",
         ruleset,
-        demo_pat,
+        || {
+            let l = DemoExpr::query_leaf();
+            let r = DemoExpr::query_leaf();
+            let expr = TraceAdd::query(&l, &r);
+            let _root = DemoRoot::query(&expr);
+            #[eggplant::pat_vars]
+            struct Pat {
+                l: DemoExpr,
+                r: DemoExpr,
+                expr: TraceAdd,
+            }
+            Pat::new(l, r, expr)
+        },
         move |ctx, pat| {
             if use_mul {
                 let two = ctx.insert_trace_const(2);

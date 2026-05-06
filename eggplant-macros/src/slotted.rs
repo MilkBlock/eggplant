@@ -16,7 +16,7 @@ use crate::{EgglogUserDefined, enum_related::*};
 ///
 /// # Example:  
 ///     
-/// ```
+/// ```ignore
 /// #[allow(unused)]
 /// #[derive(Debug, Clone, EgglogTy)]
 /// enum Duration {
@@ -31,7 +31,7 @@ use crate::{EgglogUserDefined, enum_related::*};
 /// is transformed to
 ///
 ///
-/// ```
+/// ```ignore
 /// #[derive(Debug, Clone)]
 /// pub struct DurationNode {
 ///     ty: _DurationNode,

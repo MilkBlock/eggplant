@@ -17,17 +17,6 @@ enum RootExpr {
 
 tx_rx_vt_pr!(SampleTx, SamplePatRec);
 
-#[eggplant::pat_vars]
-struct SamplePatVars<PR: PatRecSgl> {
-    expr: TraceExpr<PR>,
-}
-
-fn sample_pat<PR: PatRecSgl>() -> SamplePatVars<PR> {
-    let expr = TraceExpr::query_leaf();
-    let _root = TraceRoot::query(&expr);
-    SamplePatVars::new(expr)
-}
-
 fn describe_event(event: &ActionSampleEvent) -> String {
     match event {
         ActionSampleEvent::Insert {
@@ -83,7 +72,15 @@ fn main() {
     SampleTx::add_rule_with_hook(
         "sample_action_trace_rule",
         ruleset,
-        sample_pat,
+        || {
+            let expr = TraceExpr::query_leaf();
+            let _root = TraceRoot::query(&expr);
+            #[eggplant::pat_vars]
+            struct Pat {
+                expr: TraceExpr,
+            }
+            Pat::new(expr)
+        },
         |ctx, pat| {
             // Once the pattern matches, record the concrete effects produced by the action body.
             let one = ctx.insert_trace_const(1);

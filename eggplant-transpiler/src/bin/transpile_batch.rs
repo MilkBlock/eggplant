@@ -2,9 +2,11 @@ use clap::Parser as ClapParser;
 use eggplant_transpiler::ast::parse::Parser as EgglogParser;
 use eggplant_transpiler::ast::{Action, Command};
 use eggplant_transpiler::{
-    CodeGenOptions, EggplantCodeGenerator, convert_to_eggplant_with_source_and_program,
+    CodeGenOptions, EggplantCodeGenerator, TRANSPILER_FALLBACK_PANIC_PREFIX,
+    convert_to_eggplant_with_source_and_program,
 };
 use std::fs;
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use syn::{
@@ -56,6 +58,7 @@ struct Failure {
     summary: String,
 }
 
+#[derive(Debug)]
 enum TranspileOutcome {
     Success(String),
     Failure {
@@ -1212,15 +1215,29 @@ fn transpile_unit(unit: &SourceUnit) -> TranspileOutcome {
         };
     }
 
-    let lowered = convert_to_eggplant_with_source_and_program(
-        &parse_outcome.commands,
-        Some(unit.source_name.clone()),
-    );
-    let mut generator = EggplantCodeGenerator::with_options(CodeGenOptions {
-        omit_head_annotation: true,
-        ..CodeGenOptions::default()
-    });
-    let generated = generator.generate_rust(&lowered);
+    let generated = match catch_unwind(AssertUnwindSafe(|| {
+        let lowered = convert_to_eggplant_with_source_and_program(
+            &parse_outcome.commands,
+            Some(unit.source_name.clone()),
+        );
+        let mut generator = EggplantCodeGenerator::with_options(CodeGenOptions {
+            omit_head_annotation: true,
+            ..CodeGenOptions::default()
+        });
+        generator.generate_rust(&lowered)
+    })) {
+        Ok(generated) => generated,
+        Err(payload) => {
+            let summary = panic_payload_to_string(payload.as_ref());
+            if summary.contains(TRANSPILER_FALLBACK_PANIC_PREFIX) {
+                return TranspileOutcome::Failure {
+                    summary,
+                    generated: None,
+                };
+            }
+            std::panic::resume_unwind(payload);
+        }
+    };
 
     if let Some(todo_line) = generated.lines().find(|line| line.contains("TODO")) {
         return TranspileOutcome::Failure {
@@ -1229,7 +1246,27 @@ fn transpile_unit(unit: &SourceUnit) -> TranspileOutcome {
         };
     }
 
+    if let Some(fallback_line) = generated
+        .lines()
+        .find(|line| line.contains(TRANSPILER_FALLBACK_PANIC_PREFIX))
+    {
+        return TranspileOutcome::Failure {
+            summary: fallback_line.trim().to_string(),
+            generated: Some(generated),
+        };
+    }
+
     TranspileOutcome::Success(generated)
+}
+
+fn panic_payload_to_string(payload: &(dyn std::any::Any + Send)) -> String {
+    if let Some(message) = payload.downcast_ref::<&str>() {
+        (*message).to_string()
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.clone()
+    } else {
+        "panic without string payload".to_string()
+    }
 }
 
 fn emit_generated_output(
@@ -1362,6 +1399,27 @@ mod tests {
         let prefixed = apply_prefix("(ruleset seed)\n", "(rule ((A)) ((B)))".to_string());
         assert!(prefixed.starts_with("(ruleset seed)\n"));
         assert!(prefixed.contains("(rule ((A)) ((B)))"));
+    }
+
+    #[test]
+    fn test_transpile_unit_fails_on_raw_egglog_fallback() {
+        let unit = SourceUnit {
+            display_name: "/tmp/sample.egg".to_string(),
+            source_name: "/tmp/sample.egg".to_string(),
+            source: "(rule ((unknown-rel a)) ((unknown-action a)))".to_string(),
+            output_stem: "sample".to_string(),
+        };
+
+        let outcome = transpile_unit(&unit);
+        match outcome {
+            TranspileOutcome::Failure {
+                summary,
+                generated: None,
+            } => {
+                assert!(summary.contains(TRANSPILER_FALLBACK_PANIC_PREFIX));
+            }
+            other => panic!("expected raw fallback failure, got {other:?}"),
+        }
     }
 
     #[test]

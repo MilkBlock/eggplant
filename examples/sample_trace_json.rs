@@ -16,17 +16,6 @@ enum SampleRoot {
 
 tx_rx_vt_pr!(SampleTx, SamplePatRec);
 
-#[eggplant::pat_vars]
-struct SamplePatternVars<PR: PatRecSgl> {
-    expr: SampleExpr<PR>,
-}
-
-fn sample_pat<PR: PatRecSgl>() -> SamplePatternVars<PR> {
-    let expr = SampleExpr::query_leaf();
-    let _root = SampleRoot::query(&expr);
-    SamplePatternVars::new(expr)
-}
-
 fn main() {
     let output_path = std::env::args_os()
         .nth(1)
@@ -43,7 +32,15 @@ fn main() {
     SampleTx::add_rule_with_hook(
         "sample_trace_json_rule",
         ruleset,
-        sample_pat,
+        || {
+            let expr = SampleExpr::query_leaf();
+            let _root = SampleRoot::query(&expr);
+            #[eggplant::pat_vars]
+            struct Pat {
+                expr: SampleExpr,
+            }
+            Pat::new(expr)
+        },
         |ctx, pat| {
             let one = ctx.insert_trace_const(1);
             let sum = ctx.insert_trace_add(pat.expr, one);
