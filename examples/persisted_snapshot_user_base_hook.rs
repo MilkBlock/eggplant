@@ -34,7 +34,7 @@ fn main() {
         )
         .unwrap();
 
-    eggplant::egglog::prelude::run_ephemeral_rust_rule(
+    run_ephemeral_rust_rule(
         &mut egraph,
         "seed_demo_user_base_snapshot",
         &[],

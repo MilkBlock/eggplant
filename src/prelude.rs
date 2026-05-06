@@ -18,6 +18,26 @@ pub use crate::artifact::{
     dsl_runtime_fingerprint, engine_schema_fingerprint, read_binary_artifact_header,
     read_binary_artifact_header_from_file, restore_persisted_snapshot_v1,
 };
+pub use crate::helpers::bench_cli::{
+    DEFAULT_EXTRACTORS, ExtractBenchCliArgs, TimelineExportCliArgs, parse_extract_bench_args,
+    parse_timeline_export_args, timeline_markdown_asset_path, timeline_markdown_output_path,
+    timeline_plot_output_path,
+};
+pub use crate::helpers::progress::{
+    BenchProgress, TimelineExtractMetric, format_bytes, format_duration, format_optional_bytes,
+    format_optional_duration, format_optional_ms,
+};
+#[cfg(feature = "timeline-plot")]
+pub use crate::helpers::report::write_timeline_plot_png;
+pub use crate::helpers::report::{
+    ExtractReportRow, print_extract_comparison_report, print_extract_run_configuration,
+    render_timeline_markdown_report, render_timeline_markdown_report_with_plot,
+    write_timeline_markdown_report, write_timeline_markdown_report_with_plot,
+};
+pub use crate::helpers::runtime::{
+    current_peak_memory_bytes, duration_from_ms, duration_to_ms, elapsed_ms, gib_to_bytes,
+    run_with_timeout_payload,
+};
 pub use crate::instances::pat_rec::*;
 pub use crate::instances::session_runtime::Session;
 pub use crate::instances::tx::*;
@@ -40,12 +60,24 @@ pub use crate::wrap::constraint::{
 pub use crate::wrap::sorts::set::SetContainer;
 pub use crate::wrap::sorts::vec::VecContainer;
 pub use crate::wrap::{
-    AsHandle, BaseVar, Commit, EgglogNode, ExtractBackend, ExtractNodeSgl, ExtractSgl, FromBase,
-    Insertable, LocateVersion, NonPatRecSgl, PEq, PatRecSgl, QuerySlot, RenderedTemplateField,
-    RuleRunnerSgl, RuleSetId, RunConfig, RustsatExtractConfig, RxSgl, SingletonGetter, SlotVarID,
-    SlottedPatRecSgl, ToDot, ToDotSgl, TxCommit, TxCommitSgl, TxSgl, Value,
-    render_template_with_precedence, render_variant_display, render_variant_typst,
+    AsHandle, BaseVar, Commit, EBoostExtractConfig, EBoostLayeredConfig, EgglogCompatExt,
+    EgglogEnumVariantTy, EgglogNode, EgglogTy, ExtractBackend, ExtractNodeSgl, ExtractSgl,
+    FromBase, FunctionId, Insertable, LocateVersion, NonPatRecSgl, OwnedFunctionRow, PEq,
+    PatRecSgl, ProofRuleTemplate, ProofRuleTemplateMatch, ProofRulesTemplateIndex,
+    ProofSvgFormatter, QuerySlot, RawEGraphNode, RenderedTemplateField, RuleRunnerSgl, RuleSetId,
+    RunConfig, RunSchedule, RunScheduleBuilder, RustsatExtractConfig, RxSgl, SchemaFunctionKind,
+    SchemaSortKind, SingletonGetter, SlotVarID, SlottedPatRecSgl, ToDot, ToDotSgl, TxCommit,
+    TxCommitSgl, TxSgl, Value, add_ruleset, clear_compat_state, compile_typst_document_to_svg,
+    compile_typst_document_to_svg_string, compile_typst_math_to_svg, extract_raw_with_backend,
+    render_proof_svg_from_rules_template, render_proof_svg_from_rules_template_with_options,
+    render_proof_text_svg, render_proof_text_svg_with_options, render_proof_text_typst,
+    render_proof_text_typst_with_options, render_template_with_precedence,
+    render_value_proof_text_svg, render_value_proof_text_svg_with_options,
+    render_value_proof_text_typst, render_value_proof_text_typst_with_options,
+    render_variant_display, render_variant_typst, run_ephemeral_rust_rule, run_ruleset, rust_rule,
+    rust_rule_with_metadata,
 };
+pub use crate::{basic_tx_rx_vt_pr_pf, tx_rx_vt_pr_pf};
 
 pub use dashmap;
 pub use derive_more;

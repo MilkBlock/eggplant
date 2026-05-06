@@ -2,8 +2,14 @@ use eggplant::{prelude::*, tx_rx_vt_pr};
 
 #[eggplant::dsl]
 pub enum Expr {
+    #[typst("{num}")]
+    #[precedence(100)]
     Const { num: i64 },
+    #[typst("{l} * {r}")]
+    #[precedence(60)]
     Mul { l: Expr, r: Expr },
+    #[typst("{l} + {r}")]
+    #[precedence(50)]
     Add { l: Expr, r: Expr },
 }
 
@@ -43,36 +49,20 @@ fn register_constant_prop_rules() -> RuleSetId {
     })
 }
 
-fn current_snapshot() -> PersistedSnapshot {
+fn current_session_has_const(needle: i64) -> bool {
     let egraph = MyTx::egraph();
     let egraph = egraph.lock().unwrap();
-    build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
-}
 
-fn snapshot_has_const(snapshot: &PersistedSnapshot, needle: i64) -> bool {
-    let Some(const_decl) = snapshot
-        .schema
-        .constructor_decls
-        .iter()
-        .find(|decl| decl.name == "Const")
-    else {
-        return false;
-    };
-
-    snapshot.state.function_rows.iter().any(|row| {
-        row.op_id == const_decl.op_id
-            && matches!(
-                row.inputs.first(),
-                Some(PersistedSnapshotValue::Lit { value, .. }) if value.value == needle.to_string()
-            )
+    egraph.function_rows("Const").into_iter().any(|row| {
+        !row.subsumed
+            && row
+                .vals
+                .first()
+                .is_some_and(|value| egraph.value_to_base::<i64>(*value) == needle)
     })
 }
 
-fn current_session_has_const(needle: i64) -> bool {
-    snapshot_has_const(&current_snapshot(), needle)
-}
-
-fn canonical_eq(lhs: &Expr<MyTx>, rhs_const: i64) -> bool {
+fn canonical_eq_const(lhs: &Expr<MyTx>, rhs_const: i64) -> bool {
     let rhs: Expr<MyTx, ConstTy> = Const::new(rhs_const);
     rhs.commit();
     MyTx::canonical_raw(lhs) == MyTx::canonical_raw(&rhs)
@@ -90,7 +80,7 @@ fn fold_mul_add_expr(session: &Session<MyTx>, lhs: i64, rhs: i64, addend: i64) -
         let _ = MyTx::run_ruleset(ruleset, RunConfig::Sat);
 
         let expected = lhs * rhs + addend;
-        assert!(canonical_eq(&expr, expected));
+        assert!(canonical_eq_const(&expr, expected));
         expected
     })
 }

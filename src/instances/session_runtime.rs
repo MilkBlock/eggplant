@@ -1,8 +1,8 @@
 use crate::wrap::{
     EgglogFunc, EgglogFuncInputs, EgglogFuncOutput, EgglogNode, EgglogRelation, EgglogTy,
     FactsBuilder, FromBase, LocateVersion, NodeDropper, NodeOwner, NodeSetter, PatId, PatRec,
-    PatRecSgl, PatVars, RuleCtxHook, RuleRunner, RuleSetId, RunConfig, Rx, SortName, Sym, TableName,
-    ToDot, Tx, TxCommand, TxCommit, Value, VarName, VersionCtl,
+    PatRecSgl, PatVars, RuleCtxHook, RuleRunner, RuleSetId, RunConfig, Rx, SortName, Sym,
+    TableName, ToDot, Tx, TxCommand, TxCommit, Value, VarName, VersionCtl,
 };
 use egglog::EGraph;
 use egglog_reports::RunReport;
@@ -135,9 +135,7 @@ pub fn with_runtime<Tx: SessionTxMarker, R>(f: impl FnOnce(&Tx::Runtime) -> R) -
     f(&state.runtime)
 }
 
-pub fn with_pat_recorder<Tx: SessionTxMarker, R>(
-    f: impl FnOnce(&Tx::PatRecorder) -> R,
-) -> R {
+pub fn with_pat_recorder<Tx: SessionTxMarker, R>(f: impl FnOnce(&Tx::PatRecorder) -> R) -> R {
     let state = current_state::<Tx>();
     let pat_recorder = state.pat_recorder.lock().unwrap();
     f(&pat_recorder)
@@ -171,9 +169,10 @@ impl<Tx: SessionTxMarker> Session<Tx> {
     pub fn run<R>(&self, f: impl FnOnce() -> R) -> R {
         let key = type_key::<Tx>();
         CURRENT_SESSION_THREADS.with(|slot| {
-            let previous = slot
-                .borrow_mut()
-                .insert(key, ErasedSessionBinding::new::<Tx>(Arc::clone(&self.state)));
+            let previous = slot.borrow_mut().insert(
+                key,
+                ErasedSessionBinding::new::<Tx>(Arc::clone(&self.state)),
+            );
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
             let mut bindings = slot.borrow_mut();
             match previous {
@@ -205,7 +204,9 @@ impl<Tx: SessionTxMarker> Session<Tx> {
             type_key::<Tx>(),
             ErasedSessionBinding::new::<Tx>(Arc::clone(&self.state)),
         );
-        CURRENT_SESSION_TASKS.scope(RefCell::new(bindings), fut).await
+        CURRENT_SESSION_TASKS
+            .scope(RefCell::new(bindings), fut)
+            .await
     }
 
     pub fn spawn<R: Send + 'static>(
@@ -368,6 +369,37 @@ impl<TxMarker: SessionTxMarker> TxFacade<TxMarker> {
     pub const fn new() -> Self {
         Self(PhantomData)
     }
+
+    pub fn reset_for_bench(&self) {
+        crate::instances::session_runtime::reset_for_bench::<TxMarker>();
+    }
+}
+
+#[cfg(feature = "viewer")]
+impl<TxMarker: SessionTxMarker> crate::wrap::EGraphView for TxFacade<TxMarker> {
+    fn egraph(&self) -> Arc<Mutex<EGraph>> {
+        with_runtime::<TxMarker, _>(|runtime| TxMarker::runtime_egraph(runtime))
+    }
+
+    fn view(&self) -> Result<(), eframe::Error> {
+        use eggplant_viewer::*;
+
+        let native_options = eframe::NativeOptions::default();
+        let egraph = self.egraph();
+        let egraph = egraph.lock().unwrap();
+        eframe::run_native(
+            "eggplant_egui_graphs demo",
+            native_options,
+            Box::new(|cc| {
+                Ok(Box::new(EGraphApp::new(
+                    cc,
+                    DemoLayout::Hierarchical,
+                    &egraph,
+                    EmptyH {}.dyn_clone(),
+                )))
+            }),
+        )
+    }
 }
 
 impl<TxMarker: SessionTxMarker> NodeOwner for TxFacade<TxMarker> {
@@ -489,10 +521,10 @@ where
         rule_set: RuleSetId,
         pat: impl Fn() -> P,
         action: impl Fn(&crate::wrap::PRRuleCtx<TxMarker::PatRecMarker>, &P::Valued)
-            + Send
-            + Sync
-            + 'static
-            + Clone,
+        + Send
+        + Sync
+        + 'static
+        + Clone,
         ctx_hook: Option<Box<dyn RuleCtxHook>>,
     ) {
         with_runtime::<TxMarker, _>(|runtime| {
@@ -539,9 +571,22 @@ impl<PatMarker: SessionPatRecMarker> PatRecFacade<PatMarker> {
     }
 }
 
+impl<PatMarker> PatRecFacade<PatMarker>
+where
+    PatMarker: SessionPatRecMarker,
+    PatMarker::TxMarker: SessionTxMarker<PatRecorder = crate::instances::pat_rec::PatRecorder>,
+{
+    pub fn pats_to_dot(&self, path: impl AsRef<std::path::Path>) {
+        with_pat_recorder::<PatMarker::TxMarker, _>(move |pat_rec| pat_rec.pats_to_dot(path));
+    }
+}
+
 impl<PatMarker: SessionPatRecMarker> NodeOwner for PatRecFacade<PatMarker> {
     type OwnerSpecDataInNode<T: EgglogTy, V: crate::wrap::EgglogEnumVariantTy> =
-        <<PatMarker::TxMarker as SessionTxMarker>::PatRecorder as NodeOwner>::OwnerSpecDataInNode<T, V>;
+        <<PatMarker::TxMarker as SessionTxMarker>::PatRecorder as NodeOwner>::OwnerSpecDataInNode<
+            T,
+            V,
+        >;
 }
 
 impl<PatMarker: SessionPatRecMarker> NodeDropper for PatRecFacade<PatMarker> {
@@ -570,7 +615,9 @@ impl<PatMarker: SessionPatRecMarker> Tx for PatRecFacade<PatMarker> {
         input: <F::Input as EgglogFuncInputs>::Ref<'a>,
         output: <F::Output as EgglogFuncOutput>::Ref<'a>,
     ) {
-        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.on_func_set::<F>(input, output));
+        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| {
+            pat_rec.on_func_set::<F>(input, output)
+        });
     }
 
     fn on_union(&self, node1: &(impl EgglogNode + 'static), node2: &(impl EgglogNode + 'static)) {
@@ -590,15 +637,21 @@ impl<PatMarker: SessionPatRecMarker> PatRec for PatRecFacade<PatMarker> {
     }
 
     fn on_new_constraint(&self, constraint: impl crate::wrap::IntoConstraintFact) {
-        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.on_new_constraint(constraint));
+        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| {
+            pat_rec.on_new_constraint(constraint)
+        });
     }
 
     fn on_new_table_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
-        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.on_new_table_fact(query_table, vars));
+        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| {
+            pat_rec.on_new_table_fact(query_table, vars)
+        });
     }
 
     fn on_new_relation_fact(&self, query_table: TableName, vars: Vec<(VarName, SortName)>) {
-        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| pat_rec.on_new_relation_fact(query_table, vars));
+        with_pat_recorder::<PatMarker::TxMarker, _>(|pat_rec| {
+            pat_rec.on_new_relation_fact(query_table, vars)
+        });
     }
 
     fn on_record_start(&self) {

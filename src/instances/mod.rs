@@ -144,9 +144,35 @@ macro_rules! basic_tx_rx_vt_pr {
 }
 
 #[macro_export]
+macro_rules! basic_tx_rx_vt_pr_pf {
+    ($name:ident) => {
+        #[eggplant::singleton_getter(ctor = new_with_proof)]
+        pub struct $name {
+            tx: eggplant::instances::tx_rx_vt_pr::TxRxVTPR,
+        }
+        impl $name {
+            pub fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
+                Self::sgl().egraph.clone()
+            }
+
+            pub fn reset_for_bench() {
+                Self::sgl().reset_for_bench();
+            }
+        }
+        impl eggplant::wrap::NonPatRecSgl for $name {
+            fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
+                Self::sgl().egraph.clone()
+            }
+        }
+    };
+}
+
+#[macro_export]
 macro_rules! tx_rx_vt_pr {
     ($tx_name:ident, $pat_rec_name:ident) => {
+        #[derive(Debug)]
         pub struct $tx_name;
+        #[derive(Debug)]
         pub struct $pat_rec_name;
 
         impl $tx_name {
@@ -229,6 +255,21 @@ macro_rules! tx_rx_vt_pr {
                 eggplant::instances::session_runtime::egraph::<$tx_name>()
             }
         }
+
+        impl eggplant::wrap::WithPatRecSgl for $tx_name {
+            type PatRecSgl = $pat_rec_name;
+        }
+        impl eggplant::wrap::WithRxSgl for $pat_rec_name {
+            type RxSgl = $tx_name;
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! tx_rx_vt_pr_pf {
+    ($tx_name:ident, $pat_rec_name:ident) => {
+        eggplant::basic_tx_rx_vt_pr_pf!($tx_name);
+        eggplant::basic_patttern_recorder!($pat_rec_name);
 
         impl eggplant::wrap::WithPatRecSgl for $tx_name {
             type PatRecSgl = $pat_rec_name;

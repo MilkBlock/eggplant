@@ -5,7 +5,10 @@ use egglog::{
 };
 use std::marker::PhantomData;
 
-use crate::wrap::{EgglogContainerTy, EgglogTy, FromBase, Sym, TimestampConstraintSpec};
+use crate::wrap::{
+    EgglogContainerTy, EgglogTy, FromBase, Sym, TimestampConstraintSpec,
+    eggplant_timestamp_function_name,
+};
 pub trait IntoConstraintFact: 'static + std::fmt::Debug {
     #[track_caller]
     fn into_constraint_fact(&self, egraph: &EGraph) -> Vec<Fact>;
@@ -506,7 +509,41 @@ impl<T: EgglogTy> TimestampRangeConstraint<T> {
 
 impl<T: EgglogTy> IntoConstraintFact for TimestampRangeConstraint<T> {
     fn into_constraint_fact(&self, _egraph: &EGraph) -> Vec<Fact> {
-        Vec::new()
+        let target_expr = match &self.target.handle {
+            HandleTy::Base { sym, .. } | HandleTy::Complex { sym } => {
+                Expr::Var(span!(), sym.to_string())
+            }
+            HandleTy::Literal { .. } | HandleTy::Expr { .. } => {
+                panic!("timestamp constraints must target a matched node handle")
+            }
+        };
+        let ts_expr = Expr::Call(
+            span!(),
+            eggplant_timestamp_function_name(T::TY_NAME),
+            vec![target_expr],
+        );
+        let mut facts = Vec::new();
+        if let Some(min_inclusive) = self.min_inclusive {
+            facts.push(Fact::Fact(Expr::Call(
+                span!(),
+                ">=".to_string(),
+                vec![
+                    ts_expr.clone(),
+                    Expr::Lit(span!(), Literal::Int(min_inclusive as i64)),
+                ],
+            )));
+        }
+        if let Some(max_exclusive) = self.max_exclusive {
+            facts.push(Fact::Fact(Expr::Call(
+                span!(),
+                "<".to_string(),
+                vec![
+                    ts_expr,
+                    Expr::Lit(span!(), Literal::Int(max_exclusive as i64)),
+                ],
+            )));
+        }
+        facts
     }
 
     fn timestamp_constraints(&self, _egraph: &EGraph) -> Vec<TimestampConstraintSpec> {

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::marker::PhantomData;
@@ -68,6 +68,29 @@ pub trait EgglogTy: 'static {
             .clone()
     }
 }
+
+pub const EGGPLANT_TIMESTAMP_FUNCTION_PREFIX: &str = "__eggplant_timestamp_";
+pub const EGGPLANT_TIMESTAMP_COUNTER_FUNCTION: &str = "__eggplant_timestamp_counter";
+
+pub fn eggplant_timestamp_function_name(sort_name: &str) -> String {
+    let escaped = sort_name
+        .chars()
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() || ch == '_' {
+                ch
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    format!("{EGGPLANT_TIMESTAMP_FUNCTION_PREFIX}{escaped}")
+}
+
+pub fn is_eggplant_timestamp_function(function_name: &str) -> bool {
+    function_name == EGGPLANT_TIMESTAMP_COUNTER_FUNCTION
+        || function_name.starts_with(EGGPLANT_TIMESTAMP_FUNCTION_PREFIX)
+}
+
 impl<T: EgglogTy + ToStrArcSort + BindingNames, PR: PatRecSgl> PatVars<PR> for T
 where
     T::Valued: crate::wrap::DecodeWithPlanMetas<PR>,
@@ -139,7 +162,7 @@ pub trait PersistedSnapshotUserBaseSortHook: Send + Sync {
     ) -> Option<serde_json::Value>;
     fn restore_machine_value(
         &self,
-        ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+        ctx: &mut egglog::prelude::RustRuleContext<'_, '_>,
         machine_value: &serde_json::Value,
     ) -> Result<egglog::Value, String>;
 }
@@ -191,7 +214,7 @@ where
 
     fn restore_machine_value(
         &self,
-        ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+        ctx: &mut egglog::prelude::RustRuleContext<'_, '_>,
         machine_value: &serde_json::Value,
     ) -> Result<egglog::Value, String> {
         let decoded =
@@ -318,6 +341,60 @@ impl EgglogTypeRegistry {
         }
     }
 
+    // Upstream egglog proof encoding cannot register sorts declared through a presort
+    // (Set/Vec/Map/etc.), and it also rejects any datatype that depends on one of those
+    // sorts. We compute that unsupported closure up front so proof-mode registration can
+    // skip the whole invalid subtree before typechecking runs.
+    fn collect_unsupported_proof_sorts() -> BTreeSet<String> {
+        let mut unsupported = BTreeSet::new();
+        for decl in inventory::iter::<Decl> {
+            if let Decl::EgglogContainerTy { name, .. } = decl {
+                unsupported.insert(Self::normalize_ty_name(name));
+            }
+        }
+
+        loop {
+            let mut changed = false;
+            for decl in inventory::iter::<Decl> {
+                let Decl::EgglogMultiConTy { name, cons } = decl else {
+                    continue;
+                };
+                let name = Self::normalize_ty_name(name);
+                if unsupported.contains(&name) {
+                    continue;
+                }
+                let depends_on_unsupported = cons.iter().any(|con| {
+                    con.input
+                        .iter()
+                        .map(|ty| Self::normalize_ty_name(ty))
+                        .any(|ty| unsupported.contains(&ty))
+                });
+                if depends_on_unsupported {
+                    unsupported.insert(name);
+                    changed = true;
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
+
+        unsupported
+    }
+
+    fn sort_decl_supported(name: &str, unsupported: &BTreeSet<String>) -> bool {
+        // Normalize aliases like Q/Z before checking so the filter matches egglog's
+        // canonical sort names.
+        !unsupported.contains(&Self::normalize_ty_name(name))
+    }
+
+    fn field_types_supported(types: &[&str], unsupported: &BTreeSet<String>) -> bool {
+        types
+            .iter()
+            .map(|ty| Self::normalize_ty_name(ty))
+            .all(|ty| !unsupported.contains(&ty))
+    }
+
     pub fn new_with_inventory() -> Self {
         let (enum_node_fns_map, variant2type_map) = Self::collect_enum_fns();
         let container_node_fns_map = Self::collect_container_fns();
@@ -363,13 +440,28 @@ impl EgglogTypeRegistry {
             });
         map
     }
-    pub fn collect_type_defs() -> Vec<Command> {
+    fn collect_type_defs_impl(proof_mode: bool) -> Vec<Command> {
         let mut commands = vec![];
+        let mut timestamp_sorts = BTreeSet::<String>::new();
+        // Proof mode registers only the schema that egglog's proof encoder accepts.
+        // The normal path keeps the full inventory, including container presorts and
+        // other declarations that proof mode cannot typecheck.
+        let unsupported_sorts = if proof_mode {
+            Self::collect_unsupported_proof_sorts()
+        } else {
+            BTreeSet::new()
+        };
         // split decls to avoid undefined sort
         let mut types = Vec::<(Span, String, Subdatatypes)>::new();
         for decl in inventory::iter::<Decl> {
             match decl {
                 Decl::EgglogMultiConTy { name, cons } => {
+                    if proof_mode && !Self::sort_decl_supported(name, &unsupported_sorts) {
+                        continue;
+                    }
+                    // Keep only datatypes whose constructors stay entirely inside the
+                    // proof-safe sort subset.
+                    timestamp_sorts.insert(Self::normalize_ty_name(name));
                     types.push((
                         span!(),
                         name.to_string(),
@@ -397,6 +489,12 @@ impl EgglogTypeRegistry {
                     term_to_node: _,
                     ty_str,
                 } => {
+                    if proof_mode {
+                        // Container sorts are represented as presorts in egglog, and proof
+                        // encoding rejects presort-backed sorts entirely.
+                        continue;
+                    }
+                    timestamp_sorts.insert(Self::normalize_ty_name(name));
                     let ele_ty = ele_ty_name.to_owned();
                     let ele = var!(ele_ty);
                     types.push((
@@ -410,11 +508,44 @@ impl EgglogTypeRegistry {
                 }
             }
         }
-        commands.push(Command::Datatypes {
-            span: span!(),
-            datatypes: types,
-        });
+        if !types.is_empty() {
+            commands.push(Command::Datatypes {
+                span: span!(),
+                datatypes: types,
+            });
+        }
         let mut parser = Parser::default();
+        let timestamp_merge = parser
+            .get_expr_from_string(None, "(max old new)")
+            .expect("internal timestamp merge expression should parse");
+        commands.push(Command::Function {
+            span: span!(),
+            name: EGGPLANT_TIMESTAMP_COUNTER_FUNCTION.to_string(),
+            schema: Schema {
+                input: Vec::new(),
+                output: <i64 as EgglogTy>::TY_NAME.to_string(),
+            },
+            merge: Some(timestamp_merge.clone()),
+            hidden: true,
+            let_binding: false,
+            term_constructor: None,
+            unextractable: false,
+        });
+        for sort_name in timestamp_sorts {
+            commands.push(Command::Function {
+                span: span!(),
+                name: eggplant_timestamp_function_name(&sort_name),
+                schema: Schema {
+                    input: vec![sort_name],
+                    output: <i64 as EgglogTy>::TY_NAME.to_string(),
+                },
+                merge: Some(timestamp_merge.clone()),
+                hidden: true,
+                let_binding: false,
+                term_constructor: None,
+                unextractable: false,
+            });
+        }
         for decl in inventory::iter::<Decl> {
             match decl {
                 Decl::EgglogFuncTy {
@@ -426,6 +557,16 @@ impl EgglogTypeRegistry {
                     let_binding,
                     ..
                 } => {
+                    if proof_mode
+                        && (merge.is_none()
+                            || !Self::field_types_supported(input, &unsupported_sorts)
+                            || !Self::sort_decl_supported(output, &unsupported_sorts))
+                    {
+                        // Proof mode requires a merge function for every non-global
+                        // function, and all argument / result sorts must already be in the
+                        // proof-safe subset.
+                        continue;
+                    }
                     commands.push(Command::Function {
                         span: span!(),
                         name: name.to_string(),
@@ -440,9 +581,16 @@ impl EgglogTypeRegistry {
                         }),
                         hidden: *hidden,
                         let_binding: *let_binding,
+                        term_constructor: None,
+                        unextractable: false,
                     });
                 }
                 Decl::EgglogRelationTy { name, input, .. } => {
+                    if proof_mode && !Self::field_types_supported(input, &unsupported_sorts) {
+                        // Relations are only safe to register if every field sort survives
+                        // the proof-mode filter above.
+                        continue;
+                    }
                     commands.push(Command::Relation {
                         span: span!(),
                         name: name.to_string(),
@@ -453,6 +601,19 @@ impl EgglogTypeRegistry {
             }
         }
         commands
+    }
+
+    /// Build the full schema for normal eggplant execution.
+    pub fn collect_type_defs() -> Vec<Command> {
+        Self::collect_type_defs_impl(false)
+    }
+
+    /// Build the proof-safe schema subset for `EGraph::new_with_proofs`.
+    ///
+    /// This is a compatibility filter for upstream egglog proof encoding; it does not
+    /// mean eggplant has full proof support for every schema shape.
+    pub fn collect_type_defs_for_proofs() -> Vec<Command> {
+        Self::collect_type_defs_impl(true)
     }
 
     pub fn variant_to_type_name(&self, variant_name: &str) -> Option<&'static str> {

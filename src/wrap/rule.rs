@@ -1,6 +1,7 @@
 use crate::wrap::{
-    self, BoxedContainer, BoxedValue, EgglogContainerTy, EgglogEnumVariantTy, EgglogNode,
-    Insertable, IntoConstraintFact, PatRecSgl, RetypeValue,
+    self, BoxedContainer, BoxedValue, EGGPLANT_TIMESTAMP_COUNTER_FUNCTION, EgglogContainerTy,
+    EgglogEnumVariantTy, EgglogNode, FunctionId, Insertable, IntoConstraintFact, PatRecSgl,
+    RetypeValue, eggplant_timestamp_function_name,
 };
 use crate::wrap::{BoxedBase, EgglogTy, NodeDropperSgl, PatVars, WithPatRecSgl};
 use egglog::ContainerValue;
@@ -14,42 +15,23 @@ use egglog::{
 };
 use egglog_reports::RunReport;
 use serde::{Deserialize, Serialize};
-use std::cell::{RefCell, UnsafeCell};
+use std::cell::UnsafeCell;
 use std::collections::{HashMap, HashSet};
 use std::marker::PhantomData;
 use std::ops::Deref;
 use std::panic::Location;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
-use std::sync::{Mutex, OnceLock};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use wrap::Value;
 
-pub(crate) fn empty_premise_proofs() -> Arc<[egglog::Value]> {
-    static EMPTY: std::sync::OnceLock<Arc<[egglog::Value]>> = std::sync::OnceLock::new();
-    Arc::clone(EMPTY.get_or_init(|| Arc::from(Vec::<egglog::Value>::new().into_boxed_slice())))
-}
-
 thread_local! {
-    pub(crate) static CURRENT_PREMISE_PROOFS: RefCell<Vec<Arc<[egglog::Value]>>> = RefCell::new(Vec::new());
-    static CURRENT_ACTION_EFFECT_ID: RefCell<Option<String>> = const { RefCell::new(None) };
+    static CURRENT_ACTION_EFFECT_ID: std::cell::RefCell<Option<String>> = const {
+        std::cell::RefCell::new(None)
+    };
 }
 
-pub(crate) struct PremiseProofScope;
-
-impl PremiseProofScope {
-    pub(crate) fn enter(premise_proofs: Arc<[egglog::Value]>) -> Self {
-        CURRENT_PREMISE_PROOFS.with(|cell| cell.borrow_mut().push(premise_proofs));
-        PremiseProofScope
-    }
-}
-
-impl Drop for PremiseProofScope {
-    fn drop(&mut self) {
-        CURRENT_PREMISE_PROOFS.with(|cell| {
-            let _ = cell.borrow_mut().pop();
-        });
-    }
-}
+static NEXT_TIMESTAMP_COUNTER: AtomicUsize = AtomicUsize::new(1);
 
 // eggplant rule context is a wrapper of egglog rule context.
 // it contains the Tx to which the rule is applied
@@ -58,7 +40,8 @@ pub struct PRRuleCtx<'a, 'b, 'c, 'p, PR: PatRecSgl> {
     _p: PhantomData<PR>,
 }
 pub struct RuleCtx<'a, 'b, 'c, 'p> {
-    pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b, 'p>>,
+    pub rule_ctx: UnsafeCell<&'c mut RustRuleContext<'a, 'b>>,
+    _p: PhantomData<&'p ()>,
     hook: RuleHookObj,
 }
 unsafe impl Send for RuleHookObj {}
@@ -334,7 +317,7 @@ fn scan_action_call_end(text: &str, start: usize) -> Option<usize> {
 }
 
 impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
-    pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b, 'p>, hook: RuleHookObj) -> Self {
+    pub fn new(rule_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
         Self {
             _p: PhantomData::default(),
             ctx: RuleCtx::new(rule_ctx, hook),
@@ -413,9 +396,10 @@ impl<'a, 'b, 'c, 'p, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, 'p, PR> {
     }
 }
 impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
-    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b, 'p>, hook: RuleHookObj) -> Self {
+    pub fn new(egglog_ctx: &'c mut RustRuleContext<'a, 'b>, hook: RuleHookObj) -> Self {
         RuleCtx {
             rule_ctx: UnsafeCell::new(egglog_ctx),
+            _p: PhantomData::default(),
             hook,
         }
     }
@@ -443,12 +427,8 @@ impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
     fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
         unsafe { (*self.rule_ctx.get()).container_to_value(container) }
     }
-    fn cached_function_id(
-        &self,
-        table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
-    ) -> egglog::FunctionId {
-        *cached.get_or_init(|| unsafe { (*self.rule_ctx.get()).function_id(table) })
+    fn cached_function_id(&self, table: &'static str, cached: &OnceLock<FunctionId>) -> FunctionId {
+        cached.get_or_init(|| table.to_string()).clone()
     }
     pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.lookup_expect(table, key)
@@ -457,7 +437,7 @@ impl<'a, 'b, 'c, 'p> RuleCtx<'a, 'b, 'c, 'p> {
     pub fn insert_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<FunctionId>,
         key: &[egglog::Value],
     ) -> egglog::Value {
         self.lookup_expect_cached(table, cached, key)
@@ -485,21 +465,22 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
     pub fn lookup_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<FunctionId>,
         key: &[egglog::Value],
     ) -> Option<egglog::Value> {
         if let Some(hook) = self.hook.0.as_ref() {
             let _effect_scope = ActionEffectScope::enter(Location::caller());
             hook.on_insert(table, key);
         }
-        let table_id = self.cached_function_id(table, cached);
-        unsafe { (*self.rule_ctx.get()).lookup_id(table_id, key) }
+        let table_name = self.cached_function_id(table, cached);
+        unsafe { (*self.rule_ctx.get()).lookup(&table_name, key) }
     }
+    // ! 这个函数应该被删掉， 因为已经没有 ctx.read_func 这种用法了，它被ban 了
     #[track_caller]
     pub fn lookup_expect_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<FunctionId>,
         key: &[egglog::Value],
     ) -> egglog::Value {
         self.lookup_cached(table, cached, key).unwrap_or_else(|| {
@@ -523,15 +504,25 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
     pub fn insert_func_tbl_cached(
         &self,
         table: &'static str,
-        cached: &OnceLock<egglog::FunctionId>,
+        cached: &OnceLock<FunctionId>,
         key: &[egglog::Value],
     ) {
         if let Some(hook) = self.hook.0.as_ref() {
             let _effect_scope = ActionEffectScope::enter(Location::caller());
             hook.on_insert(table, key);
         }
-        let table_id = self.cached_function_id(table, cached);
-        unsafe { (*self.rule_ctx.get()).insert_id(table_id, key.iter().cloned()) }
+        let table_name = self.cached_function_id(table, cached);
+        unsafe { (*self.rule_ctx.get()).insert(&table_name, key.iter().cloned()) }
+    }
+    pub fn insert_timestamp_for_value(&self, sort_name: &str, value: egglog::Value) {
+        let current_ts = NEXT_TIMESTAMP_COUNTER.fetch_add(1, Ordering::Relaxed) as i64;
+        let current = self._intern_base::<i64, i64>(current_ts);
+        self.insert_func_tbl(
+            &eggplant_timestamp_function_name(sort_name),
+            &[value, current],
+        );
+        let next = self._intern_base::<i64, i64>(current_ts.saturating_add(1));
+        self.insert_func_tbl(EGGPLANT_TIMESTAMP_COUNTER_FUNCTION, &[next]);
     }
     pub fn union<T0: EgglogTy, T1: EgglogTy>(
         &self,
@@ -544,19 +535,7 @@ note: `ctx.set_*` uses staged insert (`insert_func_tbl`) so rows may not be visi
             hook.on_union(x.val, y.val);
         }
         unsafe {
-            CURRENT_PREMISE_PROOFS.with(|cell| {
-                let premise_proofs_stack = cell.borrow();
-                if let Some(premise_proofs) = premise_proofs_stack.last() {
-                    (*self.rule_ctx.get()).union_typed(
-                        T0::TY_NAME,
-                        x.val,
-                        y.val,
-                        premise_proofs.as_ref(),
-                    );
-                } else {
-                    (*self.rule_ctx.get()).union(x.val, y.val);
-                }
-            });
+            (*self.rule_ctx.get()).union_typed(T0::TY_NAME, x.val, y.val);
         }
     }
     #[track_caller]
@@ -597,6 +576,11 @@ pub trait RuleRunner<PR: PatRecSgl> {
     );
     fn new_ruleset(&self, rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(&self, rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
+    fn run_schedule(&self, schedule: impl Into<RunSchedule>) -> RunReport {
+        schedule
+            .into()
+            .execute_with(|ruleset| self.run_ruleset(ruleset, RunConfig::Once))
+    }
     fn value<T: EgglogNode>(&self, node: &T) -> Value<T>;
 }
 pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
@@ -626,6 +610,11 @@ pub trait RuleRunnerSgl: WithPatRecSgl + NodeDropperSgl {
     );
     fn new_ruleset(rule_set: &'static str) -> RuleSetId;
     fn run_ruleset(rule_set_id: RuleSetId, run_config: RunConfig) -> RunReport;
+    fn run_schedule(schedule: impl Into<RunSchedule>) -> RunReport {
+        schedule
+            .into()
+            .execute_with(|ruleset| Self::run_ruleset(ruleset, RunConfig::Once))
+    }
     fn value<T: EgglogNode>(node: &T) -> Value<T>;
 }
 impl<T: WithPatRecSgl + NodeDropperSgl> RuleRunnerSgl for T
@@ -653,13 +642,164 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RuleSetId(pub &'static str);
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RunConfig {
     Sat,
     Times(u32),
     Once,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RunSchedule {
+    Run(RuleSetId),
+    Sequence(Vec<RunSchedule>),
+    Repeat {
+        times: u32,
+        schedule: Box<RunSchedule>,
+    },
+    Saturate(Box<RunSchedule>),
+}
+
+impl RunSchedule {
+    pub fn builder() -> RunScheduleBuilder {
+        RunScheduleBuilder::new()
+    }
+
+    pub fn run(ruleset: RuleSetId) -> Self {
+        Self::Run(ruleset)
+    }
+
+    pub fn from_ruleset_config(ruleset: RuleSetId, config: RunConfig) -> Self {
+        match config {
+            RunConfig::Once => Self::run(ruleset),
+            RunConfig::Times(times) => Self::repeat(times, Self::run(ruleset)),
+            RunConfig::Sat => Self::saturate(Self::run(ruleset)),
+        }
+    }
+
+    pub fn seq(items: impl IntoIterator<Item = RunSchedule>) -> Self {
+        Self::Sequence(items.into_iter().collect())
+    }
+
+    pub fn repeat(times: u32, schedule: impl Into<RunSchedule>) -> Self {
+        Self::Repeat {
+            times,
+            schedule: Box::new(schedule.into()),
+        }
+    }
+
+    pub fn saturate(schedule: impl Into<RunSchedule>) -> Self {
+        Self::Saturate(Box::new(schedule.into()))
+    }
+
+    pub fn execute_with(&self, mut run_once: impl FnMut(RuleSetId) -> RunReport) -> RunReport {
+        self.execute_with_ref(&mut run_once)
+    }
+
+    fn execute_with_ref(&self, run_once: &mut impl FnMut(RuleSetId) -> RunReport) -> RunReport {
+        match self {
+            RunSchedule::Run(ruleset) => run_once(*ruleset),
+            RunSchedule::Sequence(schedules) => {
+                let mut report = RunReport::default();
+                for schedule in schedules {
+                    report.union(schedule.execute_with_ref(run_once));
+                }
+                report
+            }
+            RunSchedule::Repeat { times, schedule } => {
+                let mut report = RunReport::default();
+                for _ in 0..*times {
+                    let iter_report = schedule.execute_with_ref(run_once);
+                    let updated = iter_report.updated;
+                    report.union(iter_report);
+                    if !updated {
+                        break;
+                    }
+                }
+                report
+            }
+            RunSchedule::Saturate(schedule) => {
+                let mut report = RunReport::default();
+                loop {
+                    let iter_report = schedule.execute_with_ref(run_once);
+                    let updated = iter_report.updated;
+                    report.union(iter_report);
+                    if !updated {
+                        break report;
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl From<RuleSetId> for RunSchedule {
+    fn from(ruleset: RuleSetId) -> Self {
+        Self::run(ruleset)
+    }
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct RunScheduleBuilder {
+    schedules: Vec<RunSchedule>,
+}
+
+impl RunScheduleBuilder {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn run(mut self, ruleset: RuleSetId) -> Self {
+        self.schedules.push(RunSchedule::run(ruleset));
+        self
+    }
+
+    pub fn run_with(mut self, ruleset: RuleSetId, config: RunConfig) -> Self {
+        self.schedules
+            .push(RunSchedule::from_ruleset_config(ruleset, config));
+        self
+    }
+
+    pub fn then(mut self, schedule: impl Into<RunSchedule>) -> Self {
+        self.schedules.push(schedule.into());
+        self
+    }
+
+    pub fn repeat(
+        mut self,
+        times: u32,
+        build: impl FnOnce(RunScheduleBuilder) -> RunScheduleBuilder,
+    ) -> Self {
+        self.schedules
+            .push(RunSchedule::repeat(times, build(Self::new()).build()));
+        self
+    }
+
+    pub fn repeat_schedule(mut self, times: u32, schedule: impl Into<RunSchedule>) -> Self {
+        self.schedules.push(RunSchedule::repeat(times, schedule));
+        self
+    }
+
+    pub fn saturate(mut self, ruleset: RuleSetId) -> Self {
+        self.schedules.push(RunSchedule::saturate(ruleset));
+        self
+    }
+
+    pub fn saturate_schedule(mut self, schedule: impl Into<RunSchedule>) -> Self {
+        self.schedules.push(RunSchedule::saturate(schedule));
+        self
+    }
+
+    pub fn build(self) -> RunSchedule {
+        match self.schedules.len() {
+            0 => RunSchedule::Sequence(Vec::new()),
+            1 => self.schedules.into_iter().next().unwrap(),
+            _ => RunSchedule::Sequence(self.schedules),
+        }
+    }
 }
 
 pub struct FactsBuilder {

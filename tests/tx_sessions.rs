@@ -40,7 +40,8 @@ macro_rules! prop {
 fn register_rules() -> RuleSetId {
     static NEXT_RULESET_ID: AtomicUsize = AtomicUsize::new(0);
     let id = NEXT_RULESET_ID.fetch_add(1, Ordering::Relaxed);
-    let name: &'static str = Box::leak(format!("session_aware_constant_prop_{id}").into_boxed_str());
+    let name: &'static str =
+        Box::leak(format!("session_aware_constant_prop_{id}").into_boxed_str());
     let ruleset = SessionTx::new_ruleset(name);
     prop!("AddPat", Add, +, AddPat, ruleset);
     prop!("MulPat", Mul, *, MulPat, ruleset);
@@ -56,23 +57,13 @@ fn canonical_eq(lhs: &SessionExpr<SessionTx>, rhs_const: i64) -> bool {
 fn current_has_const(needle: i64) -> bool {
     let egraph = SessionTx::egraph();
     let egraph = egraph.lock().unwrap();
-    let snapshot = build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default());
 
-    let Some(const_decl) = snapshot
-        .schema
-        .constructor_decls
-        .iter()
-        .find(|decl| decl.name == "Const")
-    else {
-        return false;
-    };
-
-    snapshot.state.function_rows.iter().any(|row| {
-        row.op_id == const_decl.op_id
-            && matches!(
-                row.inputs.first(),
-                Some(PersistedSnapshotValue::Lit { value, .. }) if value.value == needle.to_string()
-            )
+    egraph.function_rows("Const").into_iter().any(|row| {
+        !row.subsumed
+            && row
+                .vals
+                .first()
+                .is_some_and(|value| egraph.value_to_base::<i64>(*value) == needle)
     })
 }
 
@@ -151,7 +142,10 @@ fn fold_active_mul_add_expr_alt(lhs: i64, rhs: i64, addend: i64) -> i64 {
     let expected = lhs * rhs + addend;
     let rhs: SessionExpr<AltSessionTx, ConstTy> = Const::new(expected);
     rhs.commit();
-    assert_eq!(AltSessionTx::canonical_raw(&expr), AltSessionTx::canonical_raw(&rhs));
+    assert_eq!(
+        AltSessionTx::canonical_raw(&expr),
+        AltSessionTx::canonical_raw(&rhs)
+    );
     expected
 }
 

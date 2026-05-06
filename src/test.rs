@@ -1887,7 +1887,7 @@ mod tests {
 "#,
             )
             .unwrap();
-        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+        run_ephemeral_rust_rule(
             &mut egraph,
             "seed_persisted_user_base_snapshot",
             &[],
@@ -1974,7 +1974,7 @@ mod tests {
 "#,
             )
             .unwrap();
-        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+        run_ephemeral_rust_rule(
             &mut egraph,
             "seed_missing_hook_summary",
             &[],
@@ -2024,7 +2024,7 @@ mod tests {
 "#,
             )
             .unwrap();
-        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+        run_ephemeral_rust_rule(
             &mut egraph,
             "seed_hooked_summary",
             &[],
@@ -2066,7 +2066,7 @@ mod tests {
 "#,
             )
             .unwrap();
-        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+        run_ephemeral_rust_rule(
             &mut seeded,
             "seed_hooked_user_base_snapshot",
             &[],
@@ -2163,7 +2163,7 @@ mod tests {
 "#,
             )
             .unwrap();
-        eggplant::egglog::prelude::run_ephemeral_rust_rule(
+        run_ephemeral_rust_rule(
             &mut seeded,
             "seed_hooked_user_base_invalid_payload",
             &[],
@@ -3616,7 +3616,7 @@ mod tests {
 
 #[cfg(test)]
 mod proofs_api_tests {
-    use crate::{self as eggplant, instances::tx_rx_vt_pr::TxRxVTPR};
+    use crate as eggplant;
     use egglog::ast::Expr;
     use egglog::span;
     use eggplant::prelude::*;
@@ -3627,35 +3627,7 @@ mod proofs_api_tests {
         ProofMul { l: ProofExpr, r: ProofExpr },
     }
 
-    pub struct MyTxProof {
-        tx: TxRxVTPR,
-    }
-
-    impl SingletonGetter for MyTxProof {
-        type RetTy = TxRxVTPR;
-        fn sgl() -> &'static TxRxVTPR {
-            static INSTANCE: std::sync::OnceLock<MyTxProof> = std::sync::OnceLock::new();
-            &INSTANCE
-                .get_or_init(|| MyTxProof {
-                    tx: TxRxVTPR::new_with_proof(),
-                })
-                .tx
-        }
-    }
-
-    impl eggplant::wrap::NonPatRecSgl for MyTxProof {
-        fn egraph() -> std::sync::Arc<std::sync::Mutex<egglog::EGraph>> {
-            <Self as crate::wrap::NonPatRecSgl>::egraph()
-        }
-    }
-
-    eggplant::basic_patttern_recorder!(MyPatRec);
-    impl eggplant::wrap::WithPatRecSgl for MyTxProof {
-        type PatRecSgl = MyPatRec;
-    }
-    impl eggplant::wrap::WithRxSgl for MyPatRec {
-        type RxSgl = MyTxProof;
-    }
+    tx_rx_vt_pr_pf!(MyTxProof, MyPatRec);
 
     #[test]
     fn proofs_mode_apis_smoke() {
@@ -3703,12 +3675,24 @@ mod proofs_api_tests {
             "MulPat should match in proofs mode"
         );
 
-        // 1) Value-based proof export must be non-empty and show rewrite rule name.
+        // 1) Value-based proof export must be non-empty.
         let proof = MyTxProof::sgl()
             .prove_eq_pretty_raw("ProofExpr", mul_value, expected_value)
             .expect("prove_eq_pretty_raw should succeed");
         assert!(!proof.trim().is_empty());
-        assert!(proof.contains("(name \"@MulPat\")"));
+        assert!(
+            proof.contains("ProofMul"),
+            "raw value equality proof should keep the exact lhs term, got:\n{proof}"
+        );
+        assert!(
+            proof.contains("MulPat"),
+            "raw value equality proof should prove through the applied rule, got:\n{proof}"
+        );
+        let templates = ProofRulesTemplateIndex::from_default_path()
+            .expect("rules.template should be available for typst export");
+        let proof_typst = render_proof_text_typst(&proof, &templates);
+        assert!(!proof_typst.trim().is_empty());
+        assert!(proof_typst.contains("#box("));
 
         // 2) Expr-AST-based APIs: call them with surface constructor ASTs.
         //
@@ -3738,30 +3722,63 @@ mod proofs_api_tests {
         );
         let _ =
             MyTxProof::sgl().value_equiv_expr_ast("ProofExpr", expected_value, const6_ast.clone());
-        let _ = MyTxProof::sgl().prove_eq_pretty_expr_ast("ProofExpr", mul_ast, const6_ast);
+        let proof_expr = MyTxProof::sgl()
+            .prove_eq_pretty_expr_ast("ProofExpr", mul_ast, const6_ast)
+            .expect("prove_eq_pretty_expr_ast should succeed");
+        assert!(!proof_expr.trim().is_empty());
+        assert!(
+            proof_expr.contains("MulPat"),
+            "expr-ast proof should retain the applied rule chain"
+        );
 
-        // 3) Regression: proof export should work for non-canonical values too (class-id/canon-rep keying).
-        let (rep, non_rep) = {
-            let egraph_handle = <MyTxProof as crate::wrap::NonPatRecSgl>::egraph();
-            let egraph = egraph_handle.lock().unwrap();
-            let sort = egraph.get_sort_by_name("ProofExpr").unwrap().clone();
-            let rep = egraph.get_canonical_value(mul_value, &sort);
-            let non_rep = if mul_value != rep {
-                Some(mul_value)
-            } else if expected_value != rep {
-                Some(expected_value)
-            } else {
-                None
-            };
-            (rep, non_rep)
-        };
-        if let Some(non_rep) = non_rep {
-            let proof_nonrep = MyTxProof::sgl()
-                .prove_eq_pretty_raw("ProofExpr", non_rep, rep)
-                .expect("prove_eq_pretty_raw(nonrep, rep) should succeed");
-            assert!(!proof_nonrep.trim().is_empty());
-            assert!(proof_nonrep.contains("(name \"@MulPat\")"));
-        }
+        // 3) Single-term proof APIs: these wrap egglog's `(prove <fact>)` path.
+        let term_proof = MyTxProof::sgl()
+            .prove_pretty_raw("ProofExpr", mul_value)
+            .expect("prove_pretty_raw should succeed for an inserted term");
+        assert!(!term_proof.trim().is_empty());
+
+        let term_typst = MyTxProof::sgl()
+            .prove_typst_raw_default_template("ProofExpr", mul_value)
+            .expect("prove_typst_raw_default_template should succeed for an inserted term");
+        assert!(!term_typst.trim().is_empty());
+        let target_idx = term_typst
+            .find("Target")
+            .expect("value proof typst should show the target expression row");
+        let proposition_idx = term_typst
+            .find("Proposition")
+            .expect("value proof typst should still show the proposition row");
+        assert!(target_idx < proposition_idx);
+
+        let term_typst_concise = MyTxProof::sgl()
+            .prove_typst_raw_default_template_with_options("ProofExpr", mul_value, true)
+            .expect("prove_typst_raw_default_template_with_options should succeed");
+        assert!(!term_typst_concise.trim().is_empty());
+
+        let term_svg_concise = MyTxProof::sgl()
+            .prove_svg_raw_default_template_with_options("ProofExpr", mul_value, true)
+            .expect("prove_svg_raw_default_template_with_options should succeed");
+        assert!(!term_svg_concise.trim().is_empty());
+
+        let term_ast = Expr::Call(
+            span!(),
+            "ProofMul".to_owned(),
+            vec![
+                Expr::Call(
+                    span!(),
+                    "ProofConst".to_owned(),
+                    vec![Expr::Lit(span!(), egglog::ast::Literal::Int(3))],
+                ),
+                Expr::Call(
+                    span!(),
+                    "ProofConst".to_owned(),
+                    vec![Expr::Lit(span!(), egglog::ast::Literal::Int(2))],
+                ),
+            ],
+        );
+        let term_ast_proof = MyTxProof::sgl()
+            .prove_pretty_expr_ast(term_ast)
+            .expect("prove_pretty_expr_ast should succeed for an inserted term");
+        assert!(!term_ast_proof.trim().is_empty());
     }
 }
 

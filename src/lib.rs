@@ -1,5 +1,8 @@
+extern crate self as eggplant;
+
 pub mod artifact;
 mod butler_portugal;
+pub mod helpers;
 pub mod instances;
 pub mod prelude;
 pub mod schema;

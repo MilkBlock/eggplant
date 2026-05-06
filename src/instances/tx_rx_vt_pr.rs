@@ -1,4 +1,3 @@
-use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
 use crate::{
     etc::{Escape, quote, topo_sort},
     wrap::*,
@@ -6,23 +5,18 @@ use crate::{
 use core::panic;
 use dashmap::DashMap;
 use egglog::ast::{Expr, Fact};
+use egglog::ast::{RustSpan, Span};
 use egglog::{
     EGraph, SerializeConfig,
     ast::Facts,
-    prelude::{add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
-};
-use egglog::{
-    ast::{RustSpan, Span},
-    prelude::{rust_rule, rust_rule_with_metadata},
 };
 use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
 use petgraph::prelude::StableDiGraph;
-use std::collections::HashSet;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     path::Path,
     sync::{Arc, Mutex},
 };
@@ -47,14 +41,6 @@ pub struct TxRxVTPR {
     commit_counter: Mutex<u32>,
 }
 
-#[derive(Clone)]
-struct PremiseProofSpec {
-    /// Freshened name of the `{Ctor}ViewProof` function (e.g. `@MulViewProof`).
-    view_proof_func: Arc<str>,
-    /// Slot indices into the rust_rule callback `values` slice for this premise.
-    key_slots: Arc<[usize]>,
-}
-
 #[allow(unused)]
 #[derive(Debug)]
 pub struct CommitCheckPoint {
@@ -68,6 +54,7 @@ impl TxRxVTPR {
     pub fn clear_egraph(&self) {
         let mut egraph = self.egraph.lock().unwrap();
         self.sym2value_map.clear();
+        clear_compat_state(&egraph);
         *egraph = EGraph::default();
     }
 
@@ -90,18 +77,26 @@ impl TxRxVTPR {
 
         // Reset the underlying egraph but keep the schema in sync with the current inventory.
         // Otherwise rule registration (typechecking) will panic because sorts are missing.
-        let proofs_enabled = self.egraph.lock().unwrap().are_proofs_enabled();
+        let mut egraph_guard = self.egraph.lock().unwrap();
+        clear_compat_state(&egraph_guard);
+        let proofs_enabled = egraph_guard.are_proofs_enabled();
         let mut egraph = if proofs_enabled {
             EGraph::new_with_proofs()
         } else {
             EGraph::default()
         };
         Self::add_eggplant_sorts(&mut egraph);
-        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        // Proof egraphs need the filtered schema too: upstream egglog rejects presort-backed
+        // container sorts and other proof-incompatible declarations during type registration.
+        let type_defs = if proofs_enabled {
+            EgglogTypeRegistry::collect_type_defs_for_proofs()
+        } else {
+            EgglogTypeRegistry::collect_type_defs()
+        };
         egraph
             .run_program(type_defs)
             .expect("reset_for_bench: failed to (re)register type definitions");
-        *self.egraph.lock().unwrap() = egraph;
+        *egraph_guard = egraph;
     }
     // collect all lastest ancestors of cur_sym, without cur_sym
     pub fn collect_latest_ancestors(&self, cur_sym: Sym, index_set: &mut IndexSet<Sym>) {
@@ -243,7 +238,8 @@ impl TxRxVTPR {
             // proof_store: Mutex::new(ProofStore::default()),
             commit_counter: Mutex::new(0),
         };
-        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        // Proof mode gets the same filtered schema subset as the bench reset path.
+        let type_defs = EgglogTypeRegistry::collect_type_defs_for_proofs();
         for def in type_defs {
             tx.send(TxCommand::NativeCommand { command: def });
         }
@@ -276,6 +272,271 @@ impl TxRxVTPR {
         self.prove_eq_pretty_raw(T::TY_NAME, lhs.val, rhs.val)
     }
 
+    /// Return a pretty proof that one value's extracted term exists.
+    ///
+    /// This wraps egglog's `(prove <fact>)` command. For equality proofs between
+    /// two values, use `prove_eq_pretty_raw` / `prove_eq_pretty` instead.
+    pub fn prove_pretty_raw(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+    ) -> Result<String, egglog::Error> {
+        let mut egraph = self.egraph.lock().unwrap();
+        if !egraph.are_proofs_enabled() {
+            return Err(egglog::Error::BackendError(
+                "prove_pretty_raw requires EGraph::new_with_proofs".into(),
+            ));
+        }
+        egraph.prove_value_pretty(sort_name, value)
+    }
+
+    pub fn prove_pretty<T: EgglogTy>(&self, value: Value<T>) -> Result<String, egglog::Error> {
+        self.prove_pretty_raw(T::TY_NAME, value.val)
+    }
+
+    /// Return a Typst document for a proof that one value's extracted term exists.
+    pub fn prove_typst_raw(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_typst_raw_with_options(sort_name, value, rules_template_path, false)
+    }
+
+    pub fn prove_typst_raw_with_options(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        rules_template_path: impl AsRef<Path>,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_path(rules_template_path)?;
+        self.prove_typst_raw_with_templates_and_options(sort_name, value, &templates, concise)
+    }
+
+    /// Return a Typst document using the default template lookup.
+    pub fn prove_typst_raw_default_template(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+    ) -> Result<String, egglog::Error> {
+        self.prove_typst_raw_default_template_with_options(sort_name, value, false)
+    }
+
+    pub fn prove_typst_raw_default_template_with_options(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_default_path()?;
+        self.prove_typst_raw_with_templates_and_options(sort_name, value, &templates, concise)
+    }
+
+    pub fn prove_typst_raw_with_templates(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        templates: &ProofRulesTemplateIndex,
+    ) -> Result<String, egglog::Error> {
+        self.prove_typst_raw_with_templates_and_options(sort_name, value, templates, false)
+    }
+
+    pub fn prove_typst_raw_with_templates_and_options(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        templates: &ProofRulesTemplateIndex,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        let proof = self.prove_pretty_raw(sort_name, value)?;
+        Ok(render_value_proof_text_typst_with_options(
+            &proof, templates, concise,
+        ))
+    }
+
+    pub fn prove_typst<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_typst_with_options(value, rules_template_path, false)
+    }
+
+    pub fn prove_typst_with_options<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+        rules_template_path: impl AsRef<Path>,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        self.prove_typst_raw_with_options(T::TY_NAME, value.val, rules_template_path, concise)
+    }
+
+    pub fn prove_typst_with_default_template<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_typst_with_default_template_and_options(value, false)
+    }
+
+    pub fn prove_typst_with_default_template_and_options<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        self.prove_typst_raw_default_template_with_options(T::TY_NAME, value.val, concise)
+    }
+
+    /// Return an SVG rendering of a proof using rule cards from `rules.template`.
+    ///
+    /// The proof text still comes from egglog's proof formatter first. Eggplant then
+    /// turns that proof into a Typst document, resolves `(name "...")` rule-name
+    /// fragments against the generated Rust-source `rules.template`, and asks the
+    /// `typst` CLI to compile the document to SVG.
+    pub fn prove_eq_svg_raw(
+        &self,
+        sort_name: &str,
+        lhs: egglog::Value,
+        rhs: egglog::Value,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_path(rules_template_path)?;
+        self.prove_eq_svg_raw_with_templates(sort_name, lhs, rhs, &templates)
+    }
+
+    /// Return an SVG rendering using the default template lookup.
+    ///
+    /// The default path is `$EGGPLANT_RULES_TEMPLATE` when set, otherwise
+    /// `$CARGO_MANIFEST_DIR/rules.template`.
+    pub fn prove_eq_svg_raw_default_template(
+        &self,
+        sort_name: &str,
+        lhs: egglog::Value,
+        rhs: egglog::Value,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_default_path()?;
+        self.prove_eq_svg_raw_with_templates(sort_name, lhs, rhs, &templates)
+    }
+
+    pub fn prove_eq_svg_raw_with_templates(
+        &self,
+        sort_name: &str,
+        lhs: egglog::Value,
+        rhs: egglog::Value,
+        templates: &ProofRulesTemplateIndex,
+    ) -> Result<String, egglog::Error> {
+        let proof = self.prove_eq_pretty_raw(sort_name, lhs, rhs)?;
+        render_proof_text_svg(&proof, templates)
+    }
+
+    pub fn prove_eq_svg<T: EgglogTy>(
+        &self,
+        lhs: Value<T>,
+        rhs: Value<T>,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_eq_svg_raw(T::TY_NAME, lhs.val, rhs.val, rules_template_path)
+    }
+
+    pub fn prove_eq_svg_with_default_template<T: EgglogTy>(
+        &self,
+        lhs: Value<T>,
+        rhs: Value<T>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_eq_svg_raw_default_template(T::TY_NAME, lhs.val, rhs.val)
+    }
+
+    pub fn prove_svg_raw(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_svg_raw_with_options(sort_name, value, rules_template_path, false)
+    }
+
+    pub fn prove_svg_raw_with_options(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        rules_template_path: impl AsRef<Path>,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_path(rules_template_path)?;
+        self.prove_svg_raw_with_templates_and_options(sort_name, value, &templates, concise)
+    }
+
+    pub fn prove_svg_raw_default_template(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+    ) -> Result<String, egglog::Error> {
+        self.prove_svg_raw_default_template_with_options(sort_name, value, false)
+    }
+
+    pub fn prove_svg_raw_default_template_with_options(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_default_path()?;
+        self.prove_svg_raw_with_templates_and_options(sort_name, value, &templates, concise)
+    }
+
+    pub fn prove_svg_raw_with_templates(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        templates: &ProofRulesTemplateIndex,
+    ) -> Result<String, egglog::Error> {
+        self.prove_svg_raw_with_templates_and_options(sort_name, value, templates, false)
+    }
+
+    pub fn prove_svg_raw_with_templates_and_options(
+        &self,
+        sort_name: &str,
+        value: egglog::Value,
+        templates: &ProofRulesTemplateIndex,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        let proof = self.prove_pretty_raw(sort_name, value)?;
+        render_value_proof_text_svg_with_options(&proof, templates, concise)
+    }
+
+    pub fn prove_svg<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_svg_with_options(value, rules_template_path, false)
+    }
+
+    pub fn prove_svg_with_options<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+        rules_template_path: impl AsRef<Path>,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        self.prove_svg_raw_with_options(T::TY_NAME, value.val, rules_template_path, concise)
+    }
+
+    pub fn prove_svg_with_default_template<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+    ) -> Result<String, egglog::Error> {
+        self.prove_svg_with_default_template_and_options(value, false)
+    }
+
+    pub fn prove_svg_with_default_template_and_options<T: EgglogTy>(
+        &self,
+        value: Value<T>,
+        concise: bool,
+    ) -> Result<String, egglog::Error> {
+        self.prove_svg_raw_default_template_with_options(T::TY_NAME, value.val, concise)
+    }
+
     /// Prove an equality between two *surface* expressions (AST).
     ///
     /// `sort_name` selects which UF/UFProof tables to use for exporting the proof.
@@ -291,15 +552,128 @@ impl TxRxVTPR {
                 "prove_eq_pretty_expr_ast requires EGraph::new_with_proofs".into(),
             ));
         }
+        let sort = egraph
+            .get_sort_by_name(sort_name)
+            .ok_or_else(|| egglog::Error::BackendError(format!("unknown sort {sort_name}")))?
+            .clone();
+        if !sort.is_eq_sort() {
+            return Err(egglog::Error::BackendError(format!(
+                "prove_eq_pretty_expr_ast requires eq sort, got {}",
+                sort.name()
+            )));
+        }
 
         egraph.push();
         let res = (|| {
-            let (_lhs_sort, lhs_value) = egraph.eval_expr(&lhs)?;
-            let (_rhs_sort, rhs_value) = egraph.eval_expr(&rhs)?;
-            egraph.prove_values_equal_pretty(sort_name, lhs_value, rhs_value)
+            let program = format!("(prove (= {lhs} {rhs}))");
+            let outputs = egraph.parse_and_run_program(None, &program)?;
+            outputs
+                .into_iter()
+                .find_map(|output| match output {
+                    egglog::CommandOutput::ProveExists {
+                        proof_store,
+                        proof_id,
+                    } => Some(proof_store.proof_to_string(proof_id)),
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    egglog::Error::BackendError("prove command did not produce a proof".into())
+                })
         })();
         egraph.pop()?;
         res
+    }
+
+    /// Prove one surface fact or constructor expression.
+    ///
+    /// This is the eggplant wrapper for egglog's `(prove <fact>)` path. It is
+    /// useful when the proposition is "this term/fact exists" rather than
+    /// "these two terms are equal".
+    pub fn prove_pretty_expr_ast(&self, expr: egglog::ast::Expr) -> Result<String, egglog::Error> {
+        let mut egraph = self.egraph.lock().unwrap();
+        if !egraph.are_proofs_enabled() {
+            return Err(egglog::Error::BackendError(
+                "prove_pretty_expr_ast requires EGraph::new_with_proofs".into(),
+            ));
+        }
+
+        egraph.push();
+        let res = (|| {
+            let program = format!("(prove {expr})");
+            let outputs = egraph.parse_and_run_program(None, &program)?;
+            outputs
+                .into_iter()
+                .find_map(|output| match output {
+                    egglog::CommandOutput::ProveExists {
+                        proof_store,
+                        proof_id,
+                    } => Some(proof_store.proof_to_string(proof_id)),
+                    _ => None,
+                })
+                .ok_or_else(|| {
+                    egglog::Error::BackendError("prove command did not produce a proof".into())
+                })
+        })();
+        egraph.pop()?;
+        res
+    }
+
+    pub fn prove_eq_svg_expr_ast(
+        &self,
+        sort_name: &str,
+        lhs: egglog::ast::Expr,
+        rhs: egglog::ast::Expr,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_path(rules_template_path)?;
+        self.prove_eq_svg_expr_ast_with_templates(sort_name, lhs, rhs, &templates)
+    }
+
+    pub fn prove_eq_svg_expr_ast_default_template(
+        &self,
+        sort_name: &str,
+        lhs: egglog::ast::Expr,
+        rhs: egglog::ast::Expr,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_default_path()?;
+        self.prove_eq_svg_expr_ast_with_templates(sort_name, lhs, rhs, &templates)
+    }
+
+    pub fn prove_eq_svg_expr_ast_with_templates(
+        &self,
+        sort_name: &str,
+        lhs: egglog::ast::Expr,
+        rhs: egglog::ast::Expr,
+        templates: &ProofRulesTemplateIndex,
+    ) -> Result<String, egglog::Error> {
+        let proof = self.prove_eq_pretty_expr_ast(sort_name, lhs, rhs)?;
+        render_proof_text_svg(&proof, templates)
+    }
+
+    pub fn prove_svg_expr_ast(
+        &self,
+        expr: egglog::ast::Expr,
+        rules_template_path: impl AsRef<Path>,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_path(rules_template_path)?;
+        self.prove_svg_expr_ast_with_templates(expr, &templates)
+    }
+
+    pub fn prove_svg_expr_ast_default_template(
+        &self,
+        expr: egglog::ast::Expr,
+    ) -> Result<String, egglog::Error> {
+        let templates = ProofRulesTemplateIndex::from_default_path()?;
+        self.prove_svg_expr_ast_with_templates(expr, &templates)
+    }
+
+    pub fn prove_svg_expr_ast_with_templates(
+        &self,
+        expr: egglog::ast::Expr,
+        templates: &ProofRulesTemplateIndex,
+    ) -> Result<String, egglog::Error> {
+        let proof = self.prove_pretty_expr_ast(expr)?;
+        render_proof_text_svg(&proof, templates)
     }
 
     /// Check whether an e-graph `Value` is in the same e-class as a given surface expression (AST).
@@ -735,6 +1109,10 @@ impl TxCommit for TxRxVTPR {
         );
         // build check point
         let ruleset_name = format!("{}_ruleset", rule_name);
+        let proofs_enabled = {
+            let egraph = self.egraph.lock().unwrap();
+            egraph.are_proofs_enabled()
+        };
 
         let sym2value_map = Arc::clone(&self.sym2value_map);
         let topo_sorted_nodes_clone = topo_sorted_nodes.clone();
@@ -742,17 +1120,47 @@ impl TxCommit for TxRxVTPR {
         log::debug!("sorted to be {:?}", topo_sorted_nodes);
         let map_clone = self.map.clone();
 
-        // sue add_rule API to create rule
         let mut egraph = self.egraph.lock().unwrap();
-        egglog::prelude::add_ruleset(&mut egraph, &ruleset_name).unwrap();
+        add_ruleset(&mut egraph, &ruleset_name).unwrap();
         let hook = RuleHookObj(ctx_hook);
+
+        let (vars, facts) = if proofs_enabled {
+            let trigger_name = format!(
+                "__eggplant_commit_trigger_{}",
+                self.commit_counter.lock().unwrap()
+            );
+            egraph
+                .parse_and_run_program(
+                    None,
+                    &format!("(function {trigger_name} () Unit :merge old)"),
+                )
+                .unwrap();
+            egraph
+                .parse_and_run_program(None, &format!("(set ({trigger_name}) ())"))
+                .unwrap();
+            let unit_sort = egraph
+                .get_sort_by_name("Unit")
+                .expect("Unit sort should be registered")
+                .clone();
+            (
+                vec![("__eggplant_commit_trigger", unit_sort)],
+                Facts(vec![Fact::Eq(
+                    span!(),
+                    Expr::Call(span!(), trigger_name, vec![]),
+                    Expr::Var(span!(), "__eggplant_commit_trigger".to_owned()),
+                )]),
+            )
+        } else {
+            (Vec::new(), Facts(vec![]))
+        };
+
         let rule_rst = rust_rule(
             &mut egraph,
             format!("commit{}", self.commit_counter.lock().unwrap()).as_str(),
             ruleset_name.as_str(),
-            &[],
-            Facts(vec![]),
-            move |ctx, _| {
+            &vars,
+            facts,
+            move |ctx, _values| {
                 let ctx = RuleCtx::new(ctx, hook.clone());
                 let sym2value_map = sym2value_map.clone();
                 for &sym in &backup_staged_new_syms_for_rule {
@@ -762,6 +1170,7 @@ impl TxCommit for TxRxVTPR {
                         let value = node.egglog.native_egglog(&ctx, &sym2value_map);
                         // store sym value pair to sym_to_value_map
                         sym2value_map.insert(sym, value);
+                        ctx.insert_timestamp_for_value(node.egglog.ty_name(), value);
                         log::debug!("Added node {} to sym_to_value_map using native_egglog", sym);
                     }
                 }
@@ -774,6 +1183,7 @@ impl TxCommit for TxRxVTPR {
                         let value = node.egglog.native_egglog(&ctx, &sym2value_map);
                         // store sym value pair to sym_to_value_map
                         sym2value_map.insert(sym, value);
+                        ctx.insert_timestamp_for_value(node.egglog.ty_name(), value);
                         log::debug!(
                             "Update node {} to sym_to_value_map using native_egglog",
                             sym
@@ -943,67 +1353,17 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                 vars.push((var, sort));
             }
         }
-        log::debug!("{:#?}", facts);
-        log::debug!("{:#?}", vars);
+        log::debug!("add_rule facts for {rule_name}: {facts:#?}");
+        log::debug!("add_rule vars for {rule_name}: {vars:#?}");
 
         let rust_rule_name = Arc::<str>::from(rule_name.to_owned());
 
-        let proofs_enabled = egraph.are_proofs_enabled();
         let binding_var_slots: HashMap<Arc<str>, usize> = vars
             .iter()
             .enumerate()
             .map(|(idx, (name, _))| (Arc::<str>::from(name.as_str()), idx))
             .collect();
         let decode_plan = Arc::new(pat_vars.build_decode_plan(&binding_var_slots));
-        let premise_specs: Arc<[PremiseProofSpec]> = if proofs_enabled {
-            let mut specs = Vec::new();
-            for fact in facts.iter() {
-                let Fact::Eq(_, lhs, rhs) = fact else {
-                    continue;
-                };
-                let (out, head, args) = match (lhs, rhs) {
-                    (Expr::Var(_, out), Expr::Call(_, head, args)) => (out, head, args),
-                    (Expr::Call(_, head, args), Expr::Var(_, out)) => (out, head, args),
-                    _ => continue,
-                };
-                let mut key_slots: Vec<usize> = Vec::with_capacity(args.len() + 1);
-                for arg in args.iter() {
-                    match arg {
-                        Expr::Var(_, v) => key_slots.push(
-                            *binding_var_slots
-                                .get(v.as_str())
-                                .unwrap_or_else(|| panic!("missing premise arg binding {}", v)),
-                        ),
-                        _ => {
-                            key_slots.clear();
-                            break;
-                        }
-                    }
-                }
-                if key_slots.is_empty() {
-                    continue;
-                }
-                key_slots.push(
-                    *binding_var_slots
-                        .get(out.as_str())
-                        .unwrap_or_else(|| panic!("missing premise out binding {}", out)),
-                );
-
-                let view_proof_func = match egraph.proof_view_proof_name(head) {
-                    Ok(name) => Arc::<str>::from(name.to_owned()),
-                    Err(_) => {
-                        continue;
-                    }
-                };
-                specs.push(PremiseProofSpec {
-                    view_proof_func,
-                    key_slots: Arc::from(key_slots.into_boxed_slice()),
-                });
-            }
-            Arc::from(specs.into_boxed_slice())
-        } else {
-            Arc::from(Vec::<PremiseProofSpec>::new().into_boxed_slice())
-        };
         let hook = RuleHookObj(ctx_hook);
         let rst = rust_rule_with_metadata(
             &mut egraph,
@@ -1016,25 +1376,6 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
             Facts(facts),
             move |ctx, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
-                let _premise_scope = if proofs_enabled {
-                    let premise_proofs: Arc<[egglog::Value]> = if premise_specs.is_empty() {
-                        empty_premise_proofs()
-                    } else {
-                        let mut proofs = Vec::with_capacity(premise_specs.len());
-                        for spec in premise_specs.iter() {
-                            let mut key = Vec::with_capacity(spec.key_slots.len());
-                            for &slot in spec.key_slots.iter() {
-                                key.push(values[slot]);
-                            }
-                            let prf = ctx.ctx.insert(spec.view_proof_func.as_ref(), &key);
-                            proofs.push(prf);
-                        }
-                        Arc::from(proofs.into_boxed_slice())
-                    };
-                    Some(PremiseProofScope::enter(premise_proofs))
-                } else {
-                    None
-                };
                 let valued_pat_vars = P::decode_with_plan(values, &[], decode_plan.as_ref());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
@@ -1062,13 +1403,16 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
     #[track_caller]
     fn run_ruleset(&self, ruleset_id: RuleSetId, until: RunConfig) -> RunReport {
         let mut egraph = self.egraph.lock().unwrap();
+        // Proof egraphs must go through the compat run_ruleset path so egglog emits
+        // proof-aware CommandOutput records. The plain step_rules fast path is only for
+        // non-proof execution.
         match until {
             RunConfig::Sat => {
                 let mut run_report = RunReport::default();
                 loop {
                     let iter_report = if egraph.are_proofs_enabled() {
-                        let outputs =
-                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        let outputs = run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        log::debug!("proof run_ruleset raw outputs: {outputs:#?}");
                         outputs
                             .into_iter()
                             .find_map(|o| match o {
@@ -1091,8 +1435,8 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
                 if egraph.are_proofs_enabled() {
                     let mut run_report = RunReport::default();
                     for _ in 0..times {
-                        let outputs =
-                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        let outputs = run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        log::debug!("proof run_ruleset raw outputs: {outputs:#?}");
                         let iter_report = outputs
                             .into_iter()
                             .find_map(|o| match o {
@@ -1114,7 +1458,8 @@ impl<PR: PatRecSgl> RuleRunner<PR> for TxRxVTPR {
             }
             RunConfig::Once => {
                 if egraph.are_proofs_enabled() {
-                    let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                    let outputs = run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                    log::debug!("proof run_ruleset raw outputs: {outputs:#?}");
                     outputs
                         .into_iter()
                         .find_map(|o| match o {

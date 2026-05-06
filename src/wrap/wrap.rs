@@ -1,6 +1,12 @@
 use crate::prelude::slotted::{_FuncValueMeta, FuncName, FuncValueMeta};
 use crate::prelude::{SlotMeta, TxRxVT};
+use crate::wrap::DslVariantDecl;
 use crate::wrap::constraint::IntoConstraintFact;
+#[cfg(feature = "rustsat-extract")]
+use crate::wrap::eboost_extract::{
+    EBoostCandidate, EBoostEqKey, EBoostPrepared, collect_candidates, prepare_eboost_candidates,
+};
+use crate::wrap::eboost_extract::{EBoostExtractConfig, eboost_extract_value_prototype};
 use crate::wrap::{
     EValue, EgglogFunc, EgglogFuncInputs, EgglogFuncInputsRef, EgglogFuncOutput, EgglogRelation,
     EgglogTy, FactsBuilder, FromBase, SortName, SymLit, TableName, VarName,
@@ -12,10 +18,10 @@ use egglog::ast::{RustSpan, Span};
 use egglog::extract::{CostModel, DefaultCost, TreeAdditiveCostModel};
 use egglog::prelude::span;
 use egglog::{
-    ArcSort, BaseValue, ContainerValue, EGraph, SchemaFunctionKind, SerializeConfig,
+    ArcSort, BaseValue, ContainerValue, EGraph,
     ast::{Command, GenericAction, GenericExpr},
 };
-use egglog::{TermDag, TermId, ast::Literal};
+use egglog::{Term, TermDag, TermId, ast::Literal};
 #[cfg(feature = "rustsat-extract")]
 use rustsat::{
     algs::maxsat::SolutionImprovingSearch,
@@ -29,18 +35,22 @@ use rustsat::{
 use rustsat_minisat::core::Minisat as RustsatMinisat;
 use serde::{Deserialize, Serialize};
 use smallvec::SmallVec;
+#[cfg(feature = "rustsat-extract")]
+use std::collections::{BTreeSet, HashSet, VecDeque};
 use std::sync::Mutex;
 use std::{
     any::Any,
     borrow::Borrow,
     borrow::Cow,
-    collections::{BTreeSet, HashMap, HashSet, VecDeque},
-    fmt,
+    collections::HashMap,
+    fmt, fs,
     hash::Hash,
     marker::PhantomData,
     panic::Location,
     path::Path,
+    process::Command as ProcessCommand,
     sync::{Arc, atomic::AtomicU32},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use strum::IntoDiscriminant;
 use strum_macros::{EnumDiscriminants, EnumIs};
@@ -782,6 +792,131 @@ pub fn render_variant_display<V: EgglogEnumVariantTy>(
 ) -> Option<String> {
     V::DISPLAY_TEMPLATE
         .map(|template| render_template_with_precedence(template, V::PRECEDENCE, fields))
+}
+
+fn dsl_variant_decl(variant_name: &str) -> Option<&'static DslVariantDecl> {
+    inventory::iter::<DslVariantDecl>
+        .into_iter()
+        .find(|decl| decl.variant_name == variant_name)
+}
+
+fn literal_to_typst(literal: &Literal) -> String {
+    match literal {
+        Literal::Int(n) => n.to_string(),
+        Literal::Float(n) => n.to_string(),
+        Literal::String(s) => {
+            if s.chars().count() == 1 {
+                s.clone()
+            } else {
+                format!("\"{s}\"")
+            }
+        }
+        Literal::Bool(b) => b.to_string(),
+        Literal::Unit => "()".to_string(),
+    }
+}
+
+fn render_term_to_typst(
+    term_id: TermId,
+    term_dag: &TermDag,
+) -> Result<RenderedTemplateField<'static>, egglog::Error> {
+    match term_dag.get(term_id) {
+        Term::Lit(literal) => Ok(RenderedTemplateField::atom(literal_to_typst(literal))),
+        Term::Var(name) => Ok(RenderedTemplateField::atom(name.clone())),
+        Term::App(name, children) => {
+            let decl = dsl_variant_decl(name.as_str()).ok_or_else(|| {
+                egglog::Error::BackendError(format!(
+                    "missing DslVariantDecl metadata for extracted variant `{name}`"
+                ))
+            })?;
+            let typst_template = decl.typst_template.ok_or_else(|| {
+                egglog::Error::BackendError(format!(
+                    "variant `{name}` does not provide a #[typst(...)] template"
+                ))
+            })?;
+            if decl.fields.len() != children.len() {
+                return Err(egglog::Error::BackendError(format!(
+                    "variant `{name}` field count does not match extracted term arity"
+                )));
+            }
+
+            let mut rendered_fields = Vec::with_capacity(children.len());
+            for (field, child_term) in decl.fields.iter().zip(children.iter()) {
+                rendered_fields.push((field.name, render_term_to_typst(*child_term, term_dag)?));
+            }
+
+            Ok(RenderedTemplateField::new(
+                render_template_with_precedence(typst_template, decl.precedence, &rendered_fields),
+                decl.precedence,
+            ))
+        }
+    }
+}
+
+pub fn compile_typst_document_to_svg(
+    typst_source: &str,
+    output_path: &Path,
+) -> Result<(), egglog::Error> {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| egglog::Error::BackendError(format!("system clock error: {err}")))?
+        .as_nanos();
+    let input_path = std::env::temp_dir().join(format!("eggplant_typst_render_{unique}.typ"));
+    fs::write(&input_path, typst_source).map_err(|err| {
+        egglog::Error::BackendError(format!(
+            "failed to write temporary typst source `{}`: {err}",
+            input_path.display()
+        ))
+    })?;
+
+    let output = ProcessCommand::new("typst")
+        .arg("compile")
+        .arg(&input_path)
+        .arg(output_path)
+        .output()
+        .map_err(|err| {
+            egglog::Error::BackendError(format!("failed to invoke `typst compile`: {err}"))
+        })?;
+
+    let _ = fs::remove_file(&input_path);
+
+    if !output.status.success() {
+        return Err(egglog::Error::BackendError(format!(
+            "`typst compile` failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        )));
+    }
+
+    Ok(())
+}
+
+pub fn compile_typst_document_to_svg_string(typst_source: &str) -> Result<String, egglog::Error> {
+    let unique = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|err| egglog::Error::BackendError(format!("system clock error: {err}")))?
+        .as_nanos();
+    let output_path = std::env::temp_dir().join(format!("eggplant_typst_render_{unique}.svg"));
+    let result = compile_typst_document_to_svg(typst_source, &output_path).and_then(|_| {
+        fs::read_to_string(&output_path).map_err(|err| {
+            egglog::Error::BackendError(format!(
+                "failed to read temporary typst output `{}`: {err}",
+                output_path.display()
+            ))
+        })
+    });
+    let _ = fs::remove_file(&output_path);
+    result
+}
+
+pub fn compile_typst_math_to_svg(
+    typst_math: &str,
+    output_path: &Path,
+) -> Result<(), egglog::Error> {
+    let document = format!(
+        "#set page(width: auto, height: auto, margin: 8pt)\n#set text(size: 14pt)\n${}$\n",
+        typst_math
+    );
+    compile_typst_document_to_svg(&document, output_path)
 }
 
 #[derive(DerefMut, Deref)]
@@ -1550,8 +1685,26 @@ impl RustsatExtractConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct EBoostLayeredConfig {
+    pub bound: f32,
+    pub exact: RustsatExtractConfig,
+}
+
+impl Default for EBoostLayeredConfig {
+    fn default() -> Self {
+        Self {
+            bound: 1.25,
+            exact: RustsatExtractConfig::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub enum ExtractBackend<CM = TreeAdditiveCostModel> {
     CostModel(CM),
+    EBoostHeuristic(EBoostExtractConfig),
+    #[cfg(feature = "rustsat-extract")]
+    EBoostLayered(EBoostLayeredConfig),
     #[cfg(feature = "rustsat-extract")]
     Rustsat(RustsatExtractConfig),
 }
@@ -1559,6 +1712,15 @@ pub enum ExtractBackend<CM = TreeAdditiveCostModel> {
 impl<CM> ExtractBackend<CM> {
     pub fn cost_model(cost_model: CM) -> Self {
         Self::CostModel(cost_model)
+    }
+
+    pub fn eboost_heuristic(config: EBoostExtractConfig) -> Self {
+        Self::EBoostHeuristic(config)
+    }
+
+    #[cfg(feature = "rustsat-extract")]
+    pub fn eboost_layered(config: EBoostLayeredConfig) -> Self {
+        Self::EBoostLayered(config)
     }
 
     #[cfg(feature = "rustsat-extract")]
@@ -1570,6 +1732,30 @@ impl<CM> ExtractBackend<CM> {
 impl Default for ExtractBackend<TreeAdditiveCostModel> {
     fn default() -> Self {
         Self::CostModel(TreeAdditiveCostModel::default())
+    }
+}
+
+pub fn extract_raw_with_backend<CM: CostModel<DefaultCost> + 'static>(
+    egraph: &EGraph,
+    sort: &ArcSort,
+    value: egglog::Value,
+    backend: ExtractBackend<CM>,
+) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
+    match backend {
+        ExtractBackend::CostModel(cost_model) => {
+            egraph.extract_value_with_cost_model(sort, value, cost_model)
+        }
+        ExtractBackend::EBoostHeuristic(config) => {
+            eboost_extract_value_prototype(egraph, sort, value, config)
+        }
+        #[cfg(feature = "rustsat-extract")]
+        ExtractBackend::EBoostLayered(config) => {
+            eboost_layered_extract_value_prototype(egraph, sort, value, config)
+        }
+        #[cfg(feature = "rustsat-extract")]
+        ExtractBackend::Rustsat(config) => {
+            rustsat_extract_value_prototype(egraph, sort, value, config)
+        }
     }
 }
 
@@ -1594,26 +1780,10 @@ pub trait ExtractSgl: NonPatRecSgl {
         value: Value<T>,
         backend: ExtractBackend<CM>,
     ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
-        match backend {
-            ExtractBackend::CostModel(cost_model) => {
-                Self::extract_value_with_cost_model(value, cost_model)
-            }
-            #[cfg(feature = "rustsat-extract")]
-            ExtractBackend::Rustsat(config) => {
-                Self::extract_value_with_rustsat_config(value, config)
-            }
-        }
-    }
-
-    #[cfg(feature = "rustsat-extract")]
-    fn extract_value_with_rustsat_config<T: EgglogTy>(
-        value: Value<T>,
-        config: RustsatExtractConfig,
-    ) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
         let egraph = Self::egraph();
         let egraph = egraph.lock().unwrap();
         let sort = T::get_arc_sort(&egraph);
-        rustsat_extract_value_prototype(&egraph, &sort, value.val, config)
+        extract_raw_with_backend(&egraph, &sort, value.val, backend)
     }
 
     fn extract_value_to_string<T: EgglogTy>(
@@ -1707,6 +1877,33 @@ pub trait ExtractNodeSgl: ExtractSgl + TxSgl {
             backend,
         )
     }
+
+    fn extract_node_to_typst_with_backend<N, CM>(
+        node: &N,
+        backend: ExtractBackend<CM>,
+    ) -> Result<(String, DefaultCost), egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+        CM: CostModel<DefaultCost> + 'static,
+    {
+        let (termdag, term, cost) = Self::extract_node_with_backend(node, backend)?;
+        let rendered = render_term_to_typst(term, &termdag)?.text.into_owned();
+        Ok((rendered, cost))
+    }
+
+    fn extract_node_to_svg_with_backend<N, CM>(
+        node: &N,
+        backend: ExtractBackend<CM>,
+        output_path: impl AsRef<Path>,
+    ) -> Result<DefaultCost, egglog::Error>
+    where
+        N: EgglogNode + EgglogTy + 'static,
+        CM: CostModel<DefaultCost> + 'static,
+    {
+        let (typst, cost) = Self::extract_node_to_typst_with_backend(node, backend)?;
+        compile_typst_math_to_svg(&typst, output_path.as_ref())?;
+        Ok(cost)
+    }
 }
 impl<T: ExtractSgl + TxSgl> ExtractNodeSgl for T {}
 
@@ -1747,6 +1944,16 @@ impl RustsatCandidateDraft {
 }
 
 #[cfg(feature = "rustsat-extract")]
+impl From<&EBoostEqKey> for RustsatEqKey {
+    fn from(value: &EBoostEqKey) -> Self {
+        Self {
+            sort_name: value.sort_name.clone(),
+            value: value.value,
+        }
+    }
+}
+
+#[cfg(feature = "rustsat-extract")]
 impl RustsatCandidate {
     fn decode_key(&self) -> String {
         format!(
@@ -1781,6 +1988,15 @@ fn rustsat_extract_value_prototype(
     };
 
     let draft_candidates = rustsat_collect_draft_candidates(egraph)?;
+    rustsat_extract_from_drafts(egraph, root_key, draft_candidates)
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_extract_from_drafts(
+    egraph: &EGraph,
+    root_key: RustsatEqKey,
+    draft_candidates: Vec<RustsatCandidateDraft>,
+) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
     let draft_by_output = rustsat_index_draft_candidates(&draft_candidates);
     let reachable_classes =
         rustsat_collect_reachable_classes(&root_key, &draft_candidates, &draft_by_output)?;
@@ -1881,89 +2097,93 @@ fn rustsat_extract_value_prototype(
 }
 
 #[cfg(feature = "rustsat-extract")]
+fn eboost_layered_extract_value_prototype(
+    egraph: &EGraph,
+    sort: &ArcSort,
+    value: egglog::Value,
+    config: EBoostLayeredConfig,
+) -> Result<(TermDag, TermId, DefaultCost), egglog::Error> {
+    if !(config.bound.is_finite() && config.bound >= 1.0) {
+        return Err(egglog::Error::BackendError(format!(
+            "eboost layered extraction requires bound >= 1.0, got {}",
+            config.bound
+        )));
+    }
+    let prepared = prepare_eboost_candidates(egraph, sort, value)?;
+    let pruned = eboost_layered_prune_candidates(&prepared, config.bound);
+    let drafts = pruned
+        .iter()
+        .map(rustsat_draft_from_eboost_candidate)
+        .collect::<Result<Vec<_>, _>>()?;
+    rustsat_extract_from_drafts(egraph, RustsatEqKey::from(&prepared.root_key), drafts)
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn eboost_layered_prune_candidates(prepared: &EBoostPrepared, bound: f32) -> Vec<EBoostCandidate> {
+    let heuristic_choice_ids = prepared
+        .best_by_class
+        .values()
+        .map(|cost_set| cost_set.candidate_idx)
+        .collect::<HashSet<_>>();
+
+    let mut min_score_by_class = HashMap::<EBoostEqKey, DefaultCost>::new();
+    for (idx, score) in &prepared.candidate_scores {
+        let class_key = prepared.reachable_candidates[*idx].output.clone();
+        min_score_by_class
+            .entry(class_key)
+            .and_modify(|existing| {
+                if *score < *existing {
+                    *existing = *score;
+                }
+            })
+            .or_insert(*score);
+    }
+
+    prepared
+        .reachable_candidates
+        .iter()
+        .enumerate()
+        .filter(|(idx, candidate)| {
+            if heuristic_choice_ids.contains(idx) {
+                return true;
+            }
+            let Some(score) = prepared.candidate_scores.get(idx) else {
+                return true;
+            };
+            let Some(class_min) = min_score_by_class.get(&candidate.output) else {
+                return true;
+            };
+            (*score as f64) <= (*class_min as f64) * (bound as f64)
+        })
+        .map(|(_, candidate)| candidate.clone())
+        .collect()
+}
+
+#[cfg(feature = "rustsat-extract")]
+fn rustsat_draft_from_eboost_candidate(
+    candidate: &EBoostCandidate,
+) -> Result<RustsatCandidateDraft, egglog::Error> {
+    Ok(RustsatCandidateDraft {
+        term_name: candidate.term_name.clone(),
+        output: RustsatEqKey::from(&candidate.output),
+        inputs: candidate.inputs.clone(),
+        penalty: usize::try_from(candidate.head_cost).map_err(|_| {
+            egglog::Error::BackendError(format!(
+                "cost for `{}` does not fit into rustsat weight domain",
+                candidate.term_name
+            ))
+        })?,
+    })
+}
+
+#[cfg(feature = "rustsat-extract")]
 fn rustsat_collect_draft_candidates(
     egraph: &EGraph,
 ) -> Result<Vec<RustsatCandidateDraft>, egglog::Error> {
-    let raw_rows = egraph.serialize_raw(SerializeConfig::default());
-    let mut functions = egraph
-        .schema_manifest()
-        .functions
-        .into_iter()
-        .map(|function| (function.name.clone(), function))
-        .collect::<HashMap<_, _>>();
-    let mut out = Vec::new();
-
-    for (func_name, rows) in raw_rows {
-        let Some(function_manifest) = functions.remove(&func_name) else {
-            continue;
-        };
-        if function_manifest.kind != SchemaFunctionKind::Constructor
-            || function_manifest.hidden
-            || function_manifest.unextractable
-        {
-            continue;
-        }
-        if function_manifest.term_constructor.is_some() {
-            return Err(egglog::Error::BackendError(format!(
-                "rustsat extraction prototype does not yet support view-table / term-constructor extraction (`{func_name}`); that stays blocked on the broader core work"
-            )));
-        }
-
-        let function = egraph.get_function(&func_name).ok_or_else(|| {
-            egglog::Error::BackendError(format!(
-                "schema_manifest listed function `{func_name}` but EGraph::get_function could not find it"
-            ))
-        })?;
-        let output_sort = function.schema().output.clone();
-        if !output_sort.is_eq_sort() {
-            continue;
-        }
-
-        for row in rows.into_iter().filter(|row| !row.subsumed) {
-            if row.inputs_complex.len() != function.schema().input.len() {
-                return Err(egglog::Error::BackendError(format!(
-                    "row/schema arity mismatch while collecting rustsat candidates for `{func_name}`"
-                )));
-            }
-
-            let output_value = egraph.get_canonical_value(row.output, &output_sort);
-            let mut inputs = Vec::with_capacity(row.inputs_complex.len());
-            for (raw_value, input_sort) in row
-                .inputs_complex
-                .iter()
-                .copied()
-                .zip(function.schema().input.iter())
-            {
-                if input_sort.is_container_sort() {
-                    return Err(egglog::Error::BackendError(format!(
-                        "rustsat extraction prototype does not yet support container children (hit in `{func_name}`); keep this out of the first demo and broader prototype until the core is widened"
-                    )));
-                }
-                let canonical_value = if input_sort.is_eq_sort() {
-                    egraph.get_canonical_value(raw_value, input_sort)
-                } else {
-                    raw_value
-                };
-                inputs.push((input_sort.clone(), canonical_value));
-            }
-
-            out.push(RustsatCandidateDraft {
-                term_name: func_name.clone(),
-                output: RustsatEqKey {
-                    sort_name: output_sort.name().to_string(),
-                    value: output_value,
-                },
-                inputs,
-                penalty: usize::try_from(function_manifest.cost.unwrap_or(1)).map_err(|_| {
-                    egglog::Error::BackendError(format!(
-                        "cost for `{func_name}` does not fit into rustsat weight domain"
-                    ))
-                })?,
-            });
-        }
-    }
-
-    Ok(out)
+    collect_candidates(egraph)?
+        .iter()
+        .map(rustsat_draft_from_eboost_candidate)
+        .collect()
 }
 
 #[cfg(feature = "rustsat-extract")]

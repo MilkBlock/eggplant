@@ -1,6 +1,5 @@
 #[cfg(feature = "viewer")]
 use crate::prelude::SlottedPatRecorder;
-use crate::wrap::rule::{PremiseProofScope, empty_premise_proofs};
 use crate::{
     etc::{Escape, quote, topo_sort},
     prelude::{SlotMeta, SlotWorkAreaNode},
@@ -8,16 +7,12 @@ use crate::{
 };
 use core::panic;
 use dashmap::DashMap;
+use egglog::ast::{RustSpan, Span};
 use egglog::{
     EGraph, SerializeConfig,
     ast::Facts,
-    prelude::{add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
-};
-use egglog::{
-    ast::{RustSpan, Span},
-    prelude::{rust_rule, rust_rule_with_metadata},
 };
 use egglog_reports::RunReport;
 use graphviz_rust::dot_structures::Attribute;
@@ -64,6 +59,7 @@ impl SlottedTxRxVTPR {
     pub fn clear_egraph(&self) {
         let mut egraph = self.egraph.lock().unwrap();
         self.sym2value_map.clear();
+        clear_compat_state(&egraph);
         *egraph = EGraph::default();
     }
     // collect all lastest ancestors of cur_sym, without cur_sym
@@ -214,7 +210,8 @@ impl SlottedTxRxVTPR {
             commit_counter: Mutex::new(0),
             sym2meta: Default::default(),
         };
-        let type_defs = EgglogTypeRegistry::collect_type_defs();
+        // Proof mode gets the same filtered schema subset as the non-slotted path.
+        let type_defs = EgglogTypeRegistry::collect_type_defs_for_proofs();
         for def in type_defs {
             tx.send(TxCommand::NativeCommand { command: def });
         }
@@ -662,7 +659,7 @@ impl TxCommit for SlottedTxRxVTPR {
 
         // sue add_rule API to create rule
         let mut egraph = self.egraph.lock().unwrap();
-        egglog::prelude::add_ruleset(&mut egraph, &ruleset_name).unwrap();
+        add_ruleset(&mut egraph, &ruleset_name).unwrap();
         let hook = RuleHookObj(ctx_hook);
         let rule_rst = rust_rule(
             &mut egraph,
@@ -680,6 +677,7 @@ impl TxCommit for SlottedTxRxVTPR {
                         let value = node.egglog.native_egglog(&ctx, &sym2value_map);
                         // store sym value pair to sym_to_value_map
                         sym2value_map.insert(sym, value);
+                        ctx.insert_timestamp_for_value(node.egglog.ty_name(), value);
                         log::debug!("Added node {} to sym_to_value_map using native_egglog", sym);
                     }
                 }
@@ -692,6 +690,7 @@ impl TxCommit for SlottedTxRxVTPR {
                         let value = node.egglog.native_egglog(&ctx, &sym2value_map);
                         // store sym value pair to sym_to_value_map
                         sym2value_map.insert(sym, value);
+                        ctx.insert_timestamp_for_value(node.egglog.ty_name(), value);
                         log::debug!(
                             "Update node {} to sym_to_value_map using native_egglog",
                             sym
@@ -851,7 +850,6 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
         log::debug!("{:#?}", facts);
         log::debug!("{:#?}", vars);
 
-        let proofs_enabled = egraph.are_proofs_enabled();
         let binding_var_slots: HashMap<Arc<str>, usize> = vars
             .iter()
             .enumerate()
@@ -868,13 +866,8 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 .map(|x| (x.0.as_str(), x.1.clone()))
                 .collect::<Vec<_>>(),
             Facts(facts),
-            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>, values| {
+            move |ctx: &mut egglog::prelude::RustRuleContext<'_, '_>, values| {
                 let mut ctx = PRRuleCtx::new(ctx, hook.clone());
-                let _premise_scope = if proofs_enabled {
-                    Some(PremiseProofScope::enter(empty_premise_proofs()))
-                } else {
-                    None
-                };
                 let valued_pat_vars = P::decode_with_plan(values, &metas, decode_plan.as_ref());
                 action(&mut ctx, &valued_pat_vars);
                 Some(())
@@ -901,14 +894,16 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
 
     #[track_caller]
     fn run_ruleset(&self, ruleset_id: RuleSetId, until: RunConfig) -> RunReport {
+        // Proof egraphs must go through the compat run_ruleset path so egglog emits
+        // proof-aware CommandOutput records. The plain step_rules fast path is only for
+        // non-proof execution.
         match until {
             RunConfig::Sat => {
                 let mut egraph = self.egraph.lock().unwrap();
                 let mut run_report = RunReport::default();
                 loop {
                     let iter_report = if egraph.are_proofs_enabled() {
-                        let outputs =
-                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        let outputs = run_ruleset(&mut egraph, ruleset_id.0).unwrap();
                         outputs
                             .into_iter()
                             .find_map(|o| match o {
@@ -931,8 +926,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
                 let mut run_report = RunReport::default();
                 for _ in 0..times {
                     let iter_report = if egraph.are_proofs_enabled() {
-                        let outputs =
-                            egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                        let outputs = run_ruleset(&mut egraph, ruleset_id.0).unwrap();
                         outputs
                             .into_iter()
                             .find_map(|o| match o {
@@ -950,7 +944,7 @@ impl<PR: PatRecSgl> RuleRunner<PR> for SlottedTxRxVTPR {
             RunConfig::Once => {
                 let mut egraph = self.egraph.lock().unwrap();
                 let run_report = if egraph.are_proofs_enabled() {
-                    let outputs = egglog::prelude::run_ruleset(&mut egraph, ruleset_id.0).unwrap();
+                    let outputs = run_ruleset(&mut egraph, ruleset_id.0).unwrap();
                     outputs
                         .into_iter()
                         .find_map(|o| match o {

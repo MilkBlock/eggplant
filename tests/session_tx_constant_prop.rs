@@ -45,33 +45,17 @@ fn register_constant_prop_rules() -> RuleSetId {
     })
 }
 
-fn current_snapshot() -> PersistedSnapshot {
+fn current_session_has_const(needle: i64) -> bool {
     let egraph = MyTx::egraph();
     let egraph = egraph.lock().unwrap();
-    build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
-}
 
-fn snapshot_has_const(snapshot: &PersistedSnapshot, needle: i64) -> bool {
-    let Some(const_decl) = snapshot
-        .schema
-        .constructor_decls
-        .iter()
-        .find(|decl| decl.name == "Const")
-    else {
-        return false;
-    };
-
-    snapshot.state.function_rows.iter().any(|row| {
-        row.op_id == const_decl.op_id
-            && matches!(
-                row.inputs.first(),
-                Some(PersistedSnapshotValue::Lit { value, .. }) if value.value == needle.to_string()
-            )
+    egraph.function_rows("Const").into_iter().any(|row| {
+        !row.subsumed
+            && row
+                .vals
+                .first()
+                .is_some_and(|value| egraph.value_to_base::<i64>(*value) == needle)
     })
-}
-
-fn current_session_has_const(needle: i64) -> bool {
-    snapshot_has_const(&current_snapshot(), needle)
 }
 
 fn canonical_eq(lhs: &Expr<MyTx>, rhs_const: i64) -> bool {
@@ -183,10 +167,25 @@ fn tx_sessions_support_async_task_local_routing() {
         });
         assert_eq!(right_join.await.unwrap(), 26);
 
-        assert!(left.run_async(async { current_session_has_const(10) }).await);
-        assert!(!left.run_async(async { current_session_has_const(26) }).await);
-        assert!(right.run_async(async { current_session_has_const(26) }).await);
-        assert!(!right.run_async(async { current_session_has_const(10) }).await);
+        assert!(
+            left.run_async(async { current_session_has_const(10) })
+                .await
+        );
+        assert!(
+            !left
+                .run_async(async { current_session_has_const(26) })
+                .await
+        );
+        assert!(
+            right
+                .run_async(async { current_session_has_const(26) })
+                .await
+        );
+        assert!(
+            !right
+                .run_async(async { current_session_has_const(10) })
+                .await
+        );
     });
 }
 

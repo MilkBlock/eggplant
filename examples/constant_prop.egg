@@ -1,0 +1,44 @@
+; Equivalent to `examples/constant_prop.rs`.
+
+(datatype Expr
+  (Const i64)
+  (Mul Expr Expr)
+  (Sub Expr Expr)
+  (Add Expr Expr)
+  (Div Expr Expr))
+
+(ruleset constant_prop)
+
+(rule ((= l (Const x))
+       (= r (Const y))
+       (= p (Add l r)))
+      ((union p (Const (+ x y))))
+      :ruleset constant_prop
+      :name "AddPat")
+
+(rule ((= l (Const x))
+       (= r (Const y))
+       (= p (Sub l r)))
+      ((union p (Const (- x y))))
+      :ruleset constant_prop
+      :name "SubPat")
+
+(rule ((= l (Const x))
+       (= r (Const y))
+       (= p (Mul l r)))
+      ((union p (Const (* x y))))
+      :ruleset constant_prop
+      :name "MulPat")
+
+(rule ((= l (Const x))
+       (= r (Const y))
+       (= p (Div l r)))
+      ((union p (Const (/ x y))))
+      :ruleset constant_prop
+      :name "DivPat")
+
+(let $expr (Add (Mul (Const 3) (Const 2)) (Const 4)))
+
+(run constant_prop 10)
+
+(prove (= $expr (Const 10)))

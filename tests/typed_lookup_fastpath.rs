@@ -31,10 +31,9 @@ fn fast_add_pat<PR: PatRecSgl>() -> FastAddPat<PR> {
 
 #[test]
 fn cached_lookup_matches_named_lookup() {
-    static FAST_ADD_ID: OnceLock<eggplant::egglog::FunctionId> = OnceLock::new();
+    static FAST_ADD_ID: OnceLock<eggplant::wrap::FunctionId> = OnceLock::new();
 
-    let root =
-        FastRootNode::<FastTx>::new(&FastAdd::new(&FastConst::new(2), &FastConst::new(3)));
+    let root = FastRootNode::<FastTx>::new(&FastAdd::new(&FastConst::new(2), &FastConst::new(3)));
     root.commit();
 
     let ruleset = FastTx::new_ruleset("cached_lookup_matches_named_lookup");

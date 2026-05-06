@@ -2,8 +2,14 @@ use eggplant::{prelude::*, tx_rx_vt_pr};
 
 #[eggplant::dsl]
 pub enum Expr {
+    #[typst("{num}")]
+    #[precedence(100)]
     Const { num: i64 },
+    #[typst("{l} * {r}")]
+    #[precedence(60)]
     Mul { l: Expr, r: Expr },
+    #[typst("{l} + {r}")]
+    #[precedence(50)]
     Add { l: Expr, r: Expr },
 }
 
@@ -43,33 +49,17 @@ fn register_constant_prop_rules() -> RuleSetId {
     })
 }
 
-fn current_snapshot() -> PersistedSnapshot {
+fn current_session_has_const(needle: i64) -> bool {
     let egraph = MyTx::egraph();
     let egraph = egraph.lock().unwrap();
-    build_persisted_snapshot_v1(&egraph, egglog::SerializeConfig::default())
-}
 
-fn snapshot_has_const(snapshot: &PersistedSnapshot, needle: i64) -> bool {
-    let Some(const_decl) = snapshot
-        .schema
-        .constructor_decls
-        .iter()
-        .find(|decl| decl.name == "Const")
-    else {
-        return false;
-    };
-
-    snapshot.state.function_rows.iter().any(|row| {
-        row.op_id == const_decl.op_id
-            && matches!(
-                row.inputs.first(),
-                Some(PersistedSnapshotValue::Lit { value, .. }) if value.value == needle.to_string()
-            )
+    egraph.function_rows("Const").into_iter().any(|row| {
+        !row.subsumed
+            && row
+                .vals
+                .first()
+                .is_some_and(|value| egraph.value_to_base::<i64>(*value) == needle)
     })
-}
-
-fn current_session_has_const(needle: i64) -> bool {
-    snapshot_has_const(&current_snapshot(), needle)
 }
 
 fn canonical_eq(lhs: &Expr<MyTx>, rhs_const: i64) -> bool {
@@ -93,49 +83,57 @@ fn fold_active_mul_add_expr(lhs: i64, rhs: i64, addend: i64) -> i64 {
     expected
 }
 
-fn main() {
+#[tokio::main(flavor = "multi_thread", worker_threads = 2)]
+async fn main() {
     env_logger::init();
-    let runtime = tokio::runtime::Builder::new_multi_thread()
-        .worker_threads(2)
-        .enable_all()
-        .build()
-        .unwrap();
+    let left = MyTx::new_session();
+    let right = MyTx::new_session();
 
-    runtime.block_on(async {
-        let left = MyTx::new_session();
-        let right = MyTx::new_session();
-
-        let left_value = left
-            .run_async(async {
-                tokio::task::yield_now().await;
-                fold_active_mul_add_expr(3, 2, 4)
-            })
-            .await;
-        assert_eq!(left_value, 10);
-
-        let right_join = right.spawn_async(async {
+    let left_value = left
+        .run_async(async {
             tokio::task::yield_now().await;
-            fold_active_mul_add_expr(5, 5, 1)
-        });
-        assert_eq!(right_join.await.unwrap(), 26);
+            fold_active_mul_add_expr(3, 2, 4)
+        })
+        .await;
+    assert_eq!(left_value, 10);
 
-        assert!(left.run_async(async { current_session_has_const(10) }).await);
-        assert!(!left.run_async(async { current_session_has_const(26) }).await);
-        assert!(right.run_async(async { current_session_has_const(26) }).await);
-        assert!(!right.run_async(async { current_session_has_const(10) }).await);
-
-        let outer = MyTx::new_session();
-        let inner = MyTx::new_session();
-        outer
-            .run_async(async {
-                tokio::task::yield_now().await;
-                let inner_value = inner.run(|| fold_active_mul_add_expr(5, 5, 1));
-                assert_eq!(inner_value, 26);
-                assert!(inner.run(|| current_session_has_const(26)));
-                assert!(!outer.run(|| current_session_has_const(26)));
-            })
-            .await;
+    let right_join = right.spawn_async(async {
+        tokio::task::yield_now().await;
+        fold_active_mul_add_expr(5, 5, 1)
     });
+    assert_eq!(right_join.await.unwrap(), 26);
+
+    assert!(
+        left.run_async(async { current_session_has_const(10) })
+            .await
+    );
+    assert!(
+        !left
+            .run_async(async { current_session_has_const(26) })
+            .await
+    );
+    assert!(
+        right
+            .run_async(async { current_session_has_const(26) })
+            .await
+    );
+    assert!(
+        !right
+            .run_async(async { current_session_has_const(10) })
+            .await
+    );
+
+    let outer = MyTx::new_session();
+    let inner = MyTx::new_session();
+    outer
+        .run_async(async {
+            tokio::task::yield_now().await;
+            let inner_value = inner.run(|| fold_active_mul_add_expr(5, 5, 1));
+            assert_eq!(inner_value, 26);
+            assert!(inner.run(|| current_session_has_const(26)));
+            assert!(!outer.run(|| current_session_has_const(26)));
+        })
+        .await;
 
     println!("constant_prop_sessions_async passed");
 }

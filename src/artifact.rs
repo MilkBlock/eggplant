@@ -3,16 +3,15 @@ use std::fmt::{Display, Formatter};
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 
-use egglog::{
-    EGraph, EngineSchemaManifest as EgglogEngineSchemaManifest, SchemaFunctionKind, SchemaSortKind,
-    SerializeConfig,
-};
+use egglog::{EGraph, SerializeConfig};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Value as JsonValue, json};
 use sha2::{Digest, Sha256};
 
 use crate::wrap::{
-    Decl, DslFieldKind, DslVariantDecl, PersistedSnapshotUserBaseSortSupport, UserBaseSort,
+    Decl, DslFieldKind, DslVariantDecl, EgglogCompatExt,
+    EngineSchemaManifest as EgglogEngineSchemaManifest, PersistedSnapshotUserBaseSortSupport,
+    SchemaFunctionKind, SchemaSortKind, UserBaseSort, run_ephemeral_rust_rule,
     user_base_sort_restore_hook, user_base_sort_restore_support,
 };
 
@@ -1713,7 +1712,7 @@ pub fn restore_persisted_snapshot_v1(
     let op_decls = Arc::new(op_decls);
     let sort_names_by_id = Arc::new(sort_names_by_id);
 
-    egglog::prelude::run_ephemeral_rust_rule(
+    run_ephemeral_rust_rule(
         egraph,
         "restore_persisted_snapshot_v1",
         &[],
@@ -1887,7 +1886,7 @@ pub fn restore_persisted_snapshot_v1(
 }
 
 fn resolve_snapshot_values(
-    ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+    ctx: &mut egglog::prelude::RustRuleContext<'_, '_>,
     sort_names_by_id: &HashMap<usize, String>,
     sort_names: &[String],
     values: &[PersistedSnapshotValue],
@@ -1906,7 +1905,7 @@ fn resolve_snapshot_values(
 }
 
 fn resolve_snapshot_value(
-    ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+    ctx: &mut egglog::prelude::RustRuleContext<'_, '_>,
     _sort_names_by_id: &HashMap<usize, String>,
     sort_name: &str,
     value: &PersistedSnapshotValue,
@@ -1923,7 +1922,7 @@ fn resolve_snapshot_value(
 }
 
 fn restore_literal_value(
-    ctx: &mut egglog::prelude::RustRuleContext<'_, '_, '_>,
+    ctx: &mut egglog::prelude::RustRuleContext<'_, '_>,
     sort_name: &str,
     literal: &PersistedSnapshotLiteralValue,
 ) -> Result<egglog::Value, PersistedSnapshotRestoreError> {
