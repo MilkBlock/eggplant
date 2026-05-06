@@ -1,4 +1,6 @@
 target/
+target/**/*.typ
+target/**/*.svg
 notes.md
 .vscode
 node_modules
@@ -23,5 +25,4 @@ tests/*.json
 *.md
 
 tools/
-
 

@@ -30,6 +30,7 @@ chrono = { version = "0.4", default-features = false, features = [
   "std",
 ] }
 egglog.workspace = true
+egglog-numeric-id = { path = "../../egglog_upstream_latest/numeric-id" }
 itertools.workspace = true
 indexmap.workspace = true
 egraph-serialize = { version = "0.3.0", default-features = false, features = ["serde"] }

@@ -153,6 +153,9 @@ If you want to study the explicit session API in practice, see:
 - `examples/constant_prop_sessions.rs`
 - `examples/constant_prop_sessions_async.rs`
 
+For a focused explanation of the session-routed runtime model itself, see
+[`docs/skills/session-runtime.md`](docs/skills/session-runtime.md).
+
 These examples use the default `MyTx::...` API together with explicit
 session handles. The async version only supports explicit wrapper-based entry
 (`run_async` / `spawn_async`); it does not claim ambient async-task inheritance.
@@ -287,6 +290,8 @@ cargo run --example action_sample_recorder
 
 - **`examples/constant_prop_sessions_async.rs`**: Demonstrates the same session model for explicit async wrapper entry points (`run_async`, `spawn_async`) and mixed sync/async re-entry.
 
+- **[`docs/skills/session-runtime.md`](docs/skills/session-runtime.md)**: Describes the session-routed `Tx` model itself: default-session fallback, explicit `Session<Tx>` entry points, per-session ruleset isolation, and current async/threading boundaries.
+
 Run them with:
 
 ```bash
@@ -309,6 +314,10 @@ cargo run --features rustsat-extract --example rustsat_optimize_expression
 ## Documentation
 
 To view documentation, run `cargo doc --open`.
+
+Session runtime behavior is documented in:
+
+- [`docs/skills/session-runtime.md`](docs/skills/session-runtime.md)
 
 ## Contributing
 
