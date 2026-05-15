@@ -977,6 +977,10 @@ fn push_rule_pattern_legend(report: &mut String, rules: &[&'static str]) {
     }
 }
 
+fn is_macro_compose_group(group: &HistoryGroup) -> bool {
+    group.rules.len() > 1
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ParsedTrailStep {
     rule: String,
@@ -1205,9 +1209,9 @@ fn push_macro_group_card(report: &mut String, idx: usize, group: &HistoryGroup) 
     report.push('\n');
 }
 
-fn push_raw_evidence_appendix(report: &mut String, summary: &HistorySummary) {
+fn push_raw_evidence_appendix(report: &mut String, groups: &[&HistoryGroup]) {
     report.push_str("## Raw Evidence Appendix\n\n");
-    for (idx, group) in summary.repeated_groups.iter().take(20).enumerate() {
+    for (idx, group) in groups.iter().take(20).enumerate() {
         report.push_str(&format!("### Group {}\n\n", idx));
         if !group.trail_labels.is_empty() {
             report.push_str("- trail labels:\n");
@@ -1248,6 +1252,15 @@ fn format_history_report(summary: &HistorySummary, min_len: usize, min_support: 
         .iter()
         .filter(|group| group.truncated_events > 0)
         .count();
+    let macro_compose_groups = summary
+        .repeated_groups
+        .iter()
+        .filter(|group| is_macro_compose_group(group))
+        .collect::<Vec<_>>();
+    let omitted_single_rule_groups = summary
+        .repeated_groups
+        .len()
+        .saturating_sub(macro_compose_groups.len());
     let mut report = String::from("# Slotted Math Microbenchmark History Report\n\n");
     report.push_str("## Summary\n\n");
     report.push_str(&format!(
@@ -1276,6 +1289,14 @@ fn format_history_report(summary: &HistorySummary, min_len: usize, min_support: 
         "- Groups with truncated provenance: `{}`\n\n",
         truncated_group_count
     ));
+    report.push_str(&format!(
+        "- Macro-compose groups shown below: `{}`\n",
+        macro_compose_groups.len()
+    ));
+    report.push_str(&format!(
+        "- Same-rule-only groups omitted: `{}`\n\n",
+        omitted_single_rule_groups
+    ));
     let mut legend_rules = BTreeSet::new();
     for group in &summary.repeated_groups {
         if let Some(rule) = group.rules.first() {
@@ -1288,10 +1309,10 @@ fn format_history_report(summary: &HistorySummary, min_len: usize, min_support: 
     report.push_str(
         "This section turns each repeated suffix into a proof-like macro view: chain signature, proposition, per-step inputs/outputs, and a small evidence appendix.\n\n",
     );
-    for (idx, group) in summary.repeated_groups.iter().take(20).enumerate() {
+    for (idx, group) in macro_compose_groups.iter().take(20).enumerate() {
         push_macro_group_card(&mut report, idx, group);
     }
-    push_raw_evidence_appendix(&mut report, summary);
+    push_raw_evidence_appendix(&mut report, &macro_compose_groups);
     report
 }
 
@@ -1310,6 +1331,15 @@ fn format_history_report_typst(
         .iter()
         .filter(|group| group.truncated_events > 0)
         .count();
+    let macro_compose_groups = summary
+        .repeated_groups
+        .iter()
+        .filter(|group| is_macro_compose_group(group))
+        .collect::<Vec<_>>();
+    let omitted_single_rule_groups = summary
+        .repeated_groups
+        .len()
+        .saturating_sub(macro_compose_groups.len());
     let mut report = String::new();
     report.push_str("#set page(margin: 0.7in)\n");
     report.push_str("#set par(justify: false)\n");
@@ -1342,6 +1372,14 @@ fn format_history_report_typst(
         "- Groups with truncated provenance: `{}`\n\n",
         truncated_group_count
     ));
+    report.push_str(&format!(
+        "- Macro-compose groups shown below: `{}`\n",
+        macro_compose_groups.len()
+    ));
+    report.push_str(&format!(
+        "- Same-rule-only groups omitted: `{}`\n\n",
+        omitted_single_rule_groups
+    ));
 
     let mut legend_rules = BTreeSet::new();
     for group in &summary.repeated_groups {
@@ -1355,10 +1393,10 @@ fn format_history_report_typst(
     report.push_str(
         "This section turns each repeated suffix into a proof-like macro view: chain signature, proposition, per-step inputs and outputs, and a small evidence appendix.\n\n",
     );
-    for (idx, group) in summary.repeated_groups.iter().take(20).enumerate() {
+    for (idx, group) in macro_compose_groups.iter().take(20).enumerate() {
         push_macro_group_card_typst(&mut report, idx, group);
     }
-    push_raw_evidence_appendix_typst(&mut report, summary);
+    push_raw_evidence_appendix_typst(&mut report, &macro_compose_groups);
     report
 }
 
@@ -1663,9 +1701,9 @@ fn push_rule_pattern_card_typst(report: &mut String, step_idx: usize, steps: &[P
     report.push('\n');
 }
 
-fn push_raw_evidence_appendix_typst(report: &mut String, summary: &HistorySummary) {
+fn push_raw_evidence_appendix_typst(report: &mut String, groups: &[&HistoryGroup]) {
     report.push_str("== Raw Evidence Appendix\n\n");
-    for (idx, group) in summary.repeated_groups.iter().take(20).enumerate() {
+    for (idx, group) in groups.iter().take(20).enumerate() {
         report.push_str(&format!("=== Group {}\n\n", idx));
         if !group.trail_labels.is_empty() {
             report.push_str("- trail labels:\n");
@@ -3114,6 +3152,33 @@ mod tests {
         assert!(report.contains("proof-like"));
         assert!(report.contains("input inherited from Step 1"));
         assert!(report.contains("output used by Step 2"));
+    }
+
+    #[test]
+    fn history_report_omits_same_rule_internal_groups() {
+        let summary = HistorySummary {
+            event_count: 2,
+            value_count: 1,
+            repeated_groups: vec![HistoryGroup {
+                suffix_len: 2,
+                suffix_hash: 0x15,
+                support_events: 2,
+                support_outputs: 1,
+                truncated_events: 0,
+                rules: vec!["int_mul"],
+                trail_labels: vec!["int_mul:MDiff<-a -> int_mul:MMul<-dxa".to_owned()],
+                samples: vec![
+                    "MMul value=7 local_hash=0x1 event_hash=0x2 spines=3 int_mul:MDiff<-a -> int_mul:MMul<-dxa".to_owned(),
+                ],
+            }],
+        };
+
+        let report = format_history_report_typst(&summary, 2, 2);
+
+        assert!(report.contains("Macro-compose groups shown below: `0`"));
+        assert!(report.contains("Same-rule-only groups omitted: `1`"));
+        assert!(!report.contains("- macro chain: `int_mul -> int_mul`"));
+        assert!(!report.contains("observed trail: `int_mul:MDiff<-a`"));
     }
 
     #[test]
