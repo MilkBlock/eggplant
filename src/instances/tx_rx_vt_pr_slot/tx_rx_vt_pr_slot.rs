@@ -9,7 +9,7 @@ use core::panic;
 use dashmap::DashMap;
 use egglog::{
     EGraph, RunReport, SerializeConfig,
-    ast::Facts,
+    ast::{Facts, Schema},
     prelude::{add_ruleset, run_ruleset},
     span,
     util::{IndexMap, IndexSet},
@@ -194,6 +194,30 @@ impl SlottedTxRxVTPR {
             tx.send(TxCommand::NativeCommand { command: def });
         }
         tx
+    }
+    pub fn ensure_constructor(
+        &self,
+        name: &str,
+        input: &[&str],
+        output: &str,
+        cost: Option<u64>,
+        unextractable: bool,
+    ) {
+        let mut egraph = self.egraph.lock().unwrap();
+        if egraph.get_function(name).is_some() {
+            return;
+        }
+        egglog::prelude::add_constructor(
+            &mut egraph,
+            name,
+            Schema {
+                input: input.iter().map(|s| s.to_string()).collect(),
+                output: output.to_owned(),
+            },
+            cost,
+            unextractable,
+        )
+        .unwrap_or_else(|err| panic!("failed to register constructor {name}: {err}"));
     }
     fn add_eggplant_sorts(e: &mut EGraph) {
         egglog::prelude::add_base_sort(e, StaticStrSort, span!()).unwrap();

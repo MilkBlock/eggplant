@@ -13,6 +13,29 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 const DEFAULT_RUN_ITERS: usize = 2;
+const MACRO_MUL_ASSOC_LHS_CONSTRUCTOR: &str = "Macro_72be";
+const MACRO_MUL_ASSOC_LHS_RULE: &str = "macro_72be_materialize_mul_assoc_lhs";
+
+#[derive(Clone, Copy, Debug)]
+struct ComposedDslConstructorDoc {
+    name: &'static str,
+    args: &'static [&'static str],
+    input_sorts: &'static [&'static str],
+    output_sort: &'static str,
+    semantic_lhs: &'static str,
+    materializer_rule: &'static str,
+    source: &'static str,
+}
+
+const COMPOSED_DSL_CONSTRUCTOR_DOCS: &[ComposedDslConstructorDoc] = &[ComposedDslConstructorDoc {
+    name: MACRO_MUL_ASSOC_LHS_CONSTRUCTOR,
+    args: &["a", "b", "c"],
+    input_sorts: &["Math", "Math", "Math"],
+    output_sort: "Math",
+    semantic_lhs: "MMul(a, MMul(b, c))",
+    materializer_rule: MACRO_MUL_ASSOC_LHS_RULE,
+    source: "mul_assoc LHS shape",
+}];
 
 #[eggplant::slotted_dsl(base = SlotMetaBase)]
 pub enum Math {
@@ -60,6 +83,12 @@ pub enum SlotMetaBase {
 }
 
 slotted_tx_rx_vt_pr!(MyTx, MyPatRec);
+
+fn ensure_macro_constructors() {
+    for doc in COMPOSED_DSL_CONSTRUCTOR_DOCS {
+        MyTx::sgl().ensure_constructor(doc.name, doc.input_sorts, doc.output_sort, None, false);
+    }
+}
 
 impl<T: eggplant::wrap::TxSgl + eggplant::wrap::NonPatRecSgl + eggplant::wrap::WithPatRecSgl>
     self::Math<T, MVarTy>
@@ -1039,6 +1068,207 @@ fn collect_legend_rules<'a>(groups: impl IntoIterator<Item = &'a HistoryGroup>) 
         .collect()
 }
 
+fn macro_compose_groups<'a>(
+    summary: &'a HistorySummary,
+    min_len: usize,
+    min_support: usize,
+) -> Vec<&'a HistoryGroup> {
+    summary
+        .repeated_groups
+        .iter()
+        .filter(|group| group.suffix_len >= min_len && group.support_events >= min_support)
+        .filter(|group| is_macro_compose_group(group))
+        .collect()
+}
+
+fn composed_constructor_call(doc: ComposedDslConstructorDoc) -> String {
+    format!("{}({})", doc.name, doc.args.join(", "))
+}
+
+fn composed_constructor_schema(doc: ComposedDslConstructorDoc) -> String {
+    format!(
+        "{}({}) -> {}",
+        doc.name,
+        doc.input_sorts.join(", "),
+        doc.output_sort
+    )
+}
+
+fn composed_constructor_typed_schema(doc: ComposedDslConstructorDoc) -> String {
+    let args = doc
+        .args
+        .iter()
+        .zip(doc.input_sorts.iter())
+        .map(|(arg, sort)| format!("{arg}: {sort}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    format!("{}({args}) -> {}", doc.name, doc.output_sort)
+}
+
+fn typst_dynamic_constructor_call(doc: ComposedDslConstructorDoc) -> String {
+    format!(r#"upright("{}")({})"#, doc.name, doc.args.join(", "))
+}
+
+fn dynamic_constructor_registered(name: &str) -> bool {
+    MyTx::sgl()
+        .egraph
+        .lock()
+        .unwrap()
+        .get_function(name)
+        .is_some()
+}
+
+fn push_markdown_heading(report: &mut String, level: usize, title: &str) {
+    report.push_str(&format!("{} {title}\n\n", "#".repeat(level)));
+}
+
+fn push_typst_heading(report: &mut String, level: usize, title: &str) {
+    report.push_str(&format!("{} {title}\n\n", "=".repeat(level)));
+}
+
+fn push_composed_dsl_constructor_section(report: &mut String, heading_level: usize) {
+    push_markdown_heading(report, heading_level, "Composed DSL Constructors");
+    report.push_str(
+        "This is the composed DSL layer: runtime egglog constructors that package a hot LHS DAG as one matchable enode head. These are not Rust enum variants.\n\n",
+    );
+    for doc in COMPOSED_DSL_CONSTRUCTOR_DOCS {
+        push_markdown_heading(report, heading_level + 1, &format!("`{}`", doc.name));
+        let call = composed_constructor_call(*doc);
+        report.push_str(&format!(
+            "- constructor schema: `{}`\n",
+            composed_constructor_schema(*doc)
+        ));
+        report.push_str(&format!(
+            "- typed schema: `{}`\n",
+            composed_constructor_typed_schema(*doc)
+        ));
+        report.push_str(&format!(
+            "- registered in egraph: `{}`\n",
+            dynamic_constructor_registered(doc.name)
+        ));
+        report.push_str(&format!("- source: `{}`\n", doc.source));
+        report.push_str(&format!("- semantic LHS shape: `{}`\n", doc.semantic_lhs));
+        report.push_str(&format!("- constructor call: `{call}`\n"));
+        report.push_str(&format!(
+            "- materializer rule: `{}`\n",
+            doc.materializer_rule
+        ));
+        report.push_str(&format!(
+            "- materializer body: `{}` => `{call}`\n",
+            doc.semantic_lhs
+        ));
+        report.push_str(&format!(
+            "- eclass union: `{} == {call}`\n\n",
+            doc.semantic_lhs
+        ));
+    }
+}
+
+fn push_composed_dsl_constructor_section_typst(report: &mut String, heading_level: usize) {
+    push_typst_heading(report, heading_level, "Composed DSL Constructors");
+    report.push_str(
+        "This is the composed DSL layer: runtime egglog constructors that package a hot LHS DAG as one matchable enode head. These are not Rust enum variants.\n\n",
+    );
+    for doc in COMPOSED_DSL_CONSTRUCTOR_DOCS {
+        push_typst_heading(report, heading_level + 1, &format!("`{}`", doc.name));
+        let call = composed_constructor_call(*doc);
+        let typst_call = typst_dynamic_constructor_call(*doc);
+        let lhs = typst_math_formula(doc.semantic_lhs);
+        report.push_str(&format!(
+            "- constructor schema: `{}`\n",
+            composed_constructor_schema(*doc)
+        ));
+        report.push_str(&format!(
+            "- typed schema: `{}`\n",
+            composed_constructor_typed_schema(*doc)
+        ));
+        report.push_str(&format!(
+            "- registered in egraph: `{}`\n",
+            dynamic_constructor_registered(doc.name)
+        ));
+        report.push_str(&format!("- source: `{}`\n", doc.source));
+        report.push_str(&format!(
+            "- raw semantic LHS shape: `{}`\n",
+            doc.semantic_lhs
+        ));
+        report.push_str(&format!("- semantic LHS formula: $ {lhs} $\n"));
+        report.push_str(&format!("- constructor call: $ {typst_call} $\n"));
+        report.push_str(&format!(
+            "- materializer rule: `{}`\n",
+            doc.materializer_rule
+        ));
+        report.push_str(&format!(
+            "- raw materializer body: `{}` => `{call}`\n",
+            doc.semantic_lhs
+        ));
+        report.push_str(&format!(
+            "- materializer body: $ {lhs} arrow.r.double {typst_call} $\n"
+        ));
+        report.push_str(&format!("- eclass union: $ {lhs} = {typst_call} $\n"));
+        report.push_str(&format!("- raw constructor term: `{call}`\n\n"));
+    }
+}
+
+fn push_composed_dsl_evidence_section(
+    report: &mut String,
+    summary: &HistorySummary,
+    min_len: usize,
+    min_support: usize,
+    heading_level: usize,
+) {
+    let groups = macro_compose_groups(summary, min_len, min_support);
+    push_markdown_heading(report, heading_level, "Observed Macro-Compose Evidence");
+    report.push_str(&format!(
+        "- macro-compose groups at threshold: `{}`\n",
+        groups.len()
+    ));
+    report.push_str(&format!(
+        "- threshold: suffix_len >= `{min_len}`, support_events >= `{min_support}`\n\n",
+    ));
+    for (idx, group) in groups.iter().take(8).enumerate() {
+        let chain = group
+            .trail_labels
+            .first()
+            .map(|label| macro_chain_signature(&parse_trail_label_chain(label)))
+            .unwrap_or_else(|| "observed chain".to_owned());
+        report.push_str(&format!(
+            "- group `{idx}`: chain `{chain}`, suffix_hash `{:#x}`, support_events `{}`\n",
+            group.suffix_hash, group.support_events
+        ));
+    }
+    report.push('\n');
+}
+
+fn push_composed_dsl_evidence_section_typst(
+    report: &mut String,
+    summary: &HistorySummary,
+    min_len: usize,
+    min_support: usize,
+    heading_level: usize,
+) {
+    let groups = macro_compose_groups(summary, min_len, min_support);
+    push_typst_heading(report, heading_level, "Observed Macro-Compose Evidence");
+    report.push_str(&format!(
+        "- macro-compose groups at threshold: `{}`\n",
+        groups.len()
+    ));
+    report.push_str(&format!(
+        "- threshold: suffix_len >= `{min_len}`, support_events >= `{min_support}`\n\n",
+    ));
+    for (idx, group) in groups.iter().take(8).enumerate() {
+        let chain = group
+            .trail_labels
+            .first()
+            .map(|label| macro_chain_signature(&parse_trail_label_chain(label)))
+            .unwrap_or_else(|| "observed chain".to_owned());
+        report.push_str(&format!(
+            "- group `{idx}`: chain `{chain}`, suffix_hash `{:#x}`, support_events `{}`\n",
+            group.suffix_hash, group.support_events
+        ));
+    }
+    report.push('\n');
+}
+
 fn macro_chain_signature(steps: &[ParsedTrailStep]) -> String {
     steps
         .iter()
@@ -1399,11 +1629,7 @@ fn format_history_report(summary: &HistorySummary, min_len: usize, min_support: 
         .iter()
         .filter(|group| group.truncated_events > 0)
         .count();
-    let macro_compose_groups = summary
-        .repeated_groups
-        .iter()
-        .filter(|group| is_macro_compose_group(group))
-        .collect::<Vec<_>>();
+    let macro_compose_groups = macro_compose_groups(summary, min_len, min_support);
     let omitted_single_rule_groups = summary
         .repeated_groups
         .len()
@@ -1445,6 +1671,7 @@ fn format_history_report(summary: &HistorySummary, min_len: usize, min_support: 
         omitted_single_rule_groups
     ));
     let legend_rules = collect_legend_rules(summary.repeated_groups.iter());
+    push_composed_dsl_constructor_section(&mut report, 2);
     push_rule_pattern_legend(&mut report, &legend_rules);
     report.push_str("## Macro Rule Chains\n\n");
     report.push_str(
@@ -1472,11 +1699,7 @@ fn format_history_report_typst(
         .iter()
         .filter(|group| group.truncated_events > 0)
         .count();
-    let macro_compose_groups = summary
-        .repeated_groups
-        .iter()
-        .filter(|group| is_macro_compose_group(group))
-        .collect::<Vec<_>>();
+    let macro_compose_groups = macro_compose_groups(summary, min_len, min_support);
     let omitted_single_rule_groups = summary
         .repeated_groups
         .len()
@@ -1523,6 +1746,7 @@ fn format_history_report_typst(
     ));
 
     let legend_rules = collect_legend_rules(summary.repeated_groups.iter());
+    push_composed_dsl_constructor_section_typst(&mut report, 2);
     push_rule_pattern_legend_typst(&mut report, &legend_rules);
     report.push_str("== Macro Rule Chains\n\n");
     report.push_str(
@@ -1532,6 +1756,49 @@ fn format_history_report_typst(
         push_macro_group_card_typst(&mut report, idx, group);
     }
     push_raw_evidence_appendix_typst(&mut report, &macro_compose_groups);
+    report
+}
+
+fn format_composed_dsl_report(
+    summary: &HistorySummary,
+    min_len: usize,
+    min_support: usize,
+) -> String {
+    let mut report = String::new();
+    report.push_str("# Composed DSL Constructor Report\n\n");
+    report.push_str(&format!(
+        "- Rule-insert events: `{}`\n",
+        summary.event_count
+    ));
+    report.push_str(&format!(
+        "- Distinct history-bearing values: `{}`\n\n",
+        summary.value_count
+    ));
+    push_composed_dsl_constructor_section(&mut report, 2);
+    push_composed_dsl_evidence_section(&mut report, summary, min_len, min_support, 2);
+    report
+}
+
+fn format_composed_dsl_report_typst(
+    summary: &HistorySummary,
+    min_len: usize,
+    min_support: usize,
+) -> String {
+    let mut report = String::new();
+    report.push_str("#set page(margin: 0.7in)\n");
+    report.push_str("#set par(justify: false)\n");
+    report.push_str("#set text(size: 9pt)\n\n");
+    report.push_str("= Composed DSL Constructor Report\n\n");
+    report.push_str(&format!(
+        "- Rule-insert events: `{}`\n",
+        summary.event_count
+    ));
+    report.push_str(&format!(
+        "- Distinct history-bearing values: `{}`\n\n",
+        summary.value_count
+    ));
+    push_composed_dsl_constructor_section_typst(&mut report, 2);
+    push_composed_dsl_evidence_section_typst(&mut report, summary, min_len, min_support, 2);
     report
 }
 
@@ -1873,6 +2140,34 @@ fn write_report_file(path: &PathBuf, contents: String) {
     }
     fs::write(path, contents).unwrap();
     println!("wrote {}", path.display());
+}
+
+fn write_round_history_typst_report(
+    round_dir: &PathBuf,
+    round_idx: usize,
+    summary: &HistorySummary,
+    min_len: usize,
+    min_support: usize,
+) {
+    let path = round_dir.join(format!("round_{:02}.typ", round_idx + 1));
+    write_report_file(
+        &path,
+        format_history_report_typst(summary, min_len, min_support),
+    );
+}
+
+fn write_round_composed_dsl_typst_report(
+    round_dir: &PathBuf,
+    round_idx: usize,
+    summary: &HistorySummary,
+    min_len: usize,
+    min_support: usize,
+) {
+    let path = round_dir.join(format!("round_{:02}.typ", round_idx + 1));
+    write_report_file(
+        &path,
+        format_composed_dsl_report_typst(summary, min_len, min_support),
+    );
 }
 
 fn typst_math_formula(source: &str) -> String {
@@ -2226,747 +2521,780 @@ fn write_seed_only_svgs(roots: &[egglog::Value]) -> Result<Vec<SeedRootExtract>,
 }
 
 fn install_rules() -> RuleSetId {
-    let ruleset = MyTx::new_ruleset("slotted_math_microbenchmark_port");
+    static INSTALLED_RULESET: OnceLock<RuleSetId> = OnceLock::new();
+    *INSTALLED_RULESET.get_or_init(|| {
+        ensure_macro_constructors();
+        const RULESET: &str = "slotted_math_microbenchmark_port";
+        let ruleset = MyTx::new_ruleset(RULESET);
 
-    MyTx::add_rule(
-        "add_comm",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let add = MAdd::query(&a, &b);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                add: MAdd,
-            }
-            Pat::new(a, b, add)
-        },
-        |ctx, pat| {
-            let rhs = tracked_insert!(ctx,
-                "add_comm",
-                "MAdd",
-                ["b" => pat.b, "a" => pat.a],
-                ctx.insert_m_add(&pat.b, &pat.a)
-            );
-            tracked_union!(ctx, pat.add, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "mul_comm",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let mul = MMul::query(&a, &b);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                mul: MMul,
-            }
-            Pat::new(a, b, mul)
-        },
-        |ctx, pat| {
-            let rhs = tracked_insert!(ctx,
-                "mul_comm",
-                "MMul",
-                ["b" => pat.b, "a" => pat.a],
-                ctx.insert_m_mul(&pat.b, &pat.a)
-            );
-            tracked_union!(ctx, pat.mul, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "add_assoc",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let c = Math::query_slot("c".to_string());
-            let add_inner = MAdd::query(&b, &c);
-            let add_outer = MAdd::query(&a, &add_inner);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                c: Math,
-                add_outer: MAdd,
-            }
-            Pat::new(a, b, c, add_outer)
-        },
-        |ctx, pat| {
-            let ab = tracked_insert!(ctx,
-                "add_assoc",
-                "MAdd",
-                ["a" => pat.a, "b" => pat.b],
-                ctx.insert_m_add(&pat.a, &pat.b)
-            );
-            let rhs = tracked_insert!(ctx,
-                "add_assoc",
-                "MAdd",
-                ["ab" => ab, "c" => pat.c],
-                ctx.insert_m_add(ab, &pat.c)
-            );
-            tracked_union!(ctx, pat.add_outer, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "mul_assoc",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let c = Math::query_slot("c".to_string());
-            let mul_inner = MMul::query(&b, &c);
-            let mul_outer = MMul::query(&a, &mul_inner);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                c: Math,
-                mul_outer: MMul,
-            }
-            Pat::new(a, b, c, mul_outer)
-        },
-        |ctx, pat| {
-            let ab = tracked_insert!(ctx,
-                "mul_assoc",
-                "MMul",
-                ["a" => pat.a, "b" => pat.b],
-                ctx.insert_m_mul(&pat.a, &pat.b)
-            );
-            let rhs = tracked_insert!(ctx,
-                "mul_assoc",
-                "MMul",
-                ["ab" => ab, "c" => pat.c],
-                ctx.insert_m_mul(ab, &pat.c)
-            );
-            tracked_union!(ctx, pat.mul_outer, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "sub_to_add_neg",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let sub = MSub::query(&a, &b);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                sub: MSub,
-            }
-            Pat::new(a, b, sub)
-        },
-        |ctx, pat| {
-            let neg1 = tracked_insert!(ctx, "sub_to_add_neg", "MConst", [], ctx.insert_m_const(-1));
-            let neg_b = tracked_insert!(ctx,
-                "sub_to_add_neg",
-                "MMul",
-                ["neg1" => neg1, "b" => pat.b],
-                ctx.insert_m_mul(neg1, &pat.b)
-            );
-            let rhs = tracked_insert!(ctx,
-                "sub_to_add_neg",
-                "MAdd",
-                ["a" => pat.a, "neg_b" => neg_b],
-                ctx.insert_m_add(&pat.a, neg_b)
-            );
-            tracked_union!(ctx, pat.sub, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "add_zero",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let z = MConst::query();
-            let add = MAdd::query(&a, &z);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                z: MConst,
-                a: Math,
-                add: MAdd,
-            }
-            Pat::new(z.clone(), a, add).assert(z.handle_num().eq(&0))
-        },
-        |ctx, pat| {
-            tracked_union!(ctx, pat.add, pat.a);
-        },
-    );
-    MyTx::add_rule(
-        "mul_zero",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let z = MConst::query();
-            let mul = MMul::query(&a, &z);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                z: MConst,
-                mul: MMul,
-            }
-            Pat::new(z.clone(), mul).assert(z.handle_num().eq(&0))
-        },
-        |ctx, pat| {
-            let z = tracked_insert!(ctx, "mul_zero", "MConst", [], ctx.insert_m_const(0));
-            tracked_union!(ctx, pat.mul, z);
-        },
-    );
-    MyTx::add_rule(
-        "mul_one",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let one = MConst::query();
-            let mul = MMul::query(&a, &one);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                one: MConst,
-                a: Math,
-                mul: MMul,
-            }
-            Pat::new(one.clone(), a, mul).assert(one.handle_num().eq(&1))
-        },
-        |ctx, pat| {
-            tracked_union!(ctx, pat.mul, pat.a);
-        },
-    );
-    MyTx::add_rule(
-        "sub_self_zero",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let sub = MSub::query(&a, &a);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                sub: MSub,
-            }
-            Pat::new(sub)
-        },
-        |ctx, pat| {
-            let z = tracked_insert!(ctx, "sub_self_zero", "MConst", [], ctx.insert_m_const(0));
-            tracked_union!(ctx, pat.sub, z);
-        },
-    );
-    MyTx::add_rule(
-        "mul_distrib",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let c = Math::query_slot("c".to_string());
-            let add = MAdd::query(&b, &c);
-            let mul = MMul::query(&a, &add);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                c: Math,
-                mul: MMul,
-            }
-            Pat::new(a, b, c, mul)
-        },
-        |ctx, pat| {
-            let ab = tracked_insert!(ctx,
-                "mul_distrib",
-                "MMul",
-                ["a" => pat.a, "b" => pat.b],
-                ctx.insert_m_mul(&pat.a, &pat.b)
-            );
-            let ac = tracked_insert!(ctx,
-                "mul_distrib",
-                "MMul",
-                ["a" => pat.a, "c" => pat.c],
-                ctx.insert_m_mul(&pat.a, &pat.c)
-            );
-            let rhs = tracked_insert!(ctx,
-                "mul_distrib",
-                "MAdd",
-                ["ab" => ab, "ac" => ac],
-                ctx.insert_m_add(ab, ac)
-            );
-            tracked_union!(ctx, pat.mul, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "add_factor",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let c = Math::query_slot("c".to_string());
-            let ab = MMul::query(&a, &b);
-            let ac = MMul::query(&a, &c);
-            let add = MAdd::query(&ab, &ac);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                c: Math,
-                add: MAdd,
-            }
-            Pat::new(a, b, c, add)
-        },
-        |ctx, pat| {
-            let bc = tracked_insert!(ctx,
-                "add_factor",
-                "MAdd",
-                ["b" => pat.b, "c" => pat.c],
-                ctx.insert_m_add(&pat.b, &pat.c)
-            );
-            let rhs = tracked_insert!(ctx,
-                "add_factor",
-                "MMul",
-                ["a" => pat.a, "bc" => bc],
-                ctx.insert_m_mul(&pat.a, bc)
-            );
-            tracked_union!(ctx, pat.add, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "mul_pow_combine",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let c = Math::query_slot("c".to_string());
-            let pow_ab = MPow::query(&a, &b);
-            let pow_ac = MPow::query(&a, &c);
-            let mul = MMul::query(&pow_ab, &pow_ac);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                c: Math,
-                mul: MMul,
-            }
-            Pat::new(a, b, c, mul)
-        },
-        |ctx, pat| {
-            let bc = tracked_insert!(ctx,
-                "mul_pow_combine",
-                "MAdd",
-                ["b" => pat.b, "c" => pat.c],
-                ctx.insert_m_add(&pat.b, &pat.c)
-            );
-            let rhs = tracked_insert!(ctx,
-                "mul_pow_combine",
-                "MPow",
-                ["a" => pat.a, "bc" => bc],
-                ctx.insert_m_pow(&pat.a, bc)
-            );
-            tracked_union!(ctx, pat.mul, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "pow_one",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let one = MConst::query();
-            let pow = MPow::query(&x, &one);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                one: MConst,
-                x: Math,
-                pow: MPow,
-            }
-            Pat::new(one.clone(), x, pow).assert(one.handle_num().eq(&1))
-        },
-        |ctx, pat| {
-            tracked_union!(ctx, pat.pow, pat.x);
-        },
-    );
-    MyTx::add_rule(
-        "pow_two",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let two = MConst::query();
-            let pow = MPow::query(&x, &two);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                two: MConst,
-                x: Math,
-                pow: MPow,
-            }
-            Pat::new(two.clone(), x, pow).assert(two.handle_num().eq(&2))
-        },
-        |ctx, pat| {
-            let rhs = tracked_insert!(ctx,
-                "pow_two",
-                "MMul",
-                ["x0" => pat.x, "x1" => pat.x],
-                ctx.insert_m_mul(&pat.x, &pat.x)
-            );
-            tracked_union!(ctx, pat.pow, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "diff_add",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let add = MAdd::query(&a, &b);
-            let diff = MDiff::query(&x, &add);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                x: Math,
-                a: Math,
-                b: Math,
-                diff: MDiff,
-            }
-            Pat::new(x, a, b, diff)
-        },
-        |ctx, pat| {
-            let da = tracked_insert!(ctx,
-                "diff_add",
-                "MDiff",
-                ["x" => pat.x, "a" => pat.a],
-                ctx.insert_m_diff(&pat.x, &pat.a)
-            );
-            let db = tracked_insert!(ctx,
-                "diff_add",
-                "MDiff",
-                ["x" => pat.x, "b" => pat.b],
-                ctx.insert_m_diff(&pat.x, &pat.b)
-            );
-            let rhs = tracked_insert!(ctx,
-                "diff_add",
-                "MAdd",
-                ["da" => da, "db" => db],
-                ctx.insert_m_add(da, db)
-            );
-            tracked_union!(ctx, pat.diff, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "diff_mul",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let mul = MMul::query(&a, &b);
-            let diff = MDiff::query(&x, &mul);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                x: Math,
-                a: Math,
-                b: Math,
-                diff: MDiff,
-            }
-            Pat::new(x, a, b, diff)
-        },
-        |ctx, pat| {
-            let db = tracked_insert!(ctx,
-                "diff_mul",
-                "MDiff",
-                ["x" => pat.x, "b" => pat.b],
-                ctx.insert_m_diff(&pat.x, &pat.b)
-            );
-            let da = tracked_insert!(ctx,
-                "diff_mul",
-                "MDiff",
-                ["x" => pat.x, "a" => pat.a],
-                ctx.insert_m_diff(&pat.x, &pat.a)
-            );
-            let a_db = tracked_insert!(ctx,
-                "diff_mul",
-                "MMul",
-                ["a" => pat.a, "db" => db],
-                ctx.insert_m_mul(&pat.a, db)
-            );
-            let b_da = tracked_insert!(ctx,
-                "diff_mul",
-                "MMul",
-                ["b" => pat.b, "da" => da],
-                ctx.insert_m_mul(&pat.b, da)
-            );
-            let rhs = tracked_insert!(ctx,
-                "diff_mul",
-                "MAdd",
-                ["a_db" => a_db, "b_da" => b_da],
-                ctx.insert_m_add(a_db, b_da)
-            );
-            tracked_union!(ctx, pat.diff, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "diff_sin",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let sin = MSin::query(&x);
-            let diff = MDiff::query(&x, &sin);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                x: Math,
-                diff: MDiff,
-            }
-            Pat::new(x, diff)
-        },
-        |ctx, pat| {
-            let rhs = tracked_insert!(ctx,
-                "diff_sin",
-                "MCos",
-                ["x" => pat.x],
-                ctx.insert_m_cos(&pat.x)
-            );
-            tracked_union!(ctx, pat.diff, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "diff_cos",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let cos = MCos::query(&x);
-            let diff = MDiff::query(&x, &cos);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                x: Math,
-                diff: MDiff,
-            }
-            Pat::new(x, diff)
-        },
-        |ctx, pat| {
-            let neg1 = tracked_insert!(ctx, "diff_cos", "MConst", [], ctx.insert_m_const(-1));
-            let sin = tracked_insert!(ctx,
-                "diff_cos",
-                "MSin",
-                ["x" => pat.x],
-                ctx.insert_m_sin(&pat.x)
-            );
-            let rhs = tracked_insert!(ctx,
-                "diff_cos",
-                "MMul",
-                ["neg1" => neg1, "sin" => sin],
-                ctx.insert_m_mul(neg1, sin)
-            );
-            tracked_union!(ctx, pat.diff, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "int_one",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let one = MConst::query();
-            let integ = MIntegral::query(&one, &x);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                one: MConst,
-                x: Math,
-                integ: MIntegral,
-            }
-            Pat::new(one.clone(), x, integ).assert(one.handle_num().eq(&1))
-        },
-        |ctx, pat| {
-            tracked_union!(ctx, pat.integ, pat.x);
-        },
-    );
-    MyTx::add_rule(
-        "int_cos",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let cos = MCos::query(&x);
-            let integ = MIntegral::query(&cos, &x);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                x: Math,
-                integ: MIntegral,
-            }
-            Pat::new(x, integ)
-        },
-        |ctx, pat| {
-            let rhs = tracked_insert!(ctx,
-                "int_cos",
-                "MSin",
-                ["x" => pat.x],
-                ctx.insert_m_sin(&pat.x)
-            );
-            tracked_union!(ctx, pat.integ, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "int_sin",
-        ruleset,
-        || {
-            let x = Math::query_slot("x".to_string());
-            let sin = MSin::query(&x);
-            let integ = MIntegral::query(&sin, &x);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                x: Math,
-                integ: MIntegral,
-            }
-            Pat::new(x, integ)
-        },
-        |ctx, pat| {
-            let neg1 = tracked_insert!(ctx, "int_sin", "MConst", [], ctx.insert_m_const(-1));
-            let cos = tracked_insert!(ctx,
-                "int_sin",
-                "MCos",
-                ["x" => pat.x],
-                ctx.insert_m_cos(&pat.x)
-            );
-            let rhs = tracked_insert!(ctx,
-                "int_sin",
-                "MMul",
-                ["neg1" => neg1, "cos" => cos],
-                ctx.insert_m_mul(neg1, cos)
-            );
-            tracked_union!(ctx, pat.integ, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "int_add",
-        ruleset,
-        || {
-            let f = Math::query_slot("f".to_string());
-            let g = Math::query_slot("g".to_string());
-            let x = Math::query_slot("x".to_string());
-            let add = MAdd::query(&f, &g);
-            let integ = MIntegral::query(&add, &x);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                f: Math,
-                g: Math,
-                x: Math,
-                integ: MIntegral,
-            }
-            Pat::new(f, g, x, integ)
-        },
-        |ctx, pat| {
-            let i_f = tracked_insert!(ctx,
-                "int_add",
-                "MIntegral",
-                ["f" => pat.f, "x" => pat.x],
-                ctx.insert_m_integral(&pat.f, &pat.x)
-            );
-            let i_g = tracked_insert!(ctx,
-                "int_add",
-                "MIntegral",
-                ["g" => pat.g, "x" => pat.x],
-                ctx.insert_m_integral(&pat.g, &pat.x)
-            );
-            let rhs = tracked_insert!(ctx,
-                "int_add",
-                "MAdd",
-                ["i_f" => i_f, "i_g" => i_g],
-                ctx.insert_m_add(i_f, i_g)
-            );
-            tracked_union!(ctx, pat.integ, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "int_sub",
-        ruleset,
-        || {
-            let f = Math::query_slot("f".to_string());
-            let g = Math::query_slot("g".to_string());
-            let x = Math::query_slot("x".to_string());
-            let sub = MSub::query(&f, &g);
-            let integ = MIntegral::query(&sub, &x);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                f: Math,
-                g: Math,
-                x: Math,
-                integ: MIntegral,
-            }
-            Pat::new(f, g, x, integ)
-        },
-        |ctx, pat| {
-            let i_f = tracked_insert!(ctx,
-                "int_sub",
-                "MIntegral",
-                ["f" => pat.f, "x" => pat.x],
-                ctx.insert_m_integral(&pat.f, &pat.x)
-            );
-            let i_g = tracked_insert!(ctx,
-                "int_sub",
-                "MIntegral",
-                ["g" => pat.g, "x" => pat.x],
-                ctx.insert_m_integral(&pat.g, &pat.x)
-            );
-            let rhs = tracked_insert!(ctx,
-                "int_sub",
-                "MSub",
-                ["i_f" => i_f, "i_g" => i_g],
-                ctx.insert_m_sub(i_f, i_g)
-            );
-            tracked_union!(ctx, pat.integ, rhs);
-        },
-    );
-    MyTx::add_rule(
-        "int_mul",
-        ruleset,
-        || {
-            let a = Math::query_slot("a".to_string());
-            let b = Math::query_slot("b".to_string());
-            let x = Math::query_slot("x".to_string());
-            let mul = MMul::query(&a, &b);
-            let integ = MIntegral::query(&mul, &x);
-            #[eggplant::slotted_pat_vars]
-            struct Pat {
-                a: Math,
-                b: Math,
-                x: Math,
-                integ: MIntegral,
-            }
-            Pat::new(a, b, x, integ)
-        },
-        |ctx, pat| {
-            let i_b = tracked_insert!(ctx,
-                "int_mul",
-                "MIntegral",
-                ["b" => pat.b, "x" => pat.x],
-                ctx.insert_m_integral(&pat.b, &pat.x)
-            );
-            let a_i_b = tracked_insert!(ctx,
-                "int_mul",
-                "MMul",
-                ["a" => pat.a, "i_b" => i_b],
-                ctx.insert_m_mul(&pat.a, i_b.clone())
-            );
-            let dxa = tracked_insert!(ctx,
-                "int_mul",
-                "MDiff",
-                ["x" => pat.x, "a" => pat.a],
-                ctx.insert_m_diff(&pat.x, &pat.a)
-            );
-            let mul = tracked_insert!(ctx,
-                "int_mul",
-                "MMul",
-                ["dxa" => dxa, "i_b" => i_b],
-                ctx.insert_m_mul(dxa, i_b)
-            );
-            let i2 = tracked_insert!(ctx,
-                "int_mul",
-                "MIntegral",
-                ["mul" => mul, "x" => pat.x],
-                ctx.insert_m_integral(mul, &pat.x)
-            );
-            let rhs = tracked_insert!(ctx,
-                "int_mul",
-                "MSub",
-                ["a_i_b" => a_i_b, "i2" => i2],
-                ctx.insert_m_sub(a_i_b, i2)
-            );
-            tracked_union!(ctx, pat.integ, rhs);
-        },
-    );
+        MyTx::add_rule(
+            "add_comm",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let add = MAdd::query(&a, &b);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    add: MAdd,
+                }
+                Pat::new(a, b, add)
+            },
+            |ctx, pat| {
+                let rhs = tracked_insert!(ctx,
+                    "add_comm",
+                    "MAdd",
+                    ["b" => pat.b, "a" => pat.a],
+                    ctx.insert_m_add(&pat.b, &pat.a)
+                );
+                tracked_union!(ctx, pat.add, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "mul_comm",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let mul = MMul::query(&a, &b);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    mul: MMul,
+                }
+                Pat::new(a, b, mul)
+            },
+            |ctx, pat| {
+                let rhs = tracked_insert!(ctx,
+                    "mul_comm",
+                    "MMul",
+                    ["b" => pat.b, "a" => pat.a],
+                    ctx.insert_m_mul(&pat.b, &pat.a)
+                );
+                tracked_union!(ctx, pat.mul, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "add_assoc",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let c = Math::query_slot("c".to_string());
+                let add_inner = MAdd::query(&b, &c);
+                let add_outer = MAdd::query(&a, &add_inner);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    c: Math,
+                    add_outer: MAdd,
+                }
+                Pat::new(a, b, c, add_outer)
+            },
+            |ctx, pat| {
+                let ab = tracked_insert!(ctx,
+                    "add_assoc",
+                    "MAdd",
+                    ["a" => pat.a, "b" => pat.b],
+                    ctx.insert_m_add(&pat.a, &pat.b)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "add_assoc",
+                    "MAdd",
+                    ["ab" => ab, "c" => pat.c],
+                    ctx.insert_m_add(ab, &pat.c)
+                );
+                tracked_union!(ctx, pat.add_outer, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "mul_assoc",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let c = Math::query_slot("c".to_string());
+                let mul_inner = MMul::query(&b, &c);
+                let mul_outer = MMul::query(&a, &mul_inner);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    c: Math,
+                    mul_outer: MMul,
+                }
+                Pat::new(a, b, c, mul_outer)
+            },
+            |ctx, pat| {
+                let ab = tracked_insert!(ctx,
+                    "mul_assoc",
+                    "MMul",
+                    ["a" => pat.a, "b" => pat.b],
+                    ctx.insert_m_mul(&pat.a, &pat.b)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "mul_assoc",
+                    "MMul",
+                    ["ab" => ab, "c" => pat.c],
+                    ctx.insert_m_mul(ab, &pat.c)
+                );
+                tracked_union!(ctx, pat.mul_outer, rhs);
+            },
+        );
+        MyTx::add_rule(
+            MACRO_MUL_ASSOC_LHS_RULE,
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let c = Math::query_slot("c".to_string());
+                let mul_inner = MMul::query(&b, &c);
+                let raw_root = MMul::query(&a, &mul_inner);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    c: Math,
+                    raw_root: MMul,
+                }
+                Pat::new(a, b, c, raw_root)
+            },
+            |ctx, pat| {
+                let a = value_meta(&ctx.ctx, &pat.a).0;
+                let b = value_meta(&ctx.ctx, &pat.b).0;
+                let c = value_meta(&ctx.ctx, &pat.c).0;
+                let raw_root = value_meta(&ctx.ctx, &pat.raw_root).0;
+                let macro_root = ctx.insert(MACRO_MUL_ASSOC_LHS_CONSTRUCTOR, &[a, b, c]);
+                ctx.union_values(raw_root, macro_root);
+            },
+        );
+        MyTx::add_rule(
+            "sub_to_add_neg",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let sub = MSub::query(&a, &b);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    sub: MSub,
+                }
+                Pat::new(a, b, sub)
+            },
+            |ctx, pat| {
+                let neg1 =
+                    tracked_insert!(ctx, "sub_to_add_neg", "MConst", [], ctx.insert_m_const(-1));
+                let neg_b = tracked_insert!(ctx,
+                    "sub_to_add_neg",
+                    "MMul",
+                    ["neg1" => neg1, "b" => pat.b],
+                    ctx.insert_m_mul(neg1, &pat.b)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "sub_to_add_neg",
+                    "MAdd",
+                    ["a" => pat.a, "neg_b" => neg_b],
+                    ctx.insert_m_add(&pat.a, neg_b)
+                );
+                tracked_union!(ctx, pat.sub, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "add_zero",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let z = MConst::query();
+                let add = MAdd::query(&a, &z);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    z: MConst,
+                    a: Math,
+                    add: MAdd,
+                }
+                Pat::new(z.clone(), a, add).assert(z.handle_num().eq(&0))
+            },
+            |ctx, pat| {
+                tracked_union!(ctx, pat.add, pat.a);
+            },
+        );
+        MyTx::add_rule(
+            "mul_zero",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let z = MConst::query();
+                let mul = MMul::query(&a, &z);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    z: MConst,
+                    mul: MMul,
+                }
+                Pat::new(z.clone(), mul).assert(z.handle_num().eq(&0))
+            },
+            |ctx, pat| {
+                let z = tracked_insert!(ctx, "mul_zero", "MConst", [], ctx.insert_m_const(0));
+                tracked_union!(ctx, pat.mul, z);
+            },
+        );
+        MyTx::add_rule(
+            "mul_one",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let one = MConst::query();
+                let mul = MMul::query(&a, &one);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    one: MConst,
+                    a: Math,
+                    mul: MMul,
+                }
+                Pat::new(one.clone(), a, mul).assert(one.handle_num().eq(&1))
+            },
+            |ctx, pat| {
+                tracked_union!(ctx, pat.mul, pat.a);
+            },
+        );
+        MyTx::add_rule(
+            "sub_self_zero",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let sub = MSub::query(&a, &a);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    sub: MSub,
+                }
+                Pat::new(sub)
+            },
+            |ctx, pat| {
+                let z = tracked_insert!(ctx, "sub_self_zero", "MConst", [], ctx.insert_m_const(0));
+                tracked_union!(ctx, pat.sub, z);
+            },
+        );
+        MyTx::add_rule(
+            "mul_distrib",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let c = Math::query_slot("c".to_string());
+                let add = MAdd::query(&b, &c);
+                let mul = MMul::query(&a, &add);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    c: Math,
+                    mul: MMul,
+                }
+                Pat::new(a, b, c, mul)
+            },
+            |ctx, pat| {
+                let ab = tracked_insert!(ctx,
+                    "mul_distrib",
+                    "MMul",
+                    ["a" => pat.a, "b" => pat.b],
+                    ctx.insert_m_mul(&pat.a, &pat.b)
+                );
+                let ac = tracked_insert!(ctx,
+                    "mul_distrib",
+                    "MMul",
+                    ["a" => pat.a, "c" => pat.c],
+                    ctx.insert_m_mul(&pat.a, &pat.c)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "mul_distrib",
+                    "MAdd",
+                    ["ab" => ab, "ac" => ac],
+                    ctx.insert_m_add(ab, ac)
+                );
+                tracked_union!(ctx, pat.mul, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "add_factor",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let c = Math::query_slot("c".to_string());
+                let ab = MMul::query(&a, &b);
+                let ac = MMul::query(&a, &c);
+                let add = MAdd::query(&ab, &ac);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    c: Math,
+                    add: MAdd,
+                }
+                Pat::new(a, b, c, add)
+            },
+            |ctx, pat| {
+                let bc = tracked_insert!(ctx,
+                    "add_factor",
+                    "MAdd",
+                    ["b" => pat.b, "c" => pat.c],
+                    ctx.insert_m_add(&pat.b, &pat.c)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "add_factor",
+                    "MMul",
+                    ["a" => pat.a, "bc" => bc],
+                    ctx.insert_m_mul(&pat.a, bc)
+                );
+                tracked_union!(ctx, pat.add, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "mul_pow_combine",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let c = Math::query_slot("c".to_string());
+                let pow_ab = MPow::query(&a, &b);
+                let pow_ac = MPow::query(&a, &c);
+                let mul = MMul::query(&pow_ab, &pow_ac);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    c: Math,
+                    mul: MMul,
+                }
+                Pat::new(a, b, c, mul)
+            },
+            |ctx, pat| {
+                let bc = tracked_insert!(ctx,
+                    "mul_pow_combine",
+                    "MAdd",
+                    ["b" => pat.b, "c" => pat.c],
+                    ctx.insert_m_add(&pat.b, &pat.c)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "mul_pow_combine",
+                    "MPow",
+                    ["a" => pat.a, "bc" => bc],
+                    ctx.insert_m_pow(&pat.a, bc)
+                );
+                tracked_union!(ctx, pat.mul, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "pow_one",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let one = MConst::query();
+                let pow = MPow::query(&x, &one);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    one: MConst,
+                    x: Math,
+                    pow: MPow,
+                }
+                Pat::new(one.clone(), x, pow).assert(one.handle_num().eq(&1))
+            },
+            |ctx, pat| {
+                tracked_union!(ctx, pat.pow, pat.x);
+            },
+        );
+        MyTx::add_rule(
+            "pow_two",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let two = MConst::query();
+                let pow = MPow::query(&x, &two);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    two: MConst,
+                    x: Math,
+                    pow: MPow,
+                }
+                Pat::new(two.clone(), x, pow).assert(two.handle_num().eq(&2))
+            },
+            |ctx, pat| {
+                let rhs = tracked_insert!(ctx,
+                    "pow_two",
+                    "MMul",
+                    ["x0" => pat.x, "x1" => pat.x],
+                    ctx.insert_m_mul(&pat.x, &pat.x)
+                );
+                tracked_union!(ctx, pat.pow, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "diff_add",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let add = MAdd::query(&a, &b);
+                let diff = MDiff::query(&x, &add);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    x: Math,
+                    a: Math,
+                    b: Math,
+                    diff: MDiff,
+                }
+                Pat::new(x, a, b, diff)
+            },
+            |ctx, pat| {
+                let da = tracked_insert!(ctx,
+                    "diff_add",
+                    "MDiff",
+                    ["x" => pat.x, "a" => pat.a],
+                    ctx.insert_m_diff(&pat.x, &pat.a)
+                );
+                let db = tracked_insert!(ctx,
+                    "diff_add",
+                    "MDiff",
+                    ["x" => pat.x, "b" => pat.b],
+                    ctx.insert_m_diff(&pat.x, &pat.b)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "diff_add",
+                    "MAdd",
+                    ["da" => da, "db" => db],
+                    ctx.insert_m_add(da, db)
+                );
+                tracked_union!(ctx, pat.diff, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "diff_mul",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let mul = MMul::query(&a, &b);
+                let diff = MDiff::query(&x, &mul);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    x: Math,
+                    a: Math,
+                    b: Math,
+                    diff: MDiff,
+                }
+                Pat::new(x, a, b, diff)
+            },
+            |ctx, pat| {
+                let db = tracked_insert!(ctx,
+                    "diff_mul",
+                    "MDiff",
+                    ["x" => pat.x, "b" => pat.b],
+                    ctx.insert_m_diff(&pat.x, &pat.b)
+                );
+                let da = tracked_insert!(ctx,
+                    "diff_mul",
+                    "MDiff",
+                    ["x" => pat.x, "a" => pat.a],
+                    ctx.insert_m_diff(&pat.x, &pat.a)
+                );
+                let a_db = tracked_insert!(ctx,
+                    "diff_mul",
+                    "MMul",
+                    ["a" => pat.a, "db" => db],
+                    ctx.insert_m_mul(&pat.a, db)
+                );
+                let b_da = tracked_insert!(ctx,
+                    "diff_mul",
+                    "MMul",
+                    ["b" => pat.b, "da" => da],
+                    ctx.insert_m_mul(&pat.b, da)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "diff_mul",
+                    "MAdd",
+                    ["a_db" => a_db, "b_da" => b_da],
+                    ctx.insert_m_add(a_db, b_da)
+                );
+                tracked_union!(ctx, pat.diff, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "diff_sin",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let sin = MSin::query(&x);
+                let diff = MDiff::query(&x, &sin);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    x: Math,
+                    diff: MDiff,
+                }
+                Pat::new(x, diff)
+            },
+            |ctx, pat| {
+                let rhs = tracked_insert!(ctx,
+                    "diff_sin",
+                    "MCos",
+                    ["x" => pat.x],
+                    ctx.insert_m_cos(&pat.x)
+                );
+                tracked_union!(ctx, pat.diff, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "diff_cos",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let cos = MCos::query(&x);
+                let diff = MDiff::query(&x, &cos);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    x: Math,
+                    diff: MDiff,
+                }
+                Pat::new(x, diff)
+            },
+            |ctx, pat| {
+                let neg1 = tracked_insert!(ctx, "diff_cos", "MConst", [], ctx.insert_m_const(-1));
+                let sin = tracked_insert!(ctx,
+                    "diff_cos",
+                    "MSin",
+                    ["x" => pat.x],
+                    ctx.insert_m_sin(&pat.x)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "diff_cos",
+                    "MMul",
+                    ["neg1" => neg1, "sin" => sin],
+                    ctx.insert_m_mul(neg1, sin)
+                );
+                tracked_union!(ctx, pat.diff, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "int_one",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let one = MConst::query();
+                let integ = MIntegral::query(&one, &x);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    one: MConst,
+                    x: Math,
+                    integ: MIntegral,
+                }
+                Pat::new(one.clone(), x, integ).assert(one.handle_num().eq(&1))
+            },
+            |ctx, pat| {
+                tracked_union!(ctx, pat.integ, pat.x);
+            },
+        );
+        MyTx::add_rule(
+            "int_cos",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let cos = MCos::query(&x);
+                let integ = MIntegral::query(&cos, &x);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    x: Math,
+                    integ: MIntegral,
+                }
+                Pat::new(x, integ)
+            },
+            |ctx, pat| {
+                let rhs = tracked_insert!(ctx,
+                    "int_cos",
+                    "MSin",
+                    ["x" => pat.x],
+                    ctx.insert_m_sin(&pat.x)
+                );
+                tracked_union!(ctx, pat.integ, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "int_sin",
+            ruleset,
+            || {
+                let x = Math::query_slot("x".to_string());
+                let sin = MSin::query(&x);
+                let integ = MIntegral::query(&sin, &x);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    x: Math,
+                    integ: MIntegral,
+                }
+                Pat::new(x, integ)
+            },
+            |ctx, pat| {
+                let neg1 = tracked_insert!(ctx, "int_sin", "MConst", [], ctx.insert_m_const(-1));
+                let cos = tracked_insert!(ctx,
+                    "int_sin",
+                    "MCos",
+                    ["x" => pat.x],
+                    ctx.insert_m_cos(&pat.x)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "int_sin",
+                    "MMul",
+                    ["neg1" => neg1, "cos" => cos],
+                    ctx.insert_m_mul(neg1, cos)
+                );
+                tracked_union!(ctx, pat.integ, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "int_add",
+            ruleset,
+            || {
+                let f = Math::query_slot("f".to_string());
+                let g = Math::query_slot("g".to_string());
+                let x = Math::query_slot("x".to_string());
+                let add = MAdd::query(&f, &g);
+                let integ = MIntegral::query(&add, &x);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    f: Math,
+                    g: Math,
+                    x: Math,
+                    integ: MIntegral,
+                }
+                Pat::new(f, g, x, integ)
+            },
+            |ctx, pat| {
+                let i_f = tracked_insert!(ctx,
+                    "int_add",
+                    "MIntegral",
+                    ["f" => pat.f, "x" => pat.x],
+                    ctx.insert_m_integral(&pat.f, &pat.x)
+                );
+                let i_g = tracked_insert!(ctx,
+                    "int_add",
+                    "MIntegral",
+                    ["g" => pat.g, "x" => pat.x],
+                    ctx.insert_m_integral(&pat.g, &pat.x)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "int_add",
+                    "MAdd",
+                    ["i_f" => i_f, "i_g" => i_g],
+                    ctx.insert_m_add(i_f, i_g)
+                );
+                tracked_union!(ctx, pat.integ, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "int_sub",
+            ruleset,
+            || {
+                let f = Math::query_slot("f".to_string());
+                let g = Math::query_slot("g".to_string());
+                let x = Math::query_slot("x".to_string());
+                let sub = MSub::query(&f, &g);
+                let integ = MIntegral::query(&sub, &x);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    f: Math,
+                    g: Math,
+                    x: Math,
+                    integ: MIntegral,
+                }
+                Pat::new(f, g, x, integ)
+            },
+            |ctx, pat| {
+                let i_f = tracked_insert!(ctx,
+                    "int_sub",
+                    "MIntegral",
+                    ["f" => pat.f, "x" => pat.x],
+                    ctx.insert_m_integral(&pat.f, &pat.x)
+                );
+                let i_g = tracked_insert!(ctx,
+                    "int_sub",
+                    "MIntegral",
+                    ["g" => pat.g, "x" => pat.x],
+                    ctx.insert_m_integral(&pat.g, &pat.x)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "int_sub",
+                    "MSub",
+                    ["i_f" => i_f, "i_g" => i_g],
+                    ctx.insert_m_sub(i_f, i_g)
+                );
+                tracked_union!(ctx, pat.integ, rhs);
+            },
+        );
+        MyTx::add_rule(
+            "int_mul",
+            ruleset,
+            || {
+                let a = Math::query_slot("a".to_string());
+                let b = Math::query_slot("b".to_string());
+                let x = Math::query_slot("x".to_string());
+                let mul = MMul::query(&a, &b);
+                let integ = MIntegral::query(&mul, &x);
+                #[eggplant::slotted_pat_vars]
+                struct Pat {
+                    a: Math,
+                    b: Math,
+                    x: Math,
+                    integ: MIntegral,
+                }
+                Pat::new(a, b, x, integ)
+            },
+            |ctx, pat| {
+                let i_b = tracked_insert!(ctx,
+                    "int_mul",
+                    "MIntegral",
+                    ["b" => pat.b, "x" => pat.x],
+                    ctx.insert_m_integral(&pat.b, &pat.x)
+                );
+                let a_i_b = tracked_insert!(ctx,
+                    "int_mul",
+                    "MMul",
+                    ["a" => pat.a, "i_b" => i_b],
+                    ctx.insert_m_mul(&pat.a, i_b.clone())
+                );
+                let dxa = tracked_insert!(ctx,
+                    "int_mul",
+                    "MDiff",
+                    ["x" => pat.x, "a" => pat.a],
+                    ctx.insert_m_diff(&pat.x, &pat.a)
+                );
+                let mul = tracked_insert!(ctx,
+                    "int_mul",
+                    "MMul",
+                    ["dxa" => dxa, "i_b" => i_b],
+                    ctx.insert_m_mul(dxa, i_b)
+                );
+                let i2 = tracked_insert!(ctx,
+                    "int_mul",
+                    "MIntegral",
+                    ["mul" => mul, "x" => pat.x],
+                    ctx.insert_m_integral(mul, &pat.x)
+                );
+                let rhs = tracked_insert!(ctx,
+                    "int_mul",
+                    "MSub",
+                    ["a_i_b" => a_i_b, "i2" => i2],
+                    ctx.insert_m_sub(a_i_b, i2)
+                );
+                tracked_union!(ctx, pat.integ, rhs);
+            },
+        );
 
-    ruleset
+        ruleset
+    })
 }
 
 fn seed_expressions() -> Vec<egglog::Value> {
@@ -3033,15 +3361,25 @@ fn seed_expressions() -> Vec<egglog::Value> {
     roots
 }
 
-fn compute_stats_with_iters(iters: usize) -> SlottedMathPortStats {
+fn compute_stats_with_iters_with_hook<F>(
+    iters: usize,
+    mut on_round: Option<F>,
+) -> SlottedMathPortStats
+where
+    F: FnMut(usize, &HistorySummary),
+{
     MyPatRec::sgl().slotted_ctx.clear();
     reset_history_recorder();
     let _ = seed_expressions();
     let ruleset = install_rules();
 
     let started = Instant::now();
-    for _ in 0..iters {
+    for round_idx in 0..iters {
         let _ = MyTx::run_ruleset(ruleset, RunConfig::Once);
+        if let Some(on_round) = on_round.as_mut() {
+            let summary = history_summary_snapshot();
+            on_round(round_idx, &summary);
+        }
     }
     let elapsed = started.elapsed();
 
@@ -3058,6 +3396,10 @@ fn compute_stats_with_iters(iters: usize) -> SlottedMathPortStats {
         total_seclasses,
         total_senodes,
     }
+}
+
+fn compute_stats_with_iters(iters: usize) -> SlottedMathPortStats {
+    compute_stats_with_iters_with_hook::<fn(usize, &HistorySummary)>(iters, None)
 }
 
 fn compute_stats() -> SlottedMathPortStats {
@@ -3089,6 +3431,22 @@ fn main() {
         .windows(2)
         .find(|window| window[0] == "--history-typst-report")
         .map(|window| PathBuf::from(&window[1]));
+    let history_typst_round_dir = args
+        .windows(2)
+        .find(|window| window[0] == "--history-typst-round-dir")
+        .map(|window| PathBuf::from(&window[1]));
+    let composed_dsl_report = args
+        .windows(2)
+        .find(|window| window[0] == "--composed-dsl-report")
+        .map(|window| PathBuf::from(&window[1]));
+    let composed_dsl_typst_report = args
+        .windows(2)
+        .find(|window| window[0] == "--composed-dsl-typst-report")
+        .map(|window| PathBuf::from(&window[1]));
+    let composed_dsl_typst_round_dir = args
+        .windows(2)
+        .find(|window| window[0] == "--composed-dsl-typst-round-dir")
+        .map(|window| PathBuf::from(&window[1]));
     let history_min_len = args
         .windows(2)
         .find(|window| window[0] == "--history-min-len")
@@ -3100,8 +3458,13 @@ fn main() {
         .and_then(|window| window[1].parse::<usize>().ok())
         .unwrap_or(2);
     let require_history = args.iter().any(|arg| arg == "--require-history");
-    let collect_history =
-        history_report.is_some() || history_typst_report.is_some() || require_history;
+    let collect_history = history_report.is_some()
+        || history_typst_report.is_some()
+        || history_typst_round_dir.is_some()
+        || composed_dsl_report.is_some()
+        || composed_dsl_typst_report.is_some()
+        || composed_dsl_typst_round_dir.is_some()
+        || require_history;
     if std::env::args().any(|arg| arg == "--seed-only") {
         reset_seed_only_state();
         let roots = seed_expressions();
@@ -3136,7 +3499,33 @@ fn main() {
     }
     let analyze = std::env::args().any(|arg| arg == "--analyze");
     let stats = if collect_history || iters != DEFAULT_RUN_ITERS {
-        compute_stats_with_iters(iters)
+        if history_typst_round_dir.is_some() || composed_dsl_typst_round_dir.is_some() {
+            compute_stats_with_iters_with_hook(
+                iters,
+                Some(|round_idx, summary: &HistorySummary| {
+                    if let Some(round_dir) = history_typst_round_dir.as_ref() {
+                        write_round_history_typst_report(
+                            round_dir,
+                            round_idx,
+                            summary,
+                            history_min_len,
+                            history_min_support,
+                        );
+                    }
+                    if let Some(round_dir) = composed_dsl_typst_round_dir.as_ref() {
+                        write_round_composed_dsl_typst_report(
+                            round_dir,
+                            round_idx,
+                            summary,
+                            history_min_len,
+                            history_min_support,
+                        );
+                    }
+                }),
+            )
+        } else {
+            compute_stats_with_iters(iters)
+        }
     } else {
         run_port()
     };
@@ -3168,6 +3557,18 @@ fn main() {
                 format_history_report_typst(&summary, history_min_len, history_min_support),
             );
         }
+        if let Some(path) = composed_dsl_report {
+            write_report_file(
+                &path,
+                format_composed_dsl_report(&summary, history_min_len, history_min_support),
+            );
+        }
+        if let Some(path) = composed_dsl_typst_report {
+            write_report_file(
+                &path,
+                format_composed_dsl_report_typst(&summary, history_min_len, history_min_support),
+            );
+        }
         if require_history
             && !summary.has_significant_partial_flow(history_min_len, history_min_support)
         {
@@ -3190,6 +3591,97 @@ mod tests {
         let _seed: fn() -> Vec<egglog::Value> = seed_expressions;
         let _rules: fn() -> RuleSetId = install_rules;
         assert_eq!(<Math<(), ()> as EgglogTy>::TY_NAME, "Math");
+    }
+
+    #[test]
+    fn install_rules_registers_and_materializes_macro_constructor() {
+        let ruleset = install_rules();
+        {
+            let egraph = MyTx::sgl().egraph.lock().unwrap();
+            assert!(
+                egraph.get_function("Macro_72be").is_some(),
+                "install_rules should dynamically register Macro_72be"
+            );
+        }
+
+        let x = MVar::new_slot("macro_x");
+        let y = MVar::new_slot("macro_y");
+        let z = MVar::new_slot("macro_z");
+        let raw: Math<MyTx, _> = MMul::new(&x, &MMul::new(&y, &z));
+        raw.commit();
+        let raw_root = MyTx::canonical_raw(&raw);
+        let x_root = MyTx::canonical_raw(&x);
+        let y_root = MyTx::canonical_raw(&y);
+        let z_root = MyTx::canonical_raw(&z);
+
+        let _ = MyTx::run_ruleset(ruleset, RunConfig::Once);
+
+        let egraph = MyTx::sgl().egraph.lock().unwrap();
+        let math_sort = egraph.get_sort_by_name("Math").unwrap();
+        let raw_root = egraph.get_canonical_value(raw_root, math_sort);
+        let macro_root = egraph
+            .lookup_function("Macro_72be", &[x_root, y_root, z_root])
+            .expect("Macro_72be should be materialized by the macro constructor rule");
+        assert!(
+            egraph.get_canonical_value(macro_root, math_sort) == raw_root,
+            "Macro_72be(a,b,c) should be materialized and unioned with MMul(a, MMul(b,c))"
+        );
+    }
+
+    #[test]
+    fn composed_dsl_report_lists_dynamic_constructor() {
+        let _ = install_rules();
+        let summary = HistorySummary::default();
+        let report = format_composed_dsl_report(&summary, 2, 2);
+
+        assert!(report.contains("# Composed DSL Constructor Report"));
+        assert!(report.contains("## Composed DSL Constructors"));
+        assert!(report.contains("constructor schema: `Macro_72be(Math, Math, Math) -> Math`"));
+        assert!(report.contains("typed schema: `Macro_72be(a: Math, b: Math, c: Math) -> Math`"));
+        assert!(report.contains("registered in egraph: `true`"));
+        assert!(report.contains("semantic LHS shape: `MMul(a, MMul(b, c))`"));
+        assert!(
+            report.contains("materializer body: `MMul(a, MMul(b, c))` => `Macro_72be(a, b, c)`")
+        );
+        assert!(report.contains("eclass union: `MMul(a, MMul(b, c)) == Macro_72be(a, b, c)`"));
+    }
+
+    #[test]
+    fn typst_composed_dsl_report_lists_dynamic_constructor() {
+        let _ = install_rules();
+        let summary = HistorySummary::default();
+        let report = format_composed_dsl_report_typst(&summary, 2, 2);
+
+        assert!(report.contains("= Composed DSL Constructor Report"));
+        assert!(report.contains("== Composed DSL Constructors"));
+        assert!(report.contains("constructor schema: `Macro_72be(Math, Math, Math) -> Math`"));
+        assert!(report.contains(r#"upright("Macro_72be")(a, b, c)"#));
+        assert!(report.contains("raw semantic LHS shape: `MMul(a, MMul(b, c))`"));
+        assert!(
+            report
+                .contains("raw materializer body: `MMul(a, MMul(b, c))` => `Macro_72be(a, b, c)`")
+        );
+        assert!(report.contains("materializer body"));
+        assert!(!report.contains("__meta"));
+        assert!(!report.contains("_meta"));
+    }
+
+    #[test]
+    fn round_history_hook_receives_cumulative_snapshots() {
+        let mut event_counts = Vec::new();
+        let _ = compute_stats_with_iters_with_hook(
+            2,
+            Some(|_round_idx, summary: &HistorySummary| {
+                event_counts.push(summary.event_count);
+            }),
+        );
+
+        assert_eq!(event_counts.len(), 2);
+        assert!(event_counts[0] > 0);
+        assert!(
+            event_counts[1] >= event_counts[0],
+            "round reports should observe cumulative history growth"
+        );
     }
 
     #[test]

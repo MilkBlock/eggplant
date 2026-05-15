@@ -77,11 +77,17 @@ impl<'a, 'b, 'c, PR: PatRecSgl> PRRuleCtx<'a, 'b, 'c, PR> {
     pub fn _intern_container<C: ContainerValue>(&self, container: C) -> egglog::Value {
         self.ctx._intern_container(container)
     }
-    pub fn insert(&self, table: &'static str, key: &[egglog::Value]) -> egglog::Value {
+    pub fn insert(&self, table: &str, key: &[egglog::Value]) -> egglog::Value {
         self.ctx.insert(table, key)
+    }
+    pub fn lookup(&self, table: &str, key: &[egglog::Value]) -> Option<egglog::Value> {
+        self.ctx.lookup(table, key)
     }
     pub fn insert_func_tbl(&self, table: &str, key: &[egglog::Value]) {
         self.ctx.insert_func_tbl(table, key);
+    }
+    pub fn union_values(&self, x: egglog::Value, y: egglog::Value) {
+        self.ctx.union_values(x, y);
     }
     pub fn union<T0: EgglogTy, T1: EgglogTy>(
         &self,
@@ -171,13 +177,17 @@ impl<'a, 'b, 'c> RuleCtx<'a, 'b, 'c> {
         self.hook.0.as_ref().map(|x| x.on_insert(table, key));
         unsafe { (*self.rule_ctx.get()).insert(table, key.iter().cloned()) }
     }
+    pub fn union_values(&self, x: egglog::Value, y: egglog::Value) {
+        self.hook.0.as_ref().map(|hook| hook.on_union(x, y));
+        unsafe {
+            (*self.rule_ctx.get()).union(x, y);
+        }
+    }
     pub fn union<T0, T1>(&self, x: impl Insertable<T0>, y: impl Insertable<T1>) {
         let x = x.to_value(&self);
         let y = y.to_value(&self);
         self.hook.0.as_ref().map(|hook| hook.on_union(x.val, y.val));
-        unsafe {
-            (*self.rule_ctx.get()).union(x.val, y.val);
-        }
+        unsafe { (*self.rule_ctx.get()).union(x.val, y.val) }
     }
     pub fn subsume(&self, table: &str, key: &[egglog::Value]) {
         self.hook.0.as_ref().map(|hook| hook.on_subsume(table, key));
