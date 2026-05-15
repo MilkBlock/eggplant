@@ -1379,69 +1379,69 @@ fn rule_pattern_binding_lines(rule: &'static str) -> Option<Vec<String>> {
         "add_comm" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
-            format!("rhs = {}", typst_math_formula("MAdd(b, a)")),
+            typst_math_formula("rhs = MAdd(b, a)"),
         ],
         "mul_comm" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
-            format!("rhs = {}", typst_math_formula("MMul(b, a)")),
+            typst_math_formula("rhs = MMul(b, a)"),
         ],
         "add_assoc" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
             r#"c = "c""#.to_owned(),
-            format!("ab = {}", typst_math_formula("MAdd(a, b)")),
-            format!("rhs = {}", typst_math_formula("MAdd(ab, c)")),
+            typst_math_formula("ab = MAdd(a, b)"),
+            typst_math_formula("rhs = MAdd(ab, c)"),
         ],
         "mul_assoc" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
             r#"c = "c""#.to_owned(),
-            format!("ab = {}", typst_math_formula("MMul(a, b)")),
-            format!("rhs = {}", typst_math_formula("MMul(ab, c)")),
+            typst_math_formula("ab = MMul(a, b)"),
+            typst_math_formula("rhs = MMul(ab, c)"),
         ],
         "sub_to_add_neg" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
-            "neg1 = -1".to_owned(),
-            format!("neg_b = {}", typst_math_formula("MMul(neg1, b)")),
-            format!("rhs = {}", typst_math_formula("MAdd(a, neg_b)")),
+            typst_math_formula("neg1 = MConst(-1)"),
+            typst_math_formula("neg_b = MMul(neg1, b)"),
+            typst_math_formula("rhs = MAdd(a, neg_b)"),
         ],
         "mul_distrib" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
             r#"c = "c""#.to_owned(),
-            format!("ab = {}", typst_math_formula("MMul(a, b)")),
-            format!("ac = {}", typst_math_formula("MMul(a, c)")),
-            format!("rhs = {}", typst_math_formula("MAdd(ab, ac)")),
+            typst_math_formula("ab = MMul(a, b)"),
+            typst_math_formula("ac = MMul(a, c)"),
+            typst_math_formula("rhs = MAdd(ab, ac)"),
         ],
         "add_factor" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
             r#"c = "c""#.to_owned(),
-            format!("bc = {}", typst_math_formula("MAdd(b, c)")),
-            format!("rhs = {}", typst_math_formula("MMul(a, bc)")),
+            typst_math_formula("bc = MAdd(b, c)"),
+            typst_math_formula("rhs = MMul(a, bc)"),
         ],
         "diff_mul" => vec![
             r#"x = "x""#.to_owned(),
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
-            format!("da = {}", typst_math_formula("MDiff(x, a)")),
-            format!("db = {}", typst_math_formula("MDiff(x, b)")),
-            format!("a_db = {}", typst_math_formula("MMul(a, db)")),
-            format!("b_da = {}", typst_math_formula("MMul(b, da)")),
-            format!("rhs = {}", typst_math_formula("MAdd(a_db, b_da)")),
+            typst_math_formula("da = MDiff(x, a)"),
+            typst_math_formula("db = MDiff(x, b)"),
+            typst_math_formula("a_db = MMul(a, db)"),
+            typst_math_formula("b_da = MMul(b, da)"),
+            typst_math_formula("rhs = MAdd(a_db, b_da)"),
         ],
         "int_mul" => vec![
             r#"a = "a""#.to_owned(),
             r#"b = "b""#.to_owned(),
             r#"x = "x""#.to_owned(),
-            format!("i_b = {}", typst_math_formula("MIntegral(b, x)")),
-            format!("a_i_b = {}", typst_math_formula("MMul(a, i_b)")),
-            format!("dxa = {}", typst_math_formula("MDiff(x, a)")),
-            format!("mul = {}", typst_math_formula("MMul(dxa, i_b)")),
-            format!("i2 = {}", typst_math_formula("MIntegral(mul, x)")),
-            format!("rhs = {}", typst_math_formula("MSub(a_i_b, i2)")),
+            typst_math_formula("i_b = MIntegral(b, x)"),
+            typst_math_formula("a_i_b = MMul(a, i_b)"),
+            typst_math_formula("dxa = MDiff(x, a)"),
+            typst_math_formula("mul = MMul(dxa, i_b)"),
+            typst_math_formula("i2 = MIntegral(mul, x)"),
+            typst_math_formula("rhs = MSub(a_i_b, i2)"),
         ],
         _ => return None,
     };
@@ -3054,7 +3054,7 @@ mod tests {
         assert!(report.contains("==== inference rule"));
         assert!(report.contains(r##"#text(size: 8pt, fill: rgb("#52606d"))[$frac("##));
         assert!(report.contains(r#"quad upright("if") quad upright("None")"#));
-        assert!(report.contains(r##"#text(size: 8pt, fill: rgb("#52606d"))[$a = "a", b = "b", c = "c", ab = a + b, rhs = upright("ab") + c$]"##));
+        assert!(report.contains(r##"#text(size: 8pt, fill: rgb("#52606d"))[$a = "a", b = "b", c = "c", upright("ab") = a + b, upright("rhs") = upright("ab") + c$]"##));
         assert!(report.contains(r#"upright("ab") = a + b"#));
         assert!(report.contains(r#"upright("rhs") = upright("ab") + c"#));
         assert!(!report.contains(r#"upright("MAdd")("#));
