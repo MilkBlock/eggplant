@@ -919,11 +919,25 @@ fn rule_pattern_overall_formula(doc: RulePatternDoc) -> Option<String> {
     let bindings = rule_pattern_inserted_bindings(doc.inserted)?;
     let rhs = rule_pattern_final_rhs(doc.inserted)?;
     let expanded_rhs = expand_rule_pattern_expr(&rhs, &bindings, &mut BTreeSet::new());
-    let lhs = typst_math_formula(doc.matched);
-    let rhs = render_report_math_expr_node(&expanded_rhs, typst_report_registry())
+    Some(format!(
+        "{} = {}",
+        typst_math_formula(doc.matched),
+        render_report_math_expr_value(&expanded_rhs)
+    ))
+}
+
+fn render_report_math_expr_value(expr: &ReportMathExpr) -> String {
+    render_report_math_expr_node(expr, typst_report_registry())
         .text
-        .into_owned();
-    Some(format!("{lhs} = {rhs}"))
+        .into_owned()
+}
+
+fn render_report_math_assignment(lhs: &str, rhs: &ReportMathExpr) -> String {
+    format!(
+        "{} = {}",
+        render_report_math_atom(lhs.trim()),
+        render_report_math_expr_value(rhs)
+    )
 }
 
 fn push_rule_pattern_doc(report: &mut String, rule: &'static str) {
@@ -1017,6 +1031,84 @@ fn shared_bridge_inserted_line(rule: &str, next_input_label: &str) -> Option<&'s
         .find(|line| inserted_assignment_lhs(line).is_some_and(|lhs| lhs == next_input_label))
 }
 
+fn inserted_assignment_parts(line: &str) -> Option<(&str, ReportMathExpr)> {
+    let (lhs, rhs) = split_report_assignment(line)?;
+    Some((lhs.trim(), parse_report_math_expr(rhs.trim())?))
+}
+
+fn report_expr_head(expr: &ReportMathExpr) -> Option<&str> {
+    match expr {
+        ReportMathExpr::Atom(_) => None,
+        ReportMathExpr::Call { head, .. } => Some(head.as_str()),
+    }
+}
+
+fn report_expr_contains_atom(expr: &ReportMathExpr, target: &str) -> bool {
+    match expr {
+        ReportMathExpr::Atom(atom) => atom == target,
+        ReportMathExpr::Call { args, .. } => args
+            .iter()
+            .any(|arg| report_expr_contains_atom(arg, target)),
+    }
+}
+
+fn inserted_line_matches_step(line: &str, step: &ParsedTrailStep) -> bool {
+    let Some((_, rhs)) = inserted_assignment_parts(line) else {
+        return false;
+    };
+    report_expr_head(&rhs).is_some_and(|head| head == step.output_func)
+        && report_expr_contains_atom(&rhs, step.input_label.as_str())
+}
+
+fn inserted_line_has_output_func(line: &str, output_func: &str) -> bool {
+    let Some((_, rhs)) = inserted_assignment_parts(line) else {
+        return false;
+    };
+    report_expr_head(&rhs).is_some_and(|head| head == output_func)
+}
+
+fn macro_step_inserted_line(steps: &[ParsedTrailStep], step_idx: usize) -> Option<&'static str> {
+    let step = steps.get(step_idx)?;
+    let doc = rule_pattern_doc(&step.rule)?;
+    if let Some(next_input_label) = steps
+        .get(step_idx + 1)
+        .map(|next| next.input_label.as_str())
+        && let Some(line) = doc.inserted.iter().copied().find(|line| {
+            inserted_assignment_lhs(line).is_some_and(|lhs| lhs == next_input_label)
+                && inserted_line_has_output_func(line, step.output_func.as_str())
+        })
+    {
+        return Some(line);
+    }
+    doc.inserted
+        .iter()
+        .copied()
+        .find(|line| inserted_line_matches_step(line, step))
+}
+
+fn macro_chain_prefix_bindings(
+    steps: &[ParsedTrailStep],
+    step_idx: usize,
+) -> BTreeMap<String, ReportMathExpr> {
+    let mut bindings = BTreeMap::new();
+    for step in steps.iter().take(step_idx + 1) {
+        if let Some(doc) = rule_pattern_doc(&step.rule)
+            && let Some(rule_bindings) = rule_pattern_inserted_bindings(doc.inserted)
+        {
+            bindings.extend(rule_bindings);
+        }
+    }
+    bindings
+}
+
+fn macro_step_composed_formula(steps: &[ParsedTrailStep], step_idx: usize) -> Option<String> {
+    let line = macro_step_inserted_line(steps, step_idx)?;
+    let (lhs, rhs) = inserted_assignment_parts(line)?;
+    let bindings = macro_chain_prefix_bindings(steps, step_idx);
+    let rhs = expand_rule_pattern_expr(&rhs, &bindings, &mut BTreeSet::new());
+    Some(render_report_math_assignment(lhs, &rhs))
+}
+
 fn push_rule_pattern_card(report: &mut String, step_idx: usize, steps: &[ParsedTrailStep]) {
     let step = &steps[step_idx];
     report.push_str(&format!("##### Step {}: `{}`\n\n", step_idx + 1, step.rule));
@@ -1049,10 +1141,8 @@ fn push_rule_pattern_card(report: &mut String, step_idx: usize, steps: &[ParsedT
             }
             report.push_str(&format!("  - `{line}`\n"));
         }
-        if step_idx == 0
-            && let Some(formula) = rule_pattern_overall_formula(doc)
-        {
-            report.push_str(&format!("- overall formula: `{formula}`\n"));
+        if let Some(formula) = macro_step_composed_formula(steps, step_idx) {
+            report.push_str(&format!("- composed overall formula: `{formula}`\n"));
         }
         report.push_str("- partial-flow paths:\n");
         let matching_flows = doc
@@ -1546,10 +1636,8 @@ fn push_rule_pattern_card_typst(report: &mut String, step_idx: usize, steps: &[P
             }
             report.push_str(&format!("  - $ {} $\n", typst_math_formula(line)));
         }
-        if step_idx == 0
-            && let Some(formula) = rule_pattern_overall_formula(doc)
-        {
-            report.push_str(&format!("- overall formula: $ {} $\n", formula));
+        if let Some(formula) = macro_step_composed_formula(steps, step_idx) {
+            report.push_str(&format!("- composed overall formula: $ {} $\n", formula));
         }
         report.push_str("- partial-flow paths:\n");
         let matching_flows = doc
@@ -3029,6 +3117,32 @@ mod tests {
     }
 
     #[test]
+    fn history_report_renders_composed_step_formulas() {
+        let summary = HistorySummary {
+            event_count: 2,
+            value_count: 1,
+            repeated_groups: vec![HistoryGroup {
+                suffix_len: 2,
+                suffix_hash: 0x2b,
+                support_events: 2,
+                support_outputs: 1,
+                truncated_events: 0,
+                rules: vec!["add_assoc", "add_assoc"],
+                trail_labels: vec!["add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned()],
+                samples: vec![
+                    "MAdd value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned(),
+                ],
+            }],
+        };
+
+        let report = format_history_report(&summary, 2, 2);
+
+        assert!(report.contains("composed overall formula"));
+        assert!(report.contains("`upright(\"ab\") = a + b`"));
+        assert!(report.contains("`upright(\"rhs\") = a + b + c`"));
+    }
+
+    #[test]
     fn typst_history_report_has_typst_front_matter_and_no_meta() {
         let summary = HistorySummary {
             event_count: 1,
@@ -3064,6 +3178,32 @@ mod tests {
         );
         assert!(!report.contains("__meta"));
         assert!(!report.contains("_meta"));
+    }
+
+    #[test]
+    fn typst_history_report_renders_composed_step_formulas() {
+        let summary = HistorySummary {
+            event_count: 2,
+            value_count: 1,
+            repeated_groups: vec![HistoryGroup {
+                suffix_len: 2,
+                suffix_hash: 0x2b,
+                support_events: 2,
+                support_outputs: 1,
+                truncated_events: 0,
+                rules: vec!["add_assoc", "add_assoc"],
+                trail_labels: vec!["add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned()],
+                samples: vec![
+                    "MAdd value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned(),
+                ],
+            }],
+        };
+
+        let report = format_history_report_typst(&summary, 2, 2);
+
+        assert!(report.contains("composed overall formula"));
+        assert!(report.contains(r#"upright("ab") = a + b"#));
+        assert!(report.contains(r#"upright("rhs") = a + b + c"#));
     }
 
     #[test]
