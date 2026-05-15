@@ -12,6 +12,14 @@ use syn::{Data, DeriveInput, Field, Type, Visibility, parse_macro_input, parse_q
 
 use crate::{EgglogUserDefined, enum_related::*};
 
+fn is_slotted_meta_field(field: &Field) -> bool {
+    field
+        .ident
+        .as_ref()
+        .map(|ident| ident == "__meta" || ident == "_meta")
+        .unwrap_or(false)
+}
+
 /// generate `egglog` language from `rust native structure`   
 ///
 /// # Example:  
@@ -151,8 +159,8 @@ pub fn slotted_dsl(
                         .unwrap_or_else(|err| panic!("{err}"));
                     let typst_template = variant_typst_template_tokens(variant)
                         .unwrap_or_else(|err| panic!("{err}"));
-                    let precedence = variant_precedence_tokens(variant)
-                        .unwrap_or_else(|err| panic!("{err}"));
+                    let precedence =
+                        variant_precedence_tokens(variant).unwrap_or_else(|err| panic!("{err}"));
                     let field_names = variant
                         .fields
                         .iter()
@@ -166,17 +174,19 @@ pub fn slotted_dsl(
                     let field_kinds = variant
                         .fields
                         .iter()
-                        .map(|field| match BasicOrComplex::from(&field.ty.to_token_stream()) {
-                            BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
-                                quote!(#W::SchemaFieldKind::Base)
-                            }
-                            BasicOrComplex::UserDefinedContainerType => {
-                                quote!(#W::SchemaFieldKind::Container)
-                            }
-                            BasicOrComplex::ComplexType => {
-                                quote!(#W::SchemaFieldKind::Complex)
-                            }
-                        })
+                        .map(
+                            |field| match BasicOrComplex::from(&field.ty.to_token_stream()) {
+                                BasicOrComplex::BaseType | BasicOrComplex::UserDefinedBaseType => {
+                                    quote!(#W::SchemaFieldKind::Base)
+                                }
+                                BasicOrComplex::UserDefinedContainerType => {
+                                    quote!(#W::SchemaFieldKind::Container)
+                                }
+                                BasicOrComplex::ComplexType => {
+                                    quote!(#W::SchemaFieldKind::Complex)
+                                }
+                            },
+                        )
                         .collect::<Vec<_>>();
                     quote! {  #W::TyConstructor {
                         cons_name: stringify!(#variant_name),
@@ -767,12 +777,17 @@ pub fn slotted_dsl(
                         })
                     },
                     |complex_ident, complex_ty| {
-                        // for complex type，fetch value from sym_to_value_map 
+                        // for complex type，fetch value from sym_to_value_map
                         // transform Sym<Expr> into Sym as key
                         Some(quote! {
-                            let #complex_ident: (#W::Value<#complex_ty<(),()>> , SlotMeta)= (#W::Value::new(sym_to_value_map.get(&#complex_ident.erase()).unwrap().clone()), 
-                            *T::meta_of(#complex_ident.erase()).downcast().expect("meta type mismatched")
-                        );
+                            let #complex_ident: (#W::Value<#complex_ty<(),()>>, SlotMeta) = (
+                                #W::Value::new(
+                                    sym_to_value_map.get(&#complex_ident.erase()).unwrap().clone(),
+                                ),
+                                *T::meta_of(#complex_ident.erase())
+                                    .downcast()
+                                    .expect("meta type mismatched"),
+                            );
                         })
                     },
                 );
@@ -866,6 +881,7 @@ pub fn slotted_dsl(
                 let ordered_field_decls = variant
                     .fields
                     .iter()
+                    .filter(|field| !is_slotted_meta_field(field))
                     .enumerate()
                     .map(|(idx, field)| {
                         let field_name = field
@@ -1440,10 +1456,14 @@ pub fn slotted_pat_vars(
             let mut valued_tys = Vec::new();
             match &mut valued_input_struct.data {
                 Data::Struct(valued_struct) => {
-                    valued_struct.fields.iter_mut().zip(src_field_types_with_generic).for_each(|(x,src_ty)| {
-                        x.ty = parse_quote!((<#src_ty as #W::PatVars<PR>>::Valued, SlotMeta));
-                        valued_tys.push(x.ty.clone())
-                    });
+                    valued_struct
+                        .fields
+                        .iter_mut()
+                        .zip(src_field_types_with_generic)
+                        .for_each(|(x, src_ty)| {
+                            x.ty = parse_quote!((<#src_ty as #W::PatVars<PR>>::Valued, SlotMeta));
+                            valued_tys.push(x.ty.clone())
+                        });
                 }
                 _ => panic!(),
             };

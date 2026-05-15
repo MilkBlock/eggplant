@@ -1,8 +1,8 @@
+#[cfg(feature = "viewer")]
+use eggplant::egglog::NumericId;
 use eggplant::prelude::*;
 use eggplant::slotted_tx_rx_vt_pr;
 use eggplant::wrap::NodeDropperSgl;
-#[cfg(feature = "viewer")]
-use eggplant::egglog::NumericId;
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
@@ -22,7 +22,9 @@ pub enum Expr {
 #[eggplant::base_ty]
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
 pub enum SlotMetaBase {
-    Inner { inner: SlotMeta },
+    Inner {
+        inner: SlotMeta,
+    },
     #[default]
     Unknown,
 }
@@ -44,6 +46,7 @@ impl<T: eggplant::wrap::TxSgl + eggplant::wrap::NonPatRecSgl + eggplant::wrap::W
                         idx_set.insert(name.to_string());
                         idx_set
                     },
+                    history: Default::default(),
                 }),
             }),
         );
@@ -151,7 +154,10 @@ fn render_bucket_summary(
     ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui,
     bucket: &SlottedBucket,
 ) {
-    ui.label(format!("Canonical Value ID: {}", bucket.canonical_value().rep()));
+    ui.label(format!(
+        "Canonical Value ID: {}",
+        bucket.canonical_value().rep()
+    ));
     ui.label(format!("Slotted EClasses: {}", bucket.seclass_count()));
     ui.label(format!("Slotted ENodes: {}", bucket.senode_count()));
 }
@@ -220,8 +226,7 @@ fn view(stats: Stats) {
         fn on_hover(&self, _cano_value: u32) {}
 
         fn on_newly_selected(&self, cano_value: u32) {
-            *self.selected_cano_value.lock().unwrap() =
-                Some(egglog::Value::new_const(cano_value));
+            *self.selected_cano_value.lock().unwrap() = Some(egglog::Value::new_const(cano_value));
         }
 
         fn on_init(&self, ctx: &egui::Context) {
@@ -236,7 +241,10 @@ fn view(stats: Stats) {
                     ui.label(format!("Slotted seclasses: {}", self.stats.total_seclasses));
                     ui.label(format!("Slotted senodes: {}", self.stats.total_senodes));
                     ui.separator();
-                    ui.label(format!("Total buckets visible: {}", self.map.bucket_count()));
+                    ui.label(format!(
+                        "Total buckets visible: {}",
+                        self.map.bucket_count()
+                    ));
                     for bucket in self.map.buckets().into_iter().take(12) {
                         ui.collapsing(
                             format!("Canonical Value {}", bucket.canonical_value().rep()),

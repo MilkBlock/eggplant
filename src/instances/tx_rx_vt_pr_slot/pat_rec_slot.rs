@@ -1,7 +1,7 @@
 use crate::{
     butler_portugal::{DeBru, Tensor, TensorIndex},
     etc::generate_dot_by_graph,
-    prelude::slotted::{FuncName, SlotPendingOps, SlottedCtx},
+    prelude::slotted::{FuncName, HistorySketch, SlotPendingOps, SlottedCtx},
     wrap::*,
 };
 use dashmap::DashMap;
@@ -263,6 +263,7 @@ impl Tx for SlottedPatRecorder {
             SlotMeta::new(SlotMetaInner {
                 sub_metas,
                 var_id_set,
+                history: HistorySketch::default(),
             }),
         );
     }
@@ -317,6 +318,7 @@ impl PatRec for SlottedPatRecorder {
             SlotMeta::new(SlotMetaInner {
                 sub_metas: Default::default(),
                 var_id_set: Default::default(),
+                history: HistorySketch::default(),
             }),
         );
     }
@@ -412,8 +414,18 @@ impl PatRec for SlottedPatRecorder {
 
     fn on_ctx_insert<PR: PatRecSgl>(
         &self,
-        inputs: Vec<(crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta)>,
-        output: (crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta),
+        inputs: Vec<(
+            crate::prelude::slotted::SortName,
+            FuncName,
+            egglog::Value,
+            SlotMeta,
+        )>,
+        output: (
+            crate::prelude::slotted::SortName,
+            FuncName,
+            egglog::Value,
+            SlotMeta,
+        ),
     ) {
         // self.slotted_ctx.insert(cano_value, meta);
         let inner_inputs = inputs
@@ -428,8 +440,18 @@ impl PatRec for SlottedPatRecorder {
 
     fn on_ctx_union(
         &self,
-        x: (crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta),
-        y: (crate::prelude::slotted::SortName, FuncName, egglog::Value, SlotMeta),
+        x: (
+            crate::prelude::slotted::SortName,
+            FuncName,
+            egglog::Value,
+            SlotMeta,
+        ),
+        y: (
+            crate::prelude::slotted::SortName,
+            FuncName,
+            egglog::Value,
+            SlotMeta,
+        ),
     ) {
         self.slotted_ctx.push_pending(SlotPendingOps::Union(x, y))
     }
@@ -449,6 +471,7 @@ impl SlottedPatRec for SlottedPatRecorder {
                 set.insert(slot_id);
                 set
             },
+            history: HistorySketch::default(),
         };
         self.add_node_with_slot_meta(node, SlotMeta::new(slot_meta));
     }
@@ -458,10 +481,12 @@ impl SlottedPatRec for SlottedPatRecorder {
 pub struct SlotMetaInner {
     pub sub_metas: Vec<SlotMeta>,
     pub var_id_set: indexmap::IndexSet<crate::wrap::SlotVarID>,
+    pub history: HistorySketch,
 }
 impl std::hash::Hash for SlotMetaInner {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.sub_metas.hash(state);
+        self.history.hash(state);
     }
 }
 #[derive(Clone, Deref, Hash, Deserialize, PartialEq, Eq, Serialize)]
@@ -488,6 +513,7 @@ impl std::fmt::Debug for SlotMeta {
         f.debug_struct("SlotMeta")
             .field("vars", &self.inner.var_id_set)
             .field("de Bruijn", &self.get_current_layer_de_bruijn())
+            .field("history_spines", &self.inner.history.spine_count())
             .finish()
     }
 }
@@ -537,11 +563,13 @@ impl SlotMeta {
             .map(|meta| &meta.var_id_set)
             .flat_map(|x| x.iter().cloned())
             .collect();
+        let history = HistorySketch::merge_children(sub_metas.iter().map(|meta| &meta.history));
 
         SlotMeta {
             inner: Arc::new(SlotMetaInner {
                 sub_metas,
                 var_id_set,
+                history,
             }),
         }
     }

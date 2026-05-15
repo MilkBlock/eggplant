@@ -175,8 +175,7 @@ impl SlottedTxRxVTPR {
             egraph: Arc::new(Mutex::new({
                 let mut e = EGraph::default();
                 Self::add_eggplant_sorts(&mut e);
-                // turn off semi naive
-                e.seminaive = false;
+                e.seminaive = true;
                 e
             })),
             registry: EgglogTypeRegistry::new_with_inventory(),

@@ -1,7 +1,7 @@
 use crate::{
-    butler_portugal::{Tensor, canonicalize},
     butler_portugal::canonicalization::{BSGS, Permutation},
     butler_portugal::schreier_sims::{is_member, schreier_sims},
+    butler_portugal::{Tensor, canonicalize},
     prelude::SlotMeta,
     wrap::{EgglogNode, PatRec, PatRecSgl, SlotVarID, Sym, Syms},
 };
@@ -9,13 +9,177 @@ use dashmap::DashMap;
 use derive_more::{Deref, DerefMut};
 use egglog::{EGraph, Value, util::IndexMap};
 use indexmap::IndexSet;
-use std::sync::{
-    Arc, OnceLock,
-    atomic::{AtomicUsize, Ordering},
+use serde::{Deserialize, Serialize};
+use std::{
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+    sync::{
+        Arc, OnceLock,
+        atomic::{AtomicUsize, Ordering},
+    },
 };
 
 pub type FuncName = &'static str;
 pub type SortName = &'static str;
+
+pub const HISTORY_TRAJECTORY_WINDOW: usize = 3;
+pub const HISTORY_SPINE_LIMIT: usize = 4;
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub struct DependencyEdgeSig {
+    pub producer_rule: u32,
+    pub producer_output_shape: u64,
+    pub use_projection: u64,
+    pub consumer_rule: u32,
+    pub consumer_pattern_shape: u64,
+}
+
+impl DependencyEdgeSig {
+    fn hash64(self) -> u64 {
+        hash_parts([
+            self.producer_rule as u64,
+            self.producer_output_shape,
+            self.use_projection,
+            self.consumer_rule as u64,
+            self.consumer_pattern_shape,
+        ])
+    }
+}
+
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize,
+)]
+struct HistorySpine {
+    suffixes: [u64; HISTORY_TRAJECTORY_WINDOW],
+    depth: u16,
+}
+
+impl HistorySpine {
+    fn singleton(edge_hash: u64) -> Self {
+        let mut suffixes = [0; HISTORY_TRAJECTORY_WINDOW];
+        suffixes[0] = edge_hash;
+        Self { suffixes, depth: 1 }
+    }
+
+    fn extend(self, edge_hash: u64) -> Self {
+        let mut suffixes = [0; HISTORY_TRAJECTORY_WINDOW];
+        suffixes[0] = edge_hash;
+        let available = usize::from(self.depth).min(HISTORY_TRAJECTORY_WINDOW - 1);
+        for idx in 0..available {
+            suffixes[idx + 1] = hash_parts([self.suffixes[idx], edge_hash]);
+        }
+        Self {
+            suffixes,
+            depth: self
+                .depth
+                .saturating_add(1)
+                .min(HISTORY_TRAJECTORY_WINDOW as u16),
+        }
+    }
+
+    fn suffix_hash(&self, len: usize) -> Option<u64> {
+        if len == 0 || len > HISTORY_TRAJECTORY_WINDOW || usize::from(self.depth) < len {
+            return None;
+        }
+        Some(self.suffixes[len - 1])
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq, Hash, Serialize)]
+pub struct HistorySketch {
+    spines: Vec<HistorySpine>,
+    context_hash: u64,
+    #[serde(default)]
+    truncated: bool,
+}
+
+impl HistorySketch {
+    pub fn from_parent_edges(
+        edges: impl IntoIterator<Item = (HistorySketch, DependencyEdgeSig)>,
+    ) -> Self {
+        let mut spines = Vec::new();
+        let mut context_parts = Vec::new();
+        let mut truncated = false;
+        for (parent, edge) in edges {
+            let edge_hash = edge.hash64();
+            context_parts.push(edge_hash);
+            context_parts.push(parent.context_hash);
+            truncated |= parent.truncated;
+            if parent.spines.is_empty() {
+                spines.push(HistorySpine::singleton(edge_hash));
+            } else {
+                spines.extend(
+                    parent
+                        .spines
+                        .into_iter()
+                        .map(|spine| spine.extend(edge_hash)),
+                );
+            }
+        }
+        Self::new_canonical(spines, hash_unordered(context_parts), truncated)
+    }
+
+    pub fn merge_children<'a>(children: impl IntoIterator<Item = &'a HistorySketch>) -> Self {
+        let mut spines = Vec::new();
+        let mut context_parts = Vec::new();
+        let mut truncated = false;
+        for child in children {
+            spines.extend(child.spines.iter().copied());
+            context_parts.push(child.context_hash);
+            truncated |= child.truncated;
+        }
+        Self::new_canonical(spines, hash_unordered(context_parts), truncated)
+    }
+
+    pub fn spine_count(&self) -> usize {
+        self.spines.len()
+    }
+
+    pub fn suffix_hashes(&self, len: usize) -> Vec<u64> {
+        let mut hashes = self
+            .spines
+            .iter()
+            .filter_map(|spine| spine.suffix_hash(len))
+            .collect::<Vec<_>>();
+        hashes.sort_unstable();
+        hashes.dedup();
+        hashes
+    }
+
+    pub fn context_hash(&self) -> u64 {
+        self.context_hash
+    }
+
+    pub fn is_truncated(&self) -> bool {
+        self.truncated
+    }
+
+    fn new_canonical(mut spines: Vec<HistorySpine>, context_hash: u64, truncated: bool) -> Self {
+        spines.sort_unstable();
+        spines.dedup();
+        let truncated = truncated || spines.len() > HISTORY_SPINE_LIMIT;
+        spines.truncate(HISTORY_SPINE_LIMIT);
+        Self {
+            spines,
+            context_hash,
+            truncated,
+        }
+    }
+}
+
+fn hash_parts(parts: impl IntoIterator<Item = u64>) -> u64 {
+    let mut hasher = DefaultHasher::new();
+    for part in parts {
+        part.hash(&mut hasher);
+    }
+    hasher.finish()
+}
+
+fn hash_unordered(parts: impl IntoIterator<Item = u64>) -> u64 {
+    let mut parts = parts.into_iter().collect::<Vec<_>>();
+    parts.sort_unstable();
+    hash_parts(parts)
+}
 
 pub type SEClassID = usize;
 pub type SENodeID = usize;
@@ -38,10 +202,7 @@ pub struct SlottedShapeKey {
 
 impl SlottedShapeKey {
     pub fn new(ty_name: FuncName, de_bruijn: Vec<Vec<usize>>) -> Self {
-        Self {
-            ty_name,
-            de_bruijn,
-        }
+        Self { ty_name, de_bruijn }
     }
 
     fn from_meta(ty_name: FuncName, meta: &SlotMeta) -> Self {
@@ -81,7 +242,10 @@ pub struct ShapeEntry {
 impl ShapeEntry {
     fn singleton(senode_id: SENodeID, renaming: SlotMeta) -> Self {
         Self {
-            witnesses: vec![ShapeWitness { senode_id, renaming }],
+            witnesses: vec![ShapeWitness {
+                senode_id,
+                renaming,
+            }],
         }
     }
 
@@ -102,7 +266,10 @@ impl ShapeEntry {
             .iter()
             .any(|w| w.senode_id == senode_id && w.renaming == renaming);
         if !exists {
-            self.witnesses.push(ShapeWitness { senode_id, renaming });
+            self.witnesses.push(ShapeWitness {
+                senode_id,
+                renaming,
+            });
         }
     }
 }
@@ -148,9 +315,12 @@ impl SEClass {
         let mut compacted_ids = Vec::new();
         let mut removed_ids = Vec::new();
         for senode_id in &self.senode_ids {
-            let senode = senodes
-                .get(senode_id)
-                .unwrap_or_else(|| panic!("senode_id {} missing while rebuilding shape index", senode_id));
+            let senode = senodes.get(senode_id).unwrap_or_else(|| {
+                panic!(
+                    "senode_id {} missing while rebuilding shape index",
+                    senode_id
+                )
+            });
             let key = self.canonical_shape_key(senode.ty_name, &senode.repr);
             let is_new_shape = !rebuilt.contains_key(&key);
             rebuilt
@@ -298,7 +468,8 @@ impl SlottedSymmetryGroup {
         }
         let mut best = shape.to_vec();
         let degree = self.slot_count().max(
-            shape.iter()
+            shape
+                .iter()
                 .flat_map(|part| part.iter().copied())
                 .max()
                 .map(|x| x + 1)
@@ -384,7 +555,8 @@ fn enumerate_group_elements(bsgs: &BSGS, degree: usize) -> Vec<Permutation> {
         }
         results.push(current.to_owned());
         for generator in generators {
-            let next = crate::butler_portugal::schreier_sims::compose_permutations(current, generator);
+            let next =
+                crate::butler_portugal::schreier_sims::compose_permutations(current, generator);
             enumerate_recursive(generators, &next, results, visited);
         }
     }
@@ -460,9 +632,9 @@ impl SlottedCtx {
                 SlotPendingOps::Insert { inputs, output } => {
                     let output_cano_value = egraph.get_canonical_value(
                         output.2,
-                        egraph
-                            .get_sort_by_name(output.0)
-                            .unwrap_or_else(|| panic!("missing sort `{}` for slotted insert", output.0)),
+                        egraph.get_sort_by_name(output.0).unwrap_or_else(|| {
+                            panic!("missing sort `{}` for slotted insert", output.0)
+                        }),
                     );
                     // find seclasses
                     let mut seclasses = self
@@ -488,7 +660,10 @@ impl SlottedCtx {
                                     target.canonical_shape_key(target_ty, &target_shape);
                                 (removed_ids, canonical_key)
                             } else {
-                                (Vec::new(), SlottedShapeKey::new(target_ty, target_shape.clone()))
+                                (
+                                    Vec::new(),
+                                    SlottedShapeKey::new(target_ty, target_shape.clone()),
+                                )
                             };
                         seclasses.prune_senodes(&removed_ids);
                         if let Some(target) = seclasses.seclass2senodes.get_mut(&seclass_id) {
@@ -527,7 +702,11 @@ impl SlottedCtx {
                                     output.3.get_current_layer_de_bruijn(),
                                 ),
                             });
-                        seclasses.ty2senodes.entry(output.1).or_default().push(senode_id);
+                        seclasses
+                            .ty2senodes
+                            .entry(output.1)
+                            .or_default()
+                            .push(senode_id);
                     }
 
                     log::debug!("inputs:{:?} output:{:?}", inputs, output);
@@ -536,15 +715,15 @@ impl SlottedCtx {
                     log::debug!("union :{:?} {:?}", a, b);
                     let cano_a = egraph.get_canonical_value(
                         a.2,
-                        egraph
-                            .get_sort_by_name(a.0)
-                            .unwrap_or_else(|| panic!("missing sort `{}` for slotted union lhs", a.0)),
+                        egraph.get_sort_by_name(a.0).unwrap_or_else(|| {
+                            panic!("missing sort `{}` for slotted union lhs", a.0)
+                        }),
                     );
                     let cano_b = egraph.get_canonical_value(
                         b.2,
-                        egraph
-                            .get_sort_by_name(b.0)
-                            .unwrap_or_else(|| panic!("missing sort `{}` for slotted union rhs", b.0)),
+                        egraph.get_sort_by_name(b.0).unwrap_or_else(|| {
+                            panic!("missing sort `{}` for slotted union rhs", b.0)
+                        }),
                     );
 
                     let mut seclasses = self
@@ -580,8 +759,12 @@ impl SlottedCtx {
                     if seclass_a == seclass_b {
                         let senodes_snapshot = seclasses.senodes.clone();
                         if let Some(target) = seclasses.seclass2senodes.get_mut(&seclass_a) {
-                            target.group.add_generator_for(&a.3.get_current_layer_de_bruijn());
-                            target.group.add_generator_for(&b.3.get_current_layer_de_bruijn());
+                            target
+                                .group
+                                .add_generator_for(&a.3.get_current_layer_de_bruijn());
+                            target
+                                .group
+                                .add_generator_for(&b.3.get_current_layer_de_bruijn());
                             let removed_ids = target.rebuild_shape_index(&senodes_snapshot);
                             seclasses.prune_senodes(&removed_ids);
                         }
@@ -605,11 +788,7 @@ impl SlottedCtx {
                         .unwrap_or_else(|| panic!("missing target seclass {}", seclass_a));
                     let merged_slots = merged.slots;
                     let merged_group = merged.group;
-                    target.slots = target
-                        .slots
-                        .intersection(&merged_slots)
-                        .cloned()
-                        .collect();
+                    target.slots = target.slots.intersection(&merged_slots).cloned().collect();
                     target.group.merge_from(&merged_group);
                     for senode_id in merged_ids {
                         if !target.senode_ids.contains(&senode_id) {
@@ -702,7 +881,10 @@ fn find_senode_for_output(
 
 fn permutation_between(base: &[Vec<usize>], target: &[Vec<usize>]) -> Option<Permutation> {
     let base_flat: Vec<usize> = base.iter().flat_map(|part| part.iter().copied()).collect();
-    let target_flat: Vec<usize> = target.iter().flat_map(|part| part.iter().copied()).collect();
+    let target_flat: Vec<usize> = target
+        .iter()
+        .flat_map(|part| part.iter().copied())
+        .collect();
     if base_flat.len() != target_flat.len() {
         return None;
     }
@@ -852,6 +1034,89 @@ mod symmetry_tests {
         assert_eq!(eclass.senode_ids, vec![0, 1]);
         assert_eq!(eclass.shapes.len(), 1);
         assert_eq!(eclass.shapes.values().next().unwrap().witnesses().len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod history_sketch_tests {
+    use super::*;
+
+    fn edge(
+        producer_rule: u32,
+        producer_output_shape: u64,
+        use_projection: u64,
+        consumer_rule: u32,
+        consumer_pattern_shape: u64,
+    ) -> DependencyEdgeSig {
+        DependencyEdgeSig {
+            producer_rule,
+            producer_output_shape,
+            use_projection,
+            consumer_rule,
+            consumer_pattern_shape,
+        }
+    }
+
+    #[test]
+    fn suffix_hash_matches_when_longer_trajectory_contains_shorter_tail() {
+        let edge_ab = edge(1, 0x10, 0x11, 2, 0x20);
+        let edge_bc = edge(2, 0x20, 0x21, 3, 0x30);
+
+        let b_from_a = HistorySketch::from_parent_edges([(HistorySketch::default(), edge_ab)]);
+        let c_from_ab = HistorySketch::from_parent_edges([(b_from_a, edge_bc)]);
+        let c_from_b = HistorySketch::from_parent_edges([(HistorySketch::default(), edge_bc)]);
+
+        assert_eq!(
+            c_from_ab.suffix_hashes(1),
+            c_from_b.suffix_hashes(1),
+            "a->b->c and b->c should share the b->c suffix"
+        );
+        assert_ne!(
+            c_from_ab.suffix_hashes(2),
+            c_from_b.suffix_hashes(2),
+            "the longer trajectory should still keep its longer context"
+        );
+    }
+
+    #[test]
+    fn multi_source_inputs_create_bounded_spines_without_cross_product() {
+        let edge_ab = edge(1, 0x10, 0x11, 2, 0x20);
+        let edge_eb = edge(5, 0x50, 0x51, 2, 0x20);
+        let edge_bc = edge(2, 0x20, 0x21, 3, 0x30);
+
+        let b = HistorySketch::from_parent_edges([
+            (HistorySketch::default(), edge_ab),
+            (HistorySketch::default(), edge_eb),
+        ]);
+        let c = HistorySketch::from_parent_edges([(b, edge_bc)]);
+
+        assert_eq!(c.spine_count(), 2);
+        assert!(c.spine_count() <= HISTORY_SPINE_LIMIT);
+        assert_eq!(c.suffix_hashes(1).len(), 1);
+        assert_eq!(c.suffix_hashes(2).len(), 2);
+    }
+
+    #[test]
+    fn sketch_marks_truncation_when_spine_limit_is_exceeded() {
+        let edges = (0..=HISTORY_SPINE_LIMIT)
+            .map(|idx| {
+                (
+                    HistorySketch::default(),
+                    edge(
+                        idx as u32 + 1,
+                        0x10 + idx as u64,
+                        0x11 + idx as u64,
+                        9,
+                        0x20,
+                    ),
+                )
+            })
+            .collect::<Vec<_>>();
+
+        let sketch = HistorySketch::from_parent_edges(edges);
+
+        assert!(sketch.is_truncated());
+        assert_eq!(sketch.spine_count(), HISTORY_SPINE_LIMIT);
     }
 }
 

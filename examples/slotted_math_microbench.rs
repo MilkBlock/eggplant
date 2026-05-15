@@ -1,8 +1,8 @@
+#[cfg(feature = "viewer")]
+use eggplant::egglog::NumericId;
 use eggplant::prelude::*;
 use eggplant::slotted_tx_rx_vt_pr;
 use eggplant::wrap::NodeDropperSgl;
-#[cfg(feature = "viewer")]
-use eggplant::egglog::NumericId;
 use indexmap::IndexSet;
 use serde::{Deserialize, Serialize};
 #[cfg(feature = "viewer")]
@@ -15,9 +15,9 @@ use std::io::Write;
 use std::path::PathBuf;
 #[cfg(feature = "viewer")]
 use std::process::{Command, Stdio};
-use std::sync::{Arc, OnceLock};
 #[cfg(feature = "viewer")]
 use std::sync::Mutex;
+use std::sync::{Arc, OnceLock};
 #[cfg(feature = "viewer")]
 use std::thread;
 use std::time::{Duration, Instant};
@@ -31,29 +31,23 @@ pub enum MathExpr {
     Var {},
     #[eggplant::display("{num}")]
     #[eggplant::typst("{num}")]
-    Const {
-        num: i64,
-    },
+    Const { num: i64 },
     #[eggplant::display("{l} + {r}")]
     #[eggplant::typst("{l} + {r}")]
     #[eggplant::precedence(100)]
-    Add {
-        l: MathExpr,
-        r: MathExpr,
-    },
+    Add { l: MathExpr, r: MathExpr },
     #[eggplant::display("{l} * {r}")]
     #[eggplant::typst("{l} dot {r}")]
     #[eggplant::precedence(200)]
-    Mul {
-        l: MathExpr,
-        r: MathExpr,
-    },
+    Mul { l: MathExpr, r: MathExpr },
 }
 
 #[eggplant::base_ty]
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
 pub enum SlotMetaBase {
-    Inner { inner: SlotMeta },
+    Inner {
+        inner: SlotMeta,
+    },
     #[default]
     Unknown,
 }
@@ -83,6 +77,7 @@ impl<T: eggplant::wrap::TxSgl + eggplant::wrap::NonPatRecSgl + eggplant::wrap::W
                         idx_set.insert(name.to_string());
                         idx_set
                     },
+                    history: Default::default(),
                 }),
             }),
         );
@@ -462,14 +457,23 @@ fn write_typst_svg_for_value(cano_value: egglog::Value) -> Result<PathBuf, Strin
 }
 
 #[cfg(feature = "viewer")]
-fn render_bucket_summary(ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui, bucket: &SlottedBucket) {
-    ui.label(format!("Canonical Value ID: {}", bucket.canonical_value().rep()));
+fn render_bucket_summary(
+    ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui,
+    bucket: &SlottedBucket,
+) {
+    ui.label(format!(
+        "Canonical Value ID: {}",
+        bucket.canonical_value().rep()
+    ));
     ui.label(format!("Slotted EClasses: {}", bucket.seclass_count()));
     ui.label(format!("Slotted ENodes: {}", bucket.senode_count()));
 }
 
 #[cfg(feature = "viewer")]
-fn render_bucket_detail(ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui, bucket: &SlottedBucket) {
+fn render_bucket_detail(
+    ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui,
+    bucket: &SlottedBucket,
+) {
     render_bucket_summary(ui, bucket);
     ui.separator();
 
@@ -571,7 +575,8 @@ fn view(stats: SlottedMathStats) {
                     match selected.and_then(|cano| self.map.bucket(cano)) {
                         Some(bucket) => {
                             let extracted = extract_best_term_for_value(bucket.canonical_value());
-                            let typst_source = extract_best_term_typst_for_value(bucket.canonical_value());
+                            let typst_source =
+                                extract_best_term_typst_for_value(bucket.canonical_value());
                             render_bucket_detail(ui, &bucket);
                             ui.separator();
                             ui.heading("Best Extract");
@@ -601,7 +606,9 @@ fn view(stats: SlottedMathStats) {
                             }
                         }
                         None => {
-                            ui.label("Select a node in the main graph to inspect its slotted bucket.");
+                            ui.label(
+                                "Select a node in the main graph to inspect its slotted bucket.",
+                            );
                         }
                     }
                 });
@@ -673,12 +680,13 @@ mod tests {
         let y = RenderedTemplateField::atom("y");
         let z = RenderedTemplateField::atom("z");
 
-        let add_xy =
-            render_variant_typst::<AddTy>(&[("l", x.clone()), ("r", y.clone())]).unwrap();
-        let mul_yz =
-            render_variant_typst::<MulTy>(&[("l", y.clone()), ("r", z.clone())]).unwrap();
+        let add_xy = render_variant_typst::<AddTy>(&[("l", x.clone()), ("r", y.clone())]).unwrap();
+        let mul_yz = render_variant_typst::<MulTy>(&[("l", y.clone()), ("r", z.clone())]).unwrap();
         let add_x_mul_yz = render_variant_typst::<AddTy>(&[
-            ("l", RenderedTemplateField::new("x", <VarTy as EgglogEnumVariantTy>::PRECEDENCE)),
+            (
+                "l",
+                RenderedTemplateField::new("x", <VarTy as EgglogEnumVariantTy>::PRECEDENCE),
+            ),
             (
                 "r",
                 RenderedTemplateField::new(mul_yz, <MulTy as EgglogEnumVariantTy>::PRECEDENCE),
@@ -690,7 +698,10 @@ mod tests {
                 "l",
                 RenderedTemplateField::new(add_xy, <AddTy as EgglogEnumVariantTy>::PRECEDENCE),
             ),
-            ("r", RenderedTemplateField::new("z", <VarTy as EgglogEnumVariantTy>::PRECEDENCE)),
+            (
+                "r",
+                RenderedTemplateField::new("z", <VarTy as EgglogEnumVariantTy>::PRECEDENCE),
+            ),
         ])
         .unwrap();
 
@@ -732,7 +743,8 @@ mod tests {
         let bucket = preferred_extract_bucket();
         let source = extract_best_term_typst_for_value(bucket.canonical_value());
         println!("typed typst source: {}", source);
-        let path = write_typst_svg_for_value(bucket.canonical_value()).expect("svg write should succeed");
+        let path =
+            write_typst_svg_for_value(bucket.canonical_value()).expect("svg write should succeed");
         assert!(path.exists(), "expected svg at {}", path.display());
         let bytes = std::fs::read(&path).expect("svg should be readable");
         assert!(!bytes.is_empty(), "svg file should not be empty");

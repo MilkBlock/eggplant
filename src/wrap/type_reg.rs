@@ -189,8 +189,7 @@ pub struct EgglogTypeRegistry {
     variant2type_map: HashMap<&'static str, &'static str>,
     constructor_meta_map: HashMap<&'static str, &'static TyConstructor>,
     dsl_variant_map: HashMap<(&'static str, &'static str), &'static DslVariantDecl>,
-    func_template_map:
-        HashMap<&'static str, (Option<&'static str>, Option<&'static str>, u16)>,
+    func_template_map: HashMap<&'static str, (Option<&'static str>, Option<&'static str>, u16)>,
     func_field_names_map: HashMap<&'static str, &'static [&'static str]>,
     container_node_fns_map: HashMap<(&'static str, &'static str), TermToNode>,
 }
@@ -250,7 +249,8 @@ impl EgglogTypeRegistry {
         map
     }
 
-    pub fn collect_dsl_variants() -> HashMap<(&'static str, &'static str), &'static DslVariantDecl> {
+    pub fn collect_dsl_variants() -> HashMap<(&'static str, &'static str), &'static DslVariantDecl>
+    {
         let mut map = HashMap::new();
         for decl in inventory::iter::<DslVariantDecl> {
             map.insert((decl.owner_ty, decl.variant_name), decl);
@@ -258,8 +258,7 @@ impl EgglogTypeRegistry {
         map
     }
 
-    pub fn collect_func_templates(
-    ) -> (
+    pub fn collect_func_templates() -> (
         HashMap<&'static str, (Option<&'static str>, Option<&'static str>, u16)>,
         HashMap<&'static str, &'static [&'static str]>,
     ) {
@@ -397,11 +396,7 @@ impl EgglogTypeRegistry {
         self.constructor_meta_map.get(cons_name).copied()
     }
 
-    pub fn get_dsl_variant(
-        &self,
-        owner_ty: &str,
-        variant_name: &str,
-    ) -> Option<&DslVariantDecl> {
+    pub fn get_dsl_variant(&self, owner_ty: &str, variant_name: &str) -> Option<&DslVariantDecl> {
         self.dsl_variant_map.get(&(owner_ty, variant_name)).copied()
     }
 
@@ -422,6 +417,10 @@ impl EgglogTypeRegistry {
     }
 }
 
+fn is_hidden_display_field_name(name: &str) -> bool {
+    matches!(name, "_meta" | "__meta")
+}
+
 pub fn render_term_with_registry(
     registry: &EgglogTypeRegistry,
     termdag: &TermDag,
@@ -432,48 +431,63 @@ pub fn render_term_with_registry(
         Term::Lit(lit) => RenderedTemplateField::atom(lit.to_string()),
         Term::Var(v) => RenderedTemplateField::atom(v.clone()),
         Term::App(head, children) => {
-            let (template, precedence, field_names): (Option<&'static str>, u16, Vec<&'static str>) =
-                if let Some(variant) = registry.get_dsl_variant_for_constructor(head) {
-                    (
-                        if prefer_typst {
-                            variant.typst_template.or(variant.display_template)
-                        } else {
-                            variant.display_template.or(variant.typst_template)
-                        },
-                        variant.precedence,
-                        variant.fields.iter().map(|field| field.name).collect(),
-                    )
-                } else if let Some(constructor) = registry.get_constructor(head) {
-                    (
-                        if prefer_typst {
-                            constructor.typst_template.or(constructor.display_template)
-                        } else {
-                            constructor.display_template.or(constructor.typst_template)
-                        },
-                        constructor.precedence,
-                        constructor.input_field_names.to_vec(),
-                    )
-                } else if let Some((display_template, typst_template, precedence)) =
-                    registry.get_func_templates(head)
-                {
-                    let field_names = registry
-                        .get_func_field_names(head)
-                        .map(|names| names.to_vec())
-                        .unwrap_or_default();
-                    (
-                        if prefer_typst {
-                            typst_template.or(display_template)
-                        } else {
-                            display_template.or(typst_template)
-                        },
-                        precedence,
-                        field_names,
-                    )
-                } else {
-                    return RenderedTemplateField::atom(termdag.to_string(term));
-                };
-
-            let Some(template) = template else {
+            let (template, precedence, field_names): (
+                Option<&'static str>,
+                u16,
+                Vec<&'static str>,
+            ) = if let Some(variant) = registry.get_dsl_variant_for_constructor(head) {
+                (
+                    if prefer_typst {
+                        variant.typst_template.or(variant.display_template)
+                    } else {
+                        variant.display_template.or(variant.typst_template)
+                    },
+                    variant.precedence,
+                    variant
+                        .fields
+                        .iter()
+                        .map(|field| field.name)
+                        .filter(|name| !is_hidden_display_field_name(name))
+                        .collect(),
+                )
+            } else if let Some(constructor) = registry.get_constructor(head) {
+                (
+                    if prefer_typst {
+                        constructor.typst_template.or(constructor.display_template)
+                    } else {
+                        constructor.display_template.or(constructor.typst_template)
+                    },
+                    constructor.precedence,
+                    constructor
+                        .input_field_names
+                        .iter()
+                        .copied()
+                        .filter(|name| !is_hidden_display_field_name(name))
+                        .collect(),
+                )
+            } else if let Some((display_template, typst_template, precedence)) =
+                registry.get_func_templates(head)
+            {
+                let field_names = registry
+                    .get_func_field_names(head)
+                    .map(|names| {
+                        names
+                            .iter()
+                            .copied()
+                            .filter(|name| !is_hidden_display_field_name(name))
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default();
+                (
+                    if prefer_typst {
+                        typst_template.or(display_template)
+                    } else {
+                        display_template.or(typst_template)
+                    },
+                    precedence,
+                    field_names,
+                )
+            } else {
                 return RenderedTemplateField::atom(termdag.to_string(term));
             };
 
@@ -483,10 +497,31 @@ pub fn render_term_with_registry(
                 .map(|(child_id, field_name)| {
                     (
                         *field_name,
-                        render_term_with_registry(registry, termdag, termdag.get(*child_id), prefer_typst),
+                        render_term_with_registry(
+                            registry,
+                            termdag,
+                            termdag.get(*child_id),
+                            prefer_typst,
+                        ),
                     )
                 })
                 .collect::<Vec<_>>();
+
+            let Some(template) = template else {
+                let rendered = if rendered_children.is_empty() {
+                    head.to_owned()
+                } else {
+                    format!(
+                        "{head}({})",
+                        rendered_children
+                            .iter()
+                            .map(|(_, child)| child.text.as_ref())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                };
+                return RenderedTemplateField::new(rendered, precedence);
+            };
 
             RenderedTemplateField::new(
                 render_template_with_precedence(template, precedence, &rendered_children),
@@ -507,9 +542,104 @@ pub fn extract_value_template_string(
         .extract_value(sort, canonical)
         .map_err(|err| err.to_string())?;
     let registry = EgglogTypeRegistry::new_with_inventory();
-    Ok(render_term_with_registry(&registry, &termdag, &term, prefer_typst)
-        .text
-        .into_owned())
+    Ok(
+        render_term_with_registry(&registry, &termdag, &term, prefer_typst)
+            .text
+            .into_owned(),
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    static FIELDS_WITH_META: &[DslFieldDecl] = &[
+        DslFieldDecl {
+            name: "a",
+            ty: "Math",
+            kind: DslFieldKind::Complex,
+        },
+        DslFieldDecl {
+            name: "b",
+            ty: "Math",
+            kind: DslFieldKind::Complex,
+        },
+        DslFieldDecl {
+            name: "__meta",
+            ty: "SlotMetaBase",
+            kind: DslFieldKind::UserBase,
+        },
+    ];
+
+    static TYPST_DECL: DslVariantDecl = DslVariantDecl {
+        owner_ty: "Math",
+        variant_name: "MAdd",
+        fields: FIELDS_WITH_META,
+        display_template: None,
+        typst_template: Some("{a} + {b}"),
+        precedence: 100,
+    };
+
+    static FALLBACK_DECL: DslVariantDecl = DslVariantDecl {
+        owner_ty: "Math",
+        variant_name: "MRaw",
+        fields: FIELDS_WITH_META,
+        display_template: None,
+        typst_template: None,
+        precedence: u16::MAX,
+    };
+
+    fn registry_with_variant(
+        variant_name: &'static str,
+        decl: &'static DslVariantDecl,
+    ) -> EgglogTypeRegistry {
+        let mut variant2type_map = HashMap::new();
+        variant2type_map.insert(variant_name, "Math");
+        let mut dsl_variant_map = HashMap::new();
+        dsl_variant_map.insert(("Math", variant_name), decl);
+        EgglogTypeRegistry {
+            enum_node_fns_map: HashMap::new(),
+            variant2type_map,
+            constructor_meta_map: HashMap::new(),
+            dsl_variant_map,
+            func_template_map: HashMap::new(),
+            func_field_names_map: HashMap::new(),
+            container_node_fns_map: HashMap::new(),
+        }
+    }
+
+    fn term_with_meta_child(head: &str) -> (TermDag, Term) {
+        let mut termdag = TermDag::default();
+        let a = termdag.var("a".to_owned());
+        let b = termdag.var("b".to_owned());
+        let meta = termdag.var("__meta_payload".to_owned());
+        let root = termdag.app(head.to_owned(), vec![a, b, meta]);
+        (termdag, root)
+    }
+
+    #[test]
+    fn typst_template_rendering_skips_slotted_meta_field() {
+        let registry = registry_with_variant("MAdd", &TYPST_DECL);
+        let (termdag, root) = term_with_meta_child("MAdd");
+        let rendered = render_term_with_registry(&registry, &termdag, &root, true)
+            .text
+            .into_owned();
+
+        assert_eq!(rendered, "a + b");
+        assert!(!rendered.contains("meta"));
+    }
+
+    #[test]
+    fn constructor_fallback_rendering_skips_slotted_meta_field() {
+        let registry = registry_with_variant("MRaw", &FALLBACK_DECL);
+        let (termdag, root) = term_with_meta_child("MRaw");
+        let rendered = render_term_with_registry(&registry, &termdag, &root, true)
+            .text
+            .into_owned();
+
+        assert_eq!(rendered, "MRaw(a, b)");
+        assert!(!rendered.contains("meta"));
+    }
 }
 
 impl<T> FromPlainValues for Value<T> {

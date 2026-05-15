@@ -1,8 +1,8 @@
+#[cfg(feature = "viewer")]
+use eggplant::egglog::NumericId;
 use eggplant::prelude::*;
 use eggplant::slotted_tx_rx_vt_pr;
 use eggplant::wrap::NodeDropperSgl;
-#[cfg(feature = "viewer")]
-use eggplant::egglog::NumericId;
 use indexmap::IndexSet;
 use serde::Deserialize;
 use serde::Serialize;
@@ -13,17 +13,9 @@ use std::sync::Mutex;
 #[eggplant::slotted_dsl(base = SlotMetaBase)]
 pub enum Expr {
     Var {},
-    Const {
-        num: i64,
-    },
-    Mul {
-        l: Expr,
-        r: Expr,
-    },
-    Add {
-        l: Expr,
-        r: Expr,
-    },
+    Const { num: i64 },
+    Mul { l: Expr, r: Expr },
+    Add { l: Expr, r: Expr },
 }
 #[eggplant::base_ty]
 #[derive(Serialize, Deserialize, Debug, Clone, Hash, PartialEq, Eq, Default)]
@@ -102,14 +94,23 @@ impl<T: TxSgl + NodeDropperSgl + SlottedPatRecSgl> QuerySlot for Var<T> {
     }
 }
 #[cfg(feature = "viewer")]
-fn render_bucket_summary(ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui, bucket: &SlottedBucket) {
-    ui.label(format!("Canonical Value ID: {}", bucket.canonical_value().rep()));
+fn render_bucket_summary(
+    ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui,
+    bucket: &SlottedBucket,
+) {
+    ui.label(format!(
+        "Canonical Value ID: {}",
+        bucket.canonical_value().rep()
+    ));
     ui.label(format!("Slotted EClasses: {}", bucket.seclass_count()));
     ui.label(format!("Slotted ENodes: {}", bucket.senode_count()));
 }
 
 #[cfg(feature = "viewer")]
-fn render_bucket_detail(ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui, bucket: &SlottedBucket) {
+fn render_bucket_detail(
+    ui: &mut eggplant::eggplant_viewer::eframe::egui::Ui,
+    bucket: &SlottedBucket,
+) {
     render_bucket_summary(ui, bucket);
     ui.separator();
 
@@ -193,10 +194,7 @@ fn view() {
                     if self.map.bucket_count() == 0 {
                         ui.label("No SEClasses data available");
                     } else {
-                        ui.label(format!(
-                            "Total buckets: {}",
-                            self.map.bucket_count()
-                        ));
+                        ui.label(format!("Total buckets: {}", self.map.bucket_count()));
 
                         let mut count = 0;
                         for bucket in self.map.buckets().into_iter().take(10) {
@@ -227,7 +225,9 @@ fn view() {
                     match selected.and_then(|cano| self.map.bucket(cano)) {
                         Some(bucket) => render_bucket_detail(ui, &bucket),
                         None => {
-                            ui.label("Select a node in the main graph to inspect its slotted bucket.");
+                            ui.label(
+                                "Select a node in the main graph to inspect its slotted bucket.",
+                            );
                         }
                     }
                 });
@@ -268,6 +268,7 @@ impl<T: eggplant::wrap::TxSgl + eggplant::wrap::NonPatRecSgl + eggplant::wrap::W
                         idx_set.insert(name.to_string());
                         idx_set
                     },
+                    history: Default::default(),
                 }),
             }),
         );
@@ -403,7 +404,10 @@ mod tests {
         let cano = MyTx::canonical_raw(&expr_ab);
         let buckets = MyPatRec::sgl().slotted_ctx.buckets();
         assert_eq!(buckets.len(), 2);
-        assert!(buckets.iter().any(|bucket| bucket.canonical_value() == cano));
+        assert!(
+            buckets
+                .iter()
+                .any(|bucket| bucket.canonical_value() == cano)
+        );
     }
-
 }
