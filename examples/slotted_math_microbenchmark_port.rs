@@ -16,7 +16,7 @@ const DEFAULT_RUN_ITERS: usize = 2;
 
 #[eggplant::slotted_dsl(base = SlotMetaBase)]
 pub enum Math {
-    #[eggplant::typst("diff({x}, {f})")]
+    #[typst("diff({x}, {f})")]
     MDiff { x: Math, f: Math },
     #[eggplant::typst("integral {f} quad d {x}")]
     MIntegral { f: Math, x: Math },
@@ -297,7 +297,6 @@ struct HistoryInput {
 #[derive(Clone, Debug)]
 struct HistoryEvent {
     id: usize,
-    rule: &'static str,
     output_func: &'static str,
     output_value: u64,
     local_hash: u64,
@@ -445,7 +444,6 @@ impl HistoryRecorder {
         self.values.insert(output_value, history);
         self.events.push(HistoryEvent {
             id: self.events.len(),
-            rule,
             output_func,
             output_value,
             local_hash: local_event_hash,
@@ -495,8 +493,8 @@ impl HistoryRecorder {
         let mut groups: BTreeMap<(usize, u64), Acc> = BTreeMap::new();
         for event in &self.events {
             for suffix_len in 1..=HISTORY_TRAJECTORY_WINDOW {
-                for (hash, label) in
-                    trail_suffix_compose_hash_label_pairs(&event.trails, suffix_len)
+                for (hash, label, rules) in
+                    trail_suffix_compose_hash_label_rule_pairs(&event.trails, suffix_len)
                 {
                     let group = groups.entry((suffix_len, hash)).or_default();
                     group.event_ids.insert(event.id);
@@ -504,7 +502,7 @@ impl HistoryRecorder {
                     if event.truncated {
                         group.truncated_event_ids.insert(event.id);
                     }
-                    group.rules.insert(event.rule);
+                    group.rules.extend(rules);
                     group.trail_labels.insert(label.clone());
                     group.samples.insert(format!(
                         "{} value={} local_hash={:#x} event_hash={:#x} spines={} truncated={} {}",
@@ -694,22 +692,23 @@ fn merge_debug_trails(
     canonicalize_debug_trails(lhs.into_iter().chain(rhs).collect())
 }
 
-fn trail_suffix_compose_hash_label_pairs(
+fn trail_suffix_compose_hash_label_rule_pairs(
     trails: &[Vec<TrailStep>],
     suffix_len: usize,
-) -> Vec<(u64, String)> {
+) -> Vec<(u64, String, Vec<&'static str>)> {
     let mut pairs = trails
         .iter()
         .filter(|trail| trail.len() >= suffix_len)
         .map(|trail| {
             let suffix = &trail[trail.len() - suffix_len..];
             let hash = hash_parts(suffix.iter().map(TrailStep::compose_hash));
+            let rules = suffix.iter().map(|step| step.rule).collect::<Vec<_>>();
             let label = suffix
                 .iter()
                 .map(TrailStep::label)
                 .collect::<Vec<_>>()
                 .join(" -> ");
-            (hash, label)
+            (hash, label, rules)
         })
         .collect::<Vec<_>>();
     pairs.sort();
@@ -940,7 +939,7 @@ fn render_report_math_assignment(lhs: &str, rhs: &ReportMathExpr) -> String {
     )
 }
 
-fn push_rule_pattern_doc(report: &mut String, rule: &'static str) {
+fn push_rule_pattern_doc(report: &mut String, rule: &str) {
     let Some(doc) = rule_pattern_doc(rule) else {
         return;
     };
@@ -963,7 +962,7 @@ fn push_rule_pattern_doc(report: &mut String, rule: &'static str) {
     report.push('\n');
 }
 
-fn push_rule_pattern_legend(report: &mut String, rules: &[&'static str]) {
+fn push_rule_pattern_legend(report: &mut String, rules: &[String]) {
     if rules.is_empty() {
         return;
     }
@@ -978,7 +977,10 @@ fn push_rule_pattern_legend(report: &mut String, rules: &[&'static str]) {
 }
 
 fn is_macro_compose_group(group: &HistoryGroup) -> bool {
-    group.rules.len() > 1
+    group
+        .trail_labels
+        .iter()
+        .any(|label| trail_label_rule_names(label).len() > 1)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1010,6 +1012,30 @@ fn parse_trail_label_chain(label: &str) -> Vec<ParsedTrailStep> {
     label
         .split(" -> ")
         .filter_map(parse_trail_step_label)
+        .collect()
+}
+
+fn trail_label_rule_names(label: &str) -> BTreeSet<String> {
+    parse_trail_label_chain(label)
+        .into_iter()
+        .map(|step| step.rule)
+        .collect()
+}
+
+fn group_trail_rule_names(group: &HistoryGroup) -> BTreeSet<String> {
+    group
+        .trail_labels
+        .iter()
+        .flat_map(|label| trail_label_rule_names(label))
+        .collect()
+}
+
+fn collect_legend_rules<'a>(groups: impl IntoIterator<Item = &'a HistoryGroup>) -> Vec<String> {
+    groups
+        .into_iter()
+        .flat_map(group_trail_rule_names)
+        .collect::<BTreeSet<_>>()
+        .into_iter()
         .collect()
 }
 
@@ -1113,6 +1139,115 @@ fn macro_step_composed_formula(steps: &[ParsedTrailStep], step_idx: usize) -> Op
     Some(render_report_math_assignment(lhs, &rhs))
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct MacroChainExpansion {
+    formula: String,
+    bridge_bindings: Vec<(String, String)>,
+}
+
+fn macro_chain_expansion(steps: &[ParsedTrailStep]) -> Option<MacroChainExpansion> {
+    if steps.len() < 2 {
+        return None;
+    }
+
+    let mut incoming = BTreeMap::new();
+    let mut bridge_bindings = Vec::new();
+
+    for (step_idx, step) in steps.iter().enumerate() {
+        let doc = rule_pattern_doc(&step.rule)?;
+        let local_bindings = rule_pattern_inserted_bindings(doc.inserted)?;
+
+        if step_idx + 1 == steps.len() {
+            let lhs = parse_report_math_expr(doc.matched)?;
+            let rhs = rule_pattern_final_rhs(doc.inserted)?;
+            let lhs = expand_macro_chain_expr(
+                &lhs,
+                step_idx,
+                &incoming,
+                &local_bindings,
+                &mut BTreeSet::new(),
+            );
+            let rhs = expand_macro_chain_expr(
+                &rhs,
+                step_idx,
+                &incoming,
+                &local_bindings,
+                &mut BTreeSet::new(),
+            );
+            return Some(MacroChainExpansion {
+                formula: format!(
+                    "{} = {}",
+                    render_report_math_expr_value(&lhs),
+                    render_report_math_expr_value(&rhs)
+                ),
+                bridge_bindings,
+            });
+        }
+
+        let selected_line = macro_step_inserted_line(steps, step_idx)?;
+        let (_, selected_rhs) = inserted_assignment_parts(selected_line)?;
+        let selected_expr = expand_macro_chain_expr(
+            &selected_rhs,
+            step_idx,
+            &incoming,
+            &local_bindings,
+            &mut BTreeSet::new(),
+        );
+        let next_step = steps.get(step_idx + 1)?;
+        let handle = format!("h{}", step_idx + 1);
+        let handle_expr = ReportMathExpr::Atom(handle.clone());
+        let target = format!("Step {}.{}", step_idx + 2, next_step.input_label);
+        bridge_bindings.push((handle, render_report_math_expr_value(&selected_expr)));
+        bridge_bindings.push((target, render_report_math_expr_value(&handle_expr)));
+        incoming.clear();
+        incoming.insert(next_step.input_label.clone(), handle_expr);
+    }
+
+    None
+}
+
+fn expand_macro_chain_expr(
+    expr: &ReportMathExpr,
+    step_idx: usize,
+    incoming: &BTreeMap<String, ReportMathExpr>,
+    local_bindings: &BTreeMap<String, ReportMathExpr>,
+    stack: &mut BTreeSet<String>,
+) -> ReportMathExpr {
+    match expr {
+        ReportMathExpr::Atom(atom) => {
+            if let Some(bound) = incoming.get(atom) {
+                return bound.clone();
+            }
+            if stack.contains(atom) {
+                return namespace_macro_atom(step_idx, atom);
+            }
+            if let Some(bound) = local_bindings.get(atom) {
+                stack.insert(atom.clone());
+                let expanded =
+                    expand_macro_chain_expr(bound, step_idx, incoming, local_bindings, stack);
+                stack.remove(atom);
+                return expanded;
+            }
+            namespace_macro_atom(step_idx, atom)
+        }
+        ReportMathExpr::Call { head, args } => ReportMathExpr::Call {
+            head: head.clone(),
+            args: args
+                .iter()
+                .map(|arg| expand_macro_chain_expr(arg, step_idx, incoming, local_bindings, stack))
+                .collect(),
+        },
+    }
+}
+
+fn namespace_macro_atom(step_idx: usize, atom: &str) -> ReportMathExpr {
+    if atom.parse::<i64>().is_ok() || atom.parse::<f64>().is_ok() {
+        ReportMathExpr::Atom(atom.to_owned())
+    } else {
+        ReportMathExpr::Atom(format!("s{}.{}", step_idx + 1, atom))
+    }
+}
+
 fn push_rule_pattern_card(report: &mut String, step_idx: usize, steps: &[ParsedTrailStep]) {
     let step = &steps[step_idx];
     report.push_str(&format!("##### Step {}: `{}`\n\n", step_idx + 1, step.rule));
@@ -1199,6 +1334,18 @@ fn push_macro_group_card(report: &mut String, idx: usize, group: &HistoryGroup) 
             report.push_str(&format!("- Proposition: `{}`\n", doc.matched));
         } else {
             report.push_str("- Proposition: `observed chain`\n");
+        }
+    }
+    if let Some(expansion) = macro_chain_expansion(&steps) {
+        report.push_str(&format!(
+            "- macro overall formula: `{}`\n",
+            expansion.formula
+        ));
+        if !expansion.bridge_bindings.is_empty() {
+            report.push_str("- macro binding alignment:\n");
+            for (target, expr) in expansion.bridge_bindings {
+                report.push_str(&format!("  - `{target} = {expr}`\n"));
+            }
         }
     }
     report.push('\n');
@@ -1297,13 +1444,7 @@ fn format_history_report(summary: &HistorySummary, min_len: usize, min_support: 
         "- Same-rule-only groups omitted: `{}`\n\n",
         omitted_single_rule_groups
     ));
-    let mut legend_rules = BTreeSet::new();
-    for group in &summary.repeated_groups {
-        if let Some(rule) = group.rules.first() {
-            legend_rules.insert(*rule);
-        }
-    }
-    let legend_rules = legend_rules.into_iter().collect::<Vec<_>>();
+    let legend_rules = collect_legend_rules(summary.repeated_groups.iter());
     push_rule_pattern_legend(&mut report, &legend_rules);
     report.push_str("## Macro Rule Chains\n\n");
     report.push_str(
@@ -1381,13 +1522,7 @@ fn format_history_report_typst(
         omitted_single_rule_groups
     ));
 
-    let mut legend_rules = BTreeSet::new();
-    for group in &summary.repeated_groups {
-        if let Some(rule) = group.rules.first() {
-            legend_rules.insert(*rule);
-        }
-    }
-    let legend_rules = legend_rules.into_iter().collect::<Vec<_>>();
+    let legend_rules = collect_legend_rules(summary.repeated_groups.iter());
     push_rule_pattern_legend_typst(&mut report, &legend_rules);
     report.push_str("== Macro Rule Chains\n\n");
     report.push_str(
@@ -1429,7 +1564,7 @@ fn print_history_summary(summary: &HistorySummary, min_len: usize, min_support: 
     }
 }
 
-fn push_rule_pattern_legend_typst(report: &mut String, rules: &[&'static str]) {
+fn push_rule_pattern_legend_typst(report: &mut String, rules: &[String]) {
     if rules.is_empty() {
         return;
     }
@@ -1443,7 +1578,7 @@ fn push_rule_pattern_legend_typst(report: &mut String, rules: &[&'static str]) {
     }
 }
 
-fn push_rule_pattern_doc_typst(report: &mut String, rule: &'static str) {
+fn push_rule_pattern_doc_typst(report: &mut String, rule: &str) {
     let Some(doc) = rule_pattern_doc(rule) else {
         return;
     };
@@ -1480,10 +1615,7 @@ fn push_rule_pattern_doc_typst(report: &mut String, rule: &'static str) {
     }
 }
 
-fn rule_pattern_inference_typst(
-    rule: &'static str,
-    doc: RulePatternDoc,
-) -> Option<(String, String)> {
+fn rule_pattern_inference_typst(rule: &str, doc: RulePatternDoc) -> Option<(String, String)> {
     let rhs = doc
         .inserted
         .iter()
@@ -1502,7 +1634,7 @@ fn rule_pattern_inference_typst(
     Some((formula_line, bindings_line))
 }
 
-fn rule_pattern_binding_lines(rule: &'static str) -> Option<Vec<String>> {
+fn rule_pattern_binding_lines(rule: &str) -> Option<Vec<String>> {
     let lines = match rule {
         "add_comm" => vec![
             r#"a = "a""#.to_owned(),
@@ -1636,6 +1768,18 @@ fn push_macro_group_card_typst(report: &mut String, idx: usize, group: &HistoryG
             ));
         } else {
             report.push_str("- Proposition: `observed chain`\n");
+        }
+    }
+    if let Some(expansion) = macro_chain_expansion(&steps) {
+        report.push_str(&format!(
+            "- macro overall formula: $ {} $\n",
+            expansion.formula
+        ));
+        if !expansion.bridge_bindings.is_empty() {
+            report.push_str("- macro binding alignment:\n");
+            for (target, expr) in expansion.bridge_bindings {
+                report.push_str(&format!("  - {target} = $ {expr} $\n"));
+            }
         }
     }
     report.push('\n');
@@ -3155,6 +3299,68 @@ mod tests {
     }
 
     #[test]
+    fn history_report_detects_macro_chain_from_trail_labels_not_event_rule() {
+        let summary = HistorySummary {
+            event_count: 3,
+            value_count: 2,
+            repeated_groups: vec![HistoryGroup {
+                suffix_len: 2,
+                suffix_hash: 0x2a,
+                support_events: 3,
+                support_outputs: 2,
+                truncated_events: 0,
+                rules: vec!["mul_comm"],
+                trail_labels: vec!["add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned()],
+                samples: vec![
+                    "MMul value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned(),
+                ],
+            }],
+        };
+
+        let report = format_history_report_typst(&summary, 2, 2);
+
+        assert!(report.contains("Macro-compose groups shown below: `1`"));
+        assert!(report.contains("- macro chain: `add_assoc -> mul_comm`"));
+        assert!(report.contains("=== `add_assoc`"));
+        assert!(report.contains("=== `mul_comm`"));
+    }
+
+    #[test]
+    fn history_report_renders_macro_overall_formula_with_aligned_bindings() {
+        let summary = HistorySummary {
+            event_count: 3,
+            value_count: 2,
+            repeated_groups: vec![HistoryGroup {
+                suffix_len: 3,
+                suffix_hash: 0x4f,
+                support_events: 3,
+                support_outputs: 2,
+                truncated_events: 0,
+                rules: vec!["diff_mul", "mul_assoc", "mul_distrib"],
+                trail_labels: vec![
+                    "mul_assoc:MMul<-a -> mul_distrib:MMul<-b -> diff_mul:MDiff<-x"
+                        .to_owned(),
+                ],
+                samples: vec![
+                    "MDiff value=7 local_hash=0x1 event_hash=0x2 spines=3 mul_assoc:MMul<-a -> mul_distrib:MMul<-b -> diff_mul:MDiff<-x".to_owned(),
+                ],
+            }],
+        };
+
+        let report = format_history_report_typst(&summary, 2, 2);
+
+        assert!(report.contains("macro overall formula"));
+        assert!(report.contains("macro binding alignment"));
+        assert!(report.contains(r#"h1 = $ upright("s1.a") dot upright("s1.b") $"#));
+        assert!(report.contains(r#"Step 2.b = $ upright("h1") $"#));
+        assert!(report.contains(r#"h2 = $ upright("s2.a") dot upright("h1") $"#));
+        assert!(report.contains(r#"Step 3.x = $ upright("h2") $"#));
+        assert!(report.contains(r#"diff(upright("h2"),"#));
+        assert!(report.contains(r#"upright("s3.a") dot upright("s3.b")"#));
+        assert!(!report.contains(r#"diff((upright("s1.a")"#));
+    }
+
+    #[test]
     fn history_report_omits_same_rule_internal_groups() {
         let summary = HistorySummary {
             event_count: 2,
@@ -3192,10 +3398,10 @@ mod tests {
                 support_events: 2,
                 support_outputs: 1,
                 truncated_events: 0,
-                rules: vec!["add_assoc", "add_assoc"],
-                trail_labels: vec!["add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned()],
+                rules: vec!["mul_comm"],
+                trail_labels: vec!["add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned()],
                 samples: vec![
-                    "MAdd value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned(),
+                    "MMul value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned(),
                 ],
             }],
         };
@@ -3204,7 +3410,7 @@ mod tests {
 
         assert!(report.contains("composed overall formula"));
         assert!(report.contains("`upright(\"ab\") = a + b`"));
-        assert!(report.contains("`upright(\"rhs\") = a + b + c`"));
+        assert!(report.contains("input inherited from Step 1"));
     }
 
     #[test]
@@ -3256,10 +3462,10 @@ mod tests {
                 support_events: 2,
                 support_outputs: 1,
                 truncated_events: 0,
-                rules: vec!["add_assoc", "add_assoc"],
-                trail_labels: vec!["add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned()],
+                rules: vec!["mul_comm"],
+                trail_labels: vec!["add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned()],
                 samples: vec![
-                    "MAdd value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned(),
+                    "MMul value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned(),
                 ],
             }],
         };
@@ -3268,7 +3474,7 @@ mod tests {
 
         assert!(report.contains("composed overall formula"));
         assert!(report.contains(r#"upright("ab") = a + b"#));
-        assert!(report.contains(r#"upright("rhs") = a + b + c"#));
+        assert!(report.contains("input inherited from Step 1"));
     }
 
     #[test]
@@ -3296,10 +3502,10 @@ mod tests {
                 support_events: 2,
                 support_outputs: 2,
                 truncated_events: 0,
-                rules: vec!["add_assoc", "add_assoc"],
-                trail_labels: vec!["add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned()],
+                rules: vec!["mul_comm"],
+                trail_labels: vec!["add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned()],
                 samples: vec![
-                    "MAdd value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> add_assoc:MAdd<-ab".to_owned(),
+                    "MMul value=7 local_hash=0x1 event_hash=0x2 spines=3 add_assoc:MAdd<-b -> mul_comm:MMul<-ab".to_owned(),
                 ],
             }],
         };

@@ -7,12 +7,13 @@ use std::{
     sync::{LazyLock, Mutex, MutexGuard},
 };
 use syn::{
-    Attribute, DataEnum, Expr, Fields, GenericArgument, LitStr, Path, PathArguments, Type,
-    Variant, parse::Parse, parse_str,
+    Attribute, DataEnum, Expr, Fields, GenericArgument, LitStr, Path, PathArguments, Type, Variant,
+    parse::Parse, parse_str,
 };
 
 pub const PANIC_TY_LIST: [&'static str; 4] = ["i32", "u32", "u64", "f32"];
-pub const EGGLOG_BASE_TY_LIST: [&'static str; 5] = ["String", "i64", "f64", "bool", "& 'static str"];
+pub const EGGLOG_BASE_TY_LIST: [&'static str; 5] =
+    ["String", "i64", "f64", "bool", "& 'static str"];
 pub const EGGLOG_BASIC_TY_DEFAULT_LIST: [LazyTokenStream<Expr>; 5] = [
     LazyTokenStream::new(|| "String::new()".to_owned()),
     LazyTokenStream::new(|| "0".to_owned()),
@@ -657,10 +658,9 @@ fn extract_template_placeholders(template: &LitStr, attr_name: &str) -> syn::Res
                         ),
                     ));
                 }
-                let valid_ident = placeholder
-                    .chars()
-                    .enumerate()
-                    .all(|(i, ch)| ch == '_' || ch.is_ascii_alphanumeric() && (i > 0 || !ch.is_ascii_digit()));
+                let valid_ident = placeholder.chars().enumerate().all(|(i, ch)| {
+                    ch == '_' || ch.is_ascii_alphanumeric() && (i > 0 || !ch.is_ascii_digit())
+                });
                 if !valid_ident {
                     return Err(syn::Error::new_spanned(
                         template,
@@ -872,8 +872,8 @@ pub fn variant_precedence_tokens(variant: &Variant) -> syn::Result<TokenStream> 
 #[cfg(test)]
 mod tests {
     use super::{
-        struct_display_template_tokens, struct_typst_template_tokens, variant_display_template_tokens,
-        variant_precedence_tokens, variant_typst_template_tokens,
+        struct_display_template_tokens, struct_typst_template_tokens,
+        variant_display_template_tokens, variant_precedence_tokens, variant_typst_template_tokens,
     };
     use quote::quote;
     use syn::{DeriveInput, Variant, parse_quote};
@@ -891,11 +891,14 @@ mod tests {
     #[test]
     fn typst_template_accepts_valid_single_attr() {
         let variant: Variant = parse_quote! {
-            #[eggplant::typst("diff({x}, {f})")]
+            #[typst("diff({x}, {f})")]
             MDiff { x: Math, f: Math }
         };
         let tokens = variant_typst_template_tokens(&variant).unwrap();
-        assert_eq!(tokens.to_string(), quote!(Some("diff({x}, {f})")).to_string());
+        assert_eq!(
+            tokens.to_string(),
+            quote!(Some("diff({x}, {f})")).to_string()
+        );
     }
 
     #[test]
@@ -914,7 +917,7 @@ mod tests {
             Add { x: Math, y: Math }
         };
         let tokens = variant_precedence_tokens(&variant).unwrap();
-        assert_eq!(tokens.to_string(), quote!(u16 :: MAX).to_string());
+        assert_eq!(tokens.to_string(), quote!(u16::MAX).to_string());
     }
 
     #[test]
@@ -938,7 +941,10 @@ mod tests {
             _ => unreachable!(),
         };
         let tokens = struct_typst_template_tokens(&input.ident, &input.attrs, fields).unwrap();
-        assert_eq!(tokens.to_string(), quote!(Some("path({src}, {dst})")).to_string());
+        assert_eq!(
+            tokens.to_string(),
+            quote!(Some("path({src}, {dst})")).to_string()
+        );
     }
 
     #[test]
